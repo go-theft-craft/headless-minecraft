@@ -171,7 +171,7 @@ Java and Bedrock use the same top-level contracts, packet envelope, data lookup 
 
 Java packages own TCP framing, Java connection states, compression, encryption, and Java packet primitives. Bedrock packages will own RakNet over UDP, Bedrock framing, Bedrock compression, Xbox identity chains, and Bedrock packet primitives.
 
-Custom protocols use their own `Edition` value. The proxy's legacy implementation remains in `proxy/internal/legacy` because it is specific to that project. legacy can reuse shared primitive and data packages and can implement `protocol.Protocol` when integration requires it.
+Custom protocols use their own `Edition` value. The proxy's legacy implementation remains in `proxy/internal/legacy` because it is specific to that project. The legacy protocol can reuse shared primitive and data packages and can implement `protocol.Protocol` when integration requires it.
 
 ## Version conformance profiles
 

@@ -438,7 +438,7 @@ Add the same `v0.0.0` requirement and `../minecraft-protocol` replacement used b
 
 Change imports of `github.com/go-theft-craft/server/pkg/protocol` to `github.com/go-theft-craft/minecraft-protocol/wire/java`. Do not move or rewrite `proxy/internal/legacy`.
 
-- [ ] **Step 3: Run legacy tests first**
+- [ ] **Step 3: Run the legacy codec tests first**
 
 Run `devbox run -- task test -- ./internal/legacy/...` in `proxy`.
 
