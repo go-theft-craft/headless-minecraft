@@ -71,68 +71,41 @@ swap changed behavior. It did not: the matcher and the migrated registry are
 both correct, and the defect was a pre-existing shift-click handler that
 crafted once instead of draining the grid. Settled and fixed ahead of M6.
 
-**M4 is in progress**, with **stages M4.1 and M4.2 complete** and **M4.3 under
-way**: Task 6 is done, Task 7 is started. `minecraft-protocol` now
-describes a pinned data tree with manifest v2, and `mcproto data fetch` has
-pulled the real PrismarineJS Java 26.1 tree at commit `8a80816c`: 25 datasets,
-protocol 775 confirmed by the fetched `version` dataset itself. Fetching twice
-produces byte-identical output, `data:validate` passes for both trees, and
-protocol 47's generated code is unchanged.
+**M4 is complete except for one measurement.** All four stages landed.
+`minecraft-protocol` describes both pinned data trees with manifest v2,
+generates `generated/java/v26_1` — 256 framed packets across five states, typed
+game data for all 25 datasets, every dataset kept as the bytes upstream
+published behind `v26_1.Raw()`, and a checked-in `coverage.json` — and aliases
+it as `generated/java/current`. The login negotiator names no version: it
+drives protocol 47, whose login ends at success, and protocol 775, whose login
+passes through configuration, from the roles and the login exchange each
+version declares. A 42-fixture differential suite compares the 775 codecs
+against pinned Node ProtoDef in both directions.
 
-The six aliased datasets the plan predicted are confirmed against the real
-`dataPaths.json`, exactly as named: `blockLoot` and `entityLoot` at 1.20,
-`commands` at 1.20.3, `mapIcons` at 1.20.2, `windows` at 1.16.1, and `proto` at
-`latest`.
+What is not done is the live check. It is written, skips cleanly without a
+server, and reports every number the limit decision needs, but running it takes
+a Java 26.1 server to install. Until someone runs `task check:live`, the
+default limits — 2 MiB per frame, 8 MiB decompressed — stand on the
+specification rather than on traffic, and nothing here may claim they fit a
+modern login.
 
-M4.2 compiles the whole protocol 775 schema with zero unsupported constructs:
-257 packets across five states, 55 shared types, 70 mappers, and about a
-megabyte of generated codec that parses as Go. Protocol 47's output is
-byte-identical throughout.
+Protocol 47 is unchanged throughout, apart from one added file:
+`generated/java/v1_8/login_exchange.go`. Its generated output is otherwise
+byte-identical and its loopback interoperability suite still passes.
 
-The schema is **257 packets, not the 242 the approved design states**. Counting
-the packet mappings in the pinned tree gives 6/5 for login, 20/10 for
-configuration, and 141/69 for play; configuration is nearly double what the
-design says. The design predated the pin and has been corrected in place.
-
-Eight constructs had to be added, and none of them were predicted — every one
-was found by compiling the real schema. Two are worth carrying forward because
-they set precedent: a bare field reference now resolves lexically outward
-rather than in the innermost scope alone, which overturns a deliberate earlier
-decision but is the only reading under which `DebugSubscriptionUpdate` is
-decodable by anything; and a switch may discriminate on another switch or on a
-plain option, where the compared value is whatever the chosen branch produced.
-Both are recorded with their reasoning in the M4 plan.
-
-M4.3 so far: dataset templates resolve per version, so a version overrides only
-what changed shape and inherits the rest, and dataset decoding is strict — a
-field nothing models is an error naming the dataset and the field rather than a
-value that silently disappears. `data.RawSet` keeps every dataset a version was
-generated from as the bytes upstream published.
-
-Turning strictness on is what showed how far the two versions have diverged:
-1.8 blocks carry metadata variations against 26.1's block states, 1.8 wraps a
-block drop in an object where 26.1 lists a bare item ID, 1.8 biomes carry
-precipitation and rainfall against 26.1's `has_precipitation`, and entity type
-went from two ID namespaces to ten classifications. All eleven datasets the
-shared loaders cover now decode from both pinned trees.
-
-Unlike the packet counts, the design's dataset claims all check out against the
-pinned tree — 1168 blocks, 1506 items, 1902 sounds, 7886 language keys, 75
-command parsers, and each named sample value.
-
-What remains in M4.3 is the typed models: version-specific templates for the
-four datasets whose shape changed, and new models for the seven datasets with no
-1.8 equivalent — `blockLoot`, `entityLoot`, `commands`, `loginPacket`,
-`mapIcons`, `sounds`, and `tints`.
+The six things M4 found are recorded in its milestone section below. The two
+worth carrying furthest: M4.2's report that the 775 codecs "parse as Go" was
+true and not enough — they did not compile, for two reasons a test now covers —
+and roles alone cannot drive a login, because two protocols agree about the
+parts of one and about almost nothing else.
 
 **M5** has an approved design and implementation plan, amended on 2026-08-15
 against the current repository. The amendment found that its capture format
 would have written the login encryption exchange to disk unredacted under its
 own documented defaults, that nothing resolves the protocol ID its header
 carries, and that M2's secret stage had no record kind. All three are settled;
-the reasoning is in the M5 section below. Tasks 1 through 7 are unblocked and
-may start alongside M4's remaining stages; tasks 8 through 12 wait for the
-second protocol.
+the reasoning is in the M5 section below. All twelve tasks are unblocked now
+that the second protocol exists.
 
 **M8.1: physics ground-truth pipeline is complete.** It subdivided M8 and
 depended only on the released `minecraft-reference` tool and the completed M0
@@ -404,25 +377,62 @@ Three constraints found while planning M3:
 
 ### M4 — Java 26.1 and protocol 775
 
-Design and implementation plan approved. M4 subdivides into four stages,
-ordered by risk retired.
+**Complete except for one measurement.** All four stages landed; the opt-in
+live check against a real 26.1 server is written and has not been run, so the
+resource limits still stand on the specification rather than on traffic.
 
 | Stage | Exit criterion |
 | --- | --- |
 | M4.1 | `task data:fetch` twice produces no diff; `data:validate` passes for both versions; protocol 47 output is byte-identical after the manifest migration |
 | M4.2 | The 775 schema compiles with zero unsupported constructs, and `position` compiles from the 775 schema rather than inheriting 1.8's bit order |
 | M4.3 | Every 26.1 dataset decodes strictly with no unknown field, and every dataset name appears in `Raw` |
-| M4.4 | `v26_1.Protocol()` reports 775; the ProtoDef differential suite passes; the live check reaches play against Paper 26.1 and reports its largest frame |
+| M4.4 | `v26_1.Protocol()` reports 775; the ProtoDef differential suite passes; the live check reaches play against Paper 26.1 and reports its largest frame — **the live check is written and unrun** |
 
 - [x] Pin the PrismarineJS source manifest and aliases.
-- [ ] Implement configuration and play transitions for modern Java login,
+- [x] Implement configuration and play transitions for modern Java login,
   moved here from M2 because the packets it needs do not exist until this
   milestone generates them.
-- [ ] Import all exposed datasets and preserve unknown formats as raw data.
-- [ ] Generate deterministic protocol 775 packets and codecs.
-- [ ] Add byte fixtures and protocol 47 regression coverage.
+- [x] Import all exposed datasets and preserve unknown formats as raw data.
+- [x] Generate deterministic protocol 775 packets and codecs.
+- [x] Add byte fixtures and protocol 47 regression coverage.
 - [ ] Verify status/login against a compatible Paper server and a vanilla Java
-  26.1 client.
+  26.1 client. **Not done**, and the one part of M4 that is not.
+
+What M4 produced: `generated/java/v26_1` with 256 framed packets across five
+states, the typed game data for all 25 datasets, every dataset kept as the
+bytes upstream published behind `v26_1.Raw()`, a checked-in `coverage.json`,
+`generated/java/current` as an alias, a login negotiator that names no version,
+and a 42-fixture differential suite against pinned Node ProtoDef. Protocol 47's
+generated output is unchanged apart from one added file, `login_exchange.go`,
+and its loopback interoperability suite still passes.
+
+Six things M4 found that the plan did not predict, each recorded in full in the
+[implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md):
+
+- **"Parses as Go" was a weaker claim than it sounded.** M4.2 reported the 775
+  codecs parsed; they did not compile. A recursive type has to be held through
+  a pointer, and a shared mapper compiles to a named string type while its
+  lookup tables hold plain strings. Both are now covered by tests, and both
+  would have gone unnoticed until the first consumer.
+- **Roles alone cannot drive a login.** A role says which part a packet plays;
+  driving the sequence also means building and reading packets whose names,
+  IDs, field types, and states differ between versions. Each version now
+  generates a login exchange, which is what let the negotiator lose its
+  version dependency.
+- **Login success is not a transition in protocol 775.** The client
+  acknowledges it, and every state change in the modern sequence is proposed by
+  the serverbound half of a handshake, because moving on the clientbound half
+  leaves a client answering from a state it has left.
+- **Disconnect reasons after login are NBT components, not JSON**, in
+  configuration and play but not in login.
+- **Two dataset shapes read wrong at first glance**: a loot drop's stack size
+  range has an open end written as a null bound, and one tint category keys by
+  number where every other keys by biome name.
+- **The version-string reconciliation was mostly unnecessary.** Of the seven
+  documents naming `26.1.2`, all but two were naming a game build — a Mojang
+  artifact or a server under test — which is the correct use. Only the
+  authentication and toolkit plans read as claims about the dataset, and those
+  two were reworded.
 
 Five constraints found while planning M4, recorded because they affect later
 milestones:
@@ -454,8 +464,13 @@ milestones:
   defaults change only if that measurement demands it.
 - The pinned dataset is `26.1`, protocol 775. There is no `26.1.2` dataset
   upstream, though seven planning documents name one. M4's documentation task
-  reconciles them: `26.1` for data and generated code, a patch version only when
-  naming a server the live check ran against.
+  reconciled them: `26.1` for data and generated code, a patch version only when
+  naming a game build or a server under test. Most mentions were already the
+  latter and stayed.
+- The default limits — 2 MiB per frame, 8 MiB decompressed — are still
+  unmeasured. `task check:live` measures them against a real server and
+  `livecheck/README.md` says how to prepare one; until someone runs it, no
+  milestone here may claim the limits fit a modern login.
 
 ### M5 — Routing, capture/history, replay, and CLI
 

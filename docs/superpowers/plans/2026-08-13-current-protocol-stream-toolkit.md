@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Generate the PrismarineJS Java 26.1 data family, protocol 775, validate it against the current 26.1.2 patch, and provide safe optional stream, routing, capture, login, and CLI helpers.
+**Goal:** Generate the PrismarineJS Java 26.1 data family, protocol 775, validate it against a server running the current 26.1.2 game build, and provide safe optional stream, routing, capture, login, and CLI helpers.
 
 **Architecture:** Pure generated codecs operate on packet payloads without owning I/O. Optional stream and Java helpers add bounded concurrency, framing, compression, encryption, status, and login. The generator discovers all upstream datasets from a pinned PrismarineJS revision and retains unknown datasets as raw JSON.
 
@@ -14,7 +14,7 @@
 - Work in `/home/ocharnyshevich/pet.projects/go-theft-craft/minecraft-protocol`.
 - Run commands only as `devbox run -- task <name>`.
 - Leave changes uncommitted unless explicitly requested.
-- Generate PrismarineJS Java 26.1, protocol 775, and validate compatibility with Minecraft Java Edition 26.1.2.
+- Generate PrismarineJS Java 26.1, protocol 775, and validate compatibility against a Minecraft Java Edition 26.1.2 server.
 - Pin PrismarineJS by full commit and verify every source file with SHA-256.
 - Import every resolved upstream dataset, including filenames unknown to typed code.
 - Keep pure codecs free of goroutines, contexts, and transport ownership.
@@ -240,7 +240,7 @@ Expected: packages do not exist.
 
 - [ ] **Step 3: Generate the version package**
 
-Generate all typed data, raw datasets, packet structs, registries, codec, and descriptor from the pinned manifest. Make `current` delegate to `v26_1` without copying generated data. Add a fixture-server compatibility test whose reported game version is 26.1.2 and protocol is 775.
+Generate all typed data, raw datasets, packet structs, registries, codec, and descriptor from the pinned manifest. Make `current` delegate to `v26_1` without copying generated data. Add a fixture-server compatibility test whose reported game version is that of the server under test and whose protocol is 775.
 
 - [ ] **Step 4: Verify reproduction**
 

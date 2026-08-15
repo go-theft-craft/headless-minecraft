@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Create the native Go headless client, support offline and Microsoft-authenticated Java protocol 775 sessions including the current 26.1.2 patch, and expose a scoped lifecycle with typed and raw events.
+**Goal:** Create the native Go headless client, support offline and Microsoft-authenticated Java protocol 775 sessions, and expose a scoped lifecycle with typed and raw events.
 
 **Architecture:** The client composes `minecraft-protocol` rather than hiding it. Authentication, session orchestration, normalized events, and the client adapter live in `headless-minecraft`; wire codecs, generated data, and Java login helpers remain shared.
 
@@ -15,7 +15,7 @@
 - Initialize Git on branch `main`; `docs/` stays ignored.
 - Run commands only as `devbox run -- task <name>`.
 - Leave changes uncommitted unless explicitly requested.
-- Use the generated Java 26.1 protocol 775 bundle by default, validate it against 26.1.2, and accept injected protocol and client adapters.
+- Use the generated Java 26.1 protocol 775 bundle by default, validate it against a server running the 26.1.2 game build, and accept injected protocol and client adapters.
 - Pass context as the first argument to every blocking public operation.
 - Do not store caller contexts in public option or request structs.
 - Never print, log, trace, or return access tokens, refresh tokens, authorization headers, shared secrets, or device codes in errors.
