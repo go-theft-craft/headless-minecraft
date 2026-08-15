@@ -125,10 +125,14 @@ four datasets whose shape changed, and new models for the seven datasets with no
 1.8 equivalent — `blockLoot`, `entityLoot`, `commands`, `loginPacket`,
 `mapIcons`, `sounds`, and `tints`.
 
-**M5** has an approved design and implementation plan as well, written against
-the pinned upstream data rather than against expectations. It cannot start until
-M4 completes, but its interfaces are settled and the constraints it surfaced are
-recorded in its milestone section below.
+**M5** has an approved design and implementation plan, amended on 2026-08-15
+against the current repository. The amendment found that its capture format
+would have written the login encryption exchange to disk unredacted under its
+own documented defaults, that nothing resolves the protocol ID its header
+carries, and that M2's secret stage had no record kind. All three are settled;
+the reasoning is in the M5 section below. Tasks 1 through 7 are unblocked and
+may start alongside M4's remaining stages; tasks 8 through 12 wait for the
+second protocol.
 
 **M8.1: physics ground-truth pipeline is complete.** It subdivided M8 and
 depended only on the released `minecraft-reference` tool and the completed M0
@@ -186,7 +190,7 @@ flowchart LR
 | M2.5 | Compile every schema-defined type from its own schema, share named types, bound decode recursion, and delete the superseded hand-written value types | `minecraft-protocol` | Complete | M2 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-schema-first-codegen-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-schema-first-codegen.md) |
 | M3 | Migrate one real connection path: server handshake, status, ping, login, disconnect, compression, and online/offline mode | `server`, `minecraft-protocol` | Complete | M2.5 | [Design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md), [implementation plan](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) |
 | M4 | Generate Java 26.1 data and protocol 775 codecs, retaining unknown source datasets | `minecraft-protocol` | **In progress** (M4.1 complete) | M3 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) |
-| M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | Planned | M4 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) |
+| M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | **Partly next** (Tasks 1–7 unblocked) | M4, for Tasks 8–12 only | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md) (amended 2026-08-15), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) (amended 2026-08-15) |
 | M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Planned | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
 | M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Planned | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
 | M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 movement slice with canonical replay and server/client adapters | `minecraft-simulation` | Planned | M4, M7 | [Simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
@@ -455,23 +459,63 @@ milestones:
 
 ### M5 — Routing, capture/history, replay, and CLI
 
-Design and implementation plan approved. The capture format is a JSON header
-followed by CRC-checked, length-prefixed binary records; redaction is enforced
-by the writer, and disclosure requires an explicitly constructed writer.
+Design and implementation plan approved, and **amended on 2026-08-15** against
+the repository as it now stands rather than as it stood when they were written.
+The capture format is a JSON header followed by CRC-checked, length-prefixed
+binary records; redaction is enforced at the observation point and again by the
+writer, and disclosure requires an explicitly constructed writer.
 
 - [x] Approve the capture record format and redaction policy.
+- [x] Amend both documents for what M2 and M4 changed under them.
+- [ ] Redact sensitive raw frames and observe rejected writes.
 - [ ] Add packet routing and ordered middleware outside framing.
-- [ ] Record raw frame, decoded packet, state, compression, timing, direction,
-  and lifecycle observations without blocking the stream.
+- [ ] Record raw frame, decoded packet, secret, state, compression, timing,
+  direction, and lifecycle observations without blocking the stream.
 - [ ] Provide bounded in-memory history plus durable capture sinks.
 - [ ] Replay deterministically from a capture with explicit timing modes.
 - [ ] Add non-interactive `mcproto status`, `login`, `capture`, `inspect`, and
   `replay` commands with predictable exit codes and machine-readable output.
 
-One constraint found while planning M5: `Observation` carries ordering but no
-timing, and a sink-side clock measures the sink rather than the wire. M5 adds an
-`Elapsed` field stamped at the observation point. It is the only change M5 makes
-to M1 or M2 code.
+**M5 is partially unblocked.** Tasks 1 through 7 — middleware, the router, the
+observation-path changes, the capture format, the file sink, the history ring,
+and the digest — depend on nothing M4 produces and can begin while M4.3 and
+M4.4 finish. Tasks 8 through 12 need the second protocol and stay blocked.
+
+Four constraints found while amending M5, each of which invalidated something
+the approved documents asserted:
+
+- **A capture written with M5's documented defaults would have leaked the login
+  encryption exchange.** Redaction is applied to `ObservationPacket` records
+  only, and the raw record for the same frame carries the same bytes unflagged
+  — while raw frames are the default and only stage replay needs. The header
+  would have read `"redaction": "enforced"` over a file holding the shared
+  secret in the clear, and `ErrUndisclosedSecret` would never have fired,
+  because the record it guards is not the one carrying the bytes. The fix is a
+  frame-level `SensitiveFrame(State, int32)` on the session, answered from the
+  packet ID peeked before decode, so the inbound raw record can stay emitted
+  before decoding as M1 intended. It is a defect in released code and it is
+  M5's first task.
+- **Nothing resolves a protocol ID to a protocol.** The capture header names
+  `"java/26.1"` and offline replay was to build a session "through the
+  registry"; no registry exists and M4 adds none. Replay takes an injected
+  resolver, and a thin `protocols` package imported only by `cmd/mcproto` knows
+  the two versions. An `init`-registered global was rejected: it would link a
+  megabyte of 26.1 generated code into consumers that only speak 1.8.9.
+- **M2's `ObservationSecret` stage had no record kind**, so a capture could not
+  show when encryption began — the property that stage exists to provide. Kind 5
+  carries the label, and the payload only under disclosure. Worth noting for M7
+  and M10: raw frames are captured above the conduit, after decryption, so a
+  disclosed key is never needed to replay a capture. It decrypts a separate
+  trace taken below the conduit, and nothing else.
+- **`Observation` gains three fields, not one.** The approved design claimed
+  `Elapsed` would be M5's only change to M1 or M2 code. `OriginalLen` is needed
+  because `observe` drops the payload before the record is built, so a redacted
+  record cannot report the size it withheld; `ObservationRejected` is needed
+  because `observeOutbound` runs only after a successful write, so a write
+  rejected by backpressure emits nothing at all and a consumer chasing a
+  vanished packet has no record to find. The rejected stage is the one stage
+  describing the consumer rather than the session: replay skips it and the
+  digest excludes it by construction.
 
 ### M6–M7 — Consumers and observed state
 
@@ -586,7 +630,7 @@ affect later stages:
 - [Schema-first code generation design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-schema-first-codegen-design.md) — adds M2.5
 - [Shared protocol migration design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md) — M3
 - [Java 26.1 and protocol 775 design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md) — subdivides M4 into M4.1–M4.4
-- [Routing, capture, replay, and CLI design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md)
+- [Routing, capture, replay, and CLI design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md) — amended 2026-08-15
 
 ### Focused implementation plans
 
@@ -600,7 +644,7 @@ affect later stages:
 - [Shared protocol migration](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) — approved; starts after M2.5
 - [M8.1 physics ground-truth pipeline](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) — complete
 - [Java 26.1 and protocol 775](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) — approved; starts after M3
-- [Routing, capture, replay, and CLI](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) — approved; starts after M4
+- [Routing, capture, replay, and CLI](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) — approved; amended 2026-08-15; Tasks 1–7 start now, 8–12 after M4
 - [Headless client and authentication](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) — foundation complete; lifecycle and authentication pending
 - [Constructed components, world state, and operations](docs/superpowers/plans/2026-08-13-world-state-actions.md) — pending
 - [Minecraft reference extraction](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md) — reference tool extracted and released; simulation research catalog pending
