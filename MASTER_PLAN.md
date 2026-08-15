@@ -71,7 +71,8 @@ swap changed behavior. It did not: the matcher and the migrated registry are
 both correct, and the defect was a pre-existing shift-click handler that
 crafted once instead of draining the grid. Settled and fixed ahead of M6.
 
-**M4 is in progress**, with **stages M4.1 and M4.2 complete**. `minecraft-protocol` now
+**M4 is in progress**, with **stages M4.1 and M4.2 complete** and **M4.3 under
+way**: Task 6 is done, Task 7 is started. `minecraft-protocol` now
 describes a pinned data tree with manifest v2, and `mcproto data fetch` has
 pulled the real PrismarineJS Java 26.1 tree at commit `8a80816c`: 25 datasets,
 protocol 775 confirmed by the fetched `version` dataset itself. Fetching twice
@@ -101,6 +102,28 @@ decision but is the only reading under which `DebugSubscriptionUpdate` is
 decodable by anything; and a switch may discriminate on another switch or on a
 plain option, where the compared value is whatever the chosen branch produced.
 Both are recorded with their reasoning in the M4 plan.
+
+M4.3 so far: dataset templates resolve per version, so a version overrides only
+what changed shape and inherits the rest, and dataset decoding is strict — a
+field nothing models is an error naming the dataset and the field rather than a
+value that silently disappears. `data.RawSet` keeps every dataset a version was
+generated from as the bytes upstream published.
+
+Turning strictness on is what showed how far the two versions have diverged:
+1.8 blocks carry metadata variations against 26.1's block states, 1.8 wraps a
+block drop in an object where 26.1 lists a bare item ID, 1.8 biomes carry
+precipitation and rainfall against 26.1's `has_precipitation`, and entity type
+went from two ID namespaces to ten classifications. All eleven datasets the
+shared loaders cover now decode from both pinned trees.
+
+Unlike the packet counts, the design's dataset claims all check out against the
+pinned tree — 1168 blocks, 1506 items, 1902 sounds, 7886 language keys, 75
+command parsers, and each named sample value.
+
+What remains in M4.3 is the typed models: version-specific templates for the
+four datasets whose shape changed, and new models for the seven datasets with no
+1.8 equivalent — `blockLoot`, `entityLoot`, `commands`, `loginPacket`,
+`mapIcons`, `sounds`, and `tints`.
 
 **M5** has an approved design and implementation plan as well, written against
 the pinned upstream data rather than against expectations. It cannot start until
