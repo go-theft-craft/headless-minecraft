@@ -74,12 +74,17 @@ against the pinned upstream data rather than against expectations. They cannot
 start until M3 completes, but their interfaces are settled and the constraints
 they surfaced are recorded in their milestone sections below.
 
-**M8.1: physics ground-truth pipeline** remains ready. It subdivides M8, but it
+**M8.1: physics ground-truth pipeline** is in progress. It subdivides M8, but it
 depends only on the released `minecraft-reference` tool and the completed M0
-game-data contracts, not on M1 through M7. Its design and 8-task implementation
-plan are approved. It touches `minecraft-reference` and `minecraft-protocol`
-only, so it does not contend with M3 for the same files. The rest of M8 stays
-blocked on M4 and M7.
+game-data contracts, not on M1 through M7. It touches `minecraft-reference` and
+`minecraft-protocol` only, so it does not contend with M4 for the same files.
+The rest of M8 stays blocked on M4 and M7.
+
+Its two jar-independent tasks are complete: the physics document schema and its
+canonical encoding in `minecraft-reference` (`70c5e0e`), and the `Physics` type
+on the game-data set in `minecraft-protocol` (`e905832`). The remaining six
+tasks need a verified Mojang 1.8.9 server jar, a JDK, and maintainer-reviewed
+symbol and motion notes, so they cannot run unattended.
 
 ```mermaid
 flowchart LR
@@ -113,7 +118,7 @@ flowchart LR
 | M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Planned | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
 | M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Planned | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
 | M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 movement slice with canonical replay and server/client adapters | `minecraft-simulation` | Planned | M4, M7 | [Simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
-| M8.1 | Extract Java 1.8.9 physics constants from a verified Mojang server jar and publish them as a pinned, generated Go package | `minecraft-reference`, `minecraft-protocol` | **Next** | — | [Physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) |
+| M8.1 | Extract Java 1.8.9 physics constants from a verified Mojang server jar and publish them as a pinned, generated Go package | `minecraft-reference`, `minecraft-protocol` | **In progress** | — | [Physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) |
 | M9 | Constructed components plus movement, digging, building, attack, containers, inventory, and crafting scenarios | `headless-minecraft`, `minecraft-simulation`, `server` | Planned | M8 | [World-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md); focused combat and scenario-runner plans still required |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps; focused release plan still required |
 
@@ -416,7 +421,7 @@ holds the exit criterion and rationale for each.
 
 ```mermaid
 flowchart LR
-    A["M8.1 Ground-truth pipeline<br/>Next"]
+    A["M8.1 Ground-truth pipeline<br/>In progress"]
     B["M8.2 Geometry + collision"]
     C["M8.3 Kernel contracts"]
     D["M8.4 v1_8 player"]
@@ -511,7 +516,7 @@ affect later stages:
 - [Encryption and login lifecycle](../minecraft-protocol/docs/superpowers/plans/2026-08-15-encryption-login-lifecycle.md) — next; amended 2026-08-15 with descriptor login roles
 - [Schema-first code generation](../minecraft-protocol/docs/superpowers/plans/2026-08-15-schema-first-codegen.md) — approved; starts after M2
 - [Shared protocol migration](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) — approved; starts after M2.5
-- [M8.1 physics ground-truth pipeline](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) — next; ready in parallel with M2
+- [M8.1 physics ground-truth pipeline](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) — in progress; Tasks 1 and 5 complete, the rest need the Mojang jar
 - [Java 26.1 and protocol 775](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) — approved; starts after M3
 - [Routing, capture, replay, and CLI](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) — approved; starts after M4
 - [Headless client and authentication](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) — foundation complete; lifecycle and authentication pending
