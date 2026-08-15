@@ -532,7 +532,7 @@ the approved documents asserted:
   local packet structs in `pkg/gamedata/versions/pc_1_8` with generated types
   and delete the server's remaining codegen. M3 leaves play on those structs
   deliberately, decoding them with the shared reflect codec.
-- [ ] Migrate proxy wire imports while keeping legacy private to `proxy`.
+- [ ] Migrate proxy wire imports while keeping the legacy protocol private to `proxy`.
 - [ ] Finish headless lifecycle, authentication, event subscriptions, and
   bounded stream ownership.
 - [ ] Connect the headless client to the current Java profile.
