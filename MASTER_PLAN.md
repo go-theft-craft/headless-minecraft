@@ -38,8 +38,8 @@ hand-written codecs for names the schema declares native, which also changes
 protocol 47's generated API. It landed before M3 migrates `server`, so the
 consumer migrates once.
 
-**M3 is implemented and awaiting its client checks.** Eleven of its twelve
-tasks are done. `server` runs every connection on the managed stream, serves
+**M3 is complete.** All twelve tasks are done and every step of its plan is
+checked. `server` runs every connection on the managed stream, serves
 handshake and status from generated packets, accepts logins through
 `login.Acceptor`, negotiates compression, answers legacy pings, disconnects
 gracefully, and owns no wire code at all: `pkg/protocol` and `pkg/gamedata` are
@@ -51,12 +51,25 @@ Every byte-parity fixture captured from the unmigrated server still matches,
 and a pinned Node `minecraft-protocol` client reaches play against the migrated
 server with compression off and on.
 
-**Task 11 has not been run.** It needs a real 1.8.9 client for a full offline
-session and one authenticated online-mode login, and neither can run in CI. M3
-does not pass its release gate until they do; the record is
+Both client checks passed on 2026-08-15 against a real 1.8.9 client, offline
+and online, with **zero decode errors**: no generated codec rejected a packet
+the vanilla client sent. The online login proved the server hash and
+verify-token handling against the real Mojang session server, which no
+automated test can do — every test stubs that call, and a hash wrong in the
+same way on both sides of a loopback test still passes. Compression was
+verified at `-1`, `256`, and `1`. The record is
 [here](../server/docs/verification/2026-08-15-m3-client-checks.md).
 
-**M4 and M5** have approved designs and implementation plans as well, written
+Running the server found three defects the test suite never touched: two
+disconnect-logging faults, both fixed, and a survival block duplication that is
+**not** caused by the migrated drop data. Those and two missing features are
+recorded in
+[the session findings](../server/docs/verification/2026-08-15-m3-session-findings.md)
+and carried into M6, which owns the rest of the consumer migration. One of
+them — 2x2 crafting matching only some recipes — is still an open question
+about whether M3's registry swap changed behavior, and M6 must settle it.
+
+**M4 is next.** It and **M5** have approved designs and implementation plans as well, written
 against the pinned upstream data rather than against expectations. They cannot
 start until M3 completes, but their interfaces are settled and the constraints
 they surfaced are recorded in their milestone sections below.
@@ -74,7 +87,7 @@ flowchart LR
     M1["M1 Managed stream + compression<br/>Complete"]
     M2["M2 Encryption + login lifecycle<br/>Complete"]
     M25["M2.5 Schema-first codegen<br/>Complete"]
-    M3["M3 Server status/login migration<br/>Client checks pending"]
+    M3["M3 Server status/login migration<br/>Complete"]
     M4["M4 Java 26.1 / protocol 775"]
     M5["M5 Routing, capture/replay, mcproto"]
     M6["M6 Complete consumer migrations"]
@@ -94,8 +107,8 @@ flowchart LR
 | M1 | Asynchronous managed stream, runtime state and compression changes, bounded pipelines, legacy `FE 01` pre-frame hook, disconnect-aware graceful shutdown, and observation points | `minecraft-protocol` | Complete | M0 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-14-managed-stream-compression-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-14-managed-stream-compression.md) |
 | M2 | AES-CFB8 transport encryption and complete, developer-controllable login lifecycle | `minecraft-protocol` | Complete | M1 | [Protocol toolkit umbrella plan](docs/superpowers/plans/2026-08-13-current-protocol-stream-toolkit.md), [headless authentication plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md), [M2 design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-encryption-login-lifecycle-design.md), [M2 implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-encryption-login-lifecycle.md) |
 | M2.5 | Compile every schema-defined type from its own schema, share named types, bound decode recursion, and delete the superseded hand-written value types | `minecraft-protocol` | Complete | M2 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-schema-first-codegen-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-schema-first-codegen.md) |
-| M3 | Migrate one real connection path: server handshake, status, ping, login, disconnect, compression, and online/offline mode | `server`, `minecraft-protocol` | **Client checks pending** | M2.5 | [Design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md), [implementation plan](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) |
-| M4 | Generate Java 26.1 data and protocol 775 codecs, retaining unknown source datasets | `minecraft-protocol` | Planned | M3 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) |
+| M3 | Migrate one real connection path: server handshake, status, ping, login, disconnect, compression, and online/offline mode | `server`, `minecraft-protocol` | Complete | M2.5 | [Design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md), [implementation plan](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) |
+| M4 | Generate Java 26.1 data and protocol 775 codecs, retaining unknown source datasets | `minecraft-protocol` | **Next** | M3 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) |
 | M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | Planned | M4 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) |
 | M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Planned | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
 | M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Planned | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
@@ -263,7 +276,7 @@ which reads the same `mc` tags.
 - [x] Delete `pkg/protocol`, the server's cipher files, and the hand-written
   server hash.
 - [x] Prove it with byte-parity fixtures and the pinned Node client.
-- [ ] Prove it with a real 1.8.9 client through a full play session, and one
+- [x] Prove it with a real 1.8.9 client through a full play session, and one
   online-mode login.
 
 Six things found while implementing M3, recorded because they affect later
@@ -382,6 +395,8 @@ to M1 or M2 code.
 
 ### M6–M7 — Consumers and observed state
 
+- [ ] Settle whether the 2x2 crafting matcher regressed on M3's registry swap,
+  and cover `matchRecipe2x2` against the real registry, which no test does.
 - [ ] Complete server play-state migration to `minecraft-protocol`: replace the
   local packet structs in `pkg/gamedata/versions/pc_1_8` with generated types
   and delete the server's remaining codegen. M3 leaves play on those structs
