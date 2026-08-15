@@ -71,7 +71,7 @@ swap changed behavior. It did not: the matcher and the migrated registry are
 both correct, and the defect was a pre-existing shift-click handler that
 crafted once instead of draining the grid. Settled and fixed ahead of M6.
 
-**M4 is in progress**, with **stage M4.1 complete**. `minecraft-protocol` now
+**M4 is in progress**, with **stages M4.1 and M4.2 complete**. `minecraft-protocol` now
 describes a pinned data tree with manifest v2, and `mcproto data fetch` has
 pulled the real PrismarineJS Java 26.1 tree at commit `8a80816c`: 25 datasets,
 protocol 775 confirmed by the fetched `version` dataset itself. Fetching twice
@@ -82,6 +82,25 @@ The six aliased datasets the plan predicted are confirmed against the real
 `dataPaths.json`, exactly as named: `blockLoot` and `entityLoot` at 1.20,
 `commands` at 1.20.3, `mapIcons` at 1.20.2, `windows` at 1.16.1, and `proto` at
 `latest`.
+
+M4.2 compiles the whole protocol 775 schema with zero unsupported constructs:
+257 packets across five states, 55 shared types, 70 mappers, and about a
+megabyte of generated codec that parses as Go. Protocol 47's output is
+byte-identical throughout.
+
+The schema is **257 packets, not the 242 the approved design states**. Counting
+the packet mappings in the pinned tree gives 6/5 for login, 20/10 for
+configuration, and 141/69 for play; configuration is nearly double what the
+design says. The design predated the pin and has been corrected in place.
+
+Eight constructs had to be added, and none of them were predicted — every one
+was found by compiling the real schema. Two are worth carrying forward because
+they set precedent: a bare field reference now resolves lexically outward
+rather than in the innermost scope alone, which overturns a deliberate earlier
+decision but is the only reading under which `DebugSubscriptionUpdate` is
+decodable by anything; and a switch may discriminate on another switch or on a
+plain option, where the compared value is whatever the chosen branch produced.
+Both are recorded with their reasoning in the M4 plan.
 
 **M5** has an approved design and implementation plan as well, written against
 the pinned upstream data rather than against expectations. It cannot start until
