@@ -19,40 +19,42 @@ this file when a milestone starts, becomes blocked, or passes its release gate.
 
 **M1: managed stream and compression** is implemented in `minecraft-protocol`
 and passes its full release gate, including the new pinned Node
-`minecraft-protocol` interoperability lane. The work is uncommitted pending
-review.
+`minecraft-protocol` interoperability lane. The work is committed as
+`8625ea7`.
 
-**M2: encryption and login lifecycle** is now unblocked and has an approved
-design and implementation plan.
+**M2: encryption and login lifecycle** is complete in `minecraft-protocol` and
+passes its full release gate, including two new encrypted Node
+interoperability lanes.
+
+**M2.5: schema-first code generation** is next. Planning M4 against the real
+protocol 775 schema found that the generator overrides schema types by bare
+name, and that `position` and `entityMetadata` exist in both schemas with
+different layouts — 47 packs x, y, z and 775 packs x, z, y; 47 terminates
+metadata at 127 and 775 at 255. Generating 775 under the current rule would
+have produced wrong bytes that every per-protocol round-trip test would have
+accepted. The fix is to compile any type the schema defines and reserve
+hand-written codecs for names the schema declares native, which also changes
+protocol 47's generated API. It lands before M3 migrates `server`, so the
+consumer migrates once.
 
 **M4 and M5** have approved designs and implementation plans as well, written
 against the pinned upstream data rather than against expectations. They cannot
 start until M3 completes, but their interfaces are settled and the constraints
 they surfaced are recorded in their milestone sections below.
 
-**M2.5 is new.** Planning M4 against the real protocol 775 schema found that the
-generator overrides schema types by bare name, and that `position` and
-`entityMetadata` exist in both schemas with different layouts — 47 packs x, y, z
-and 775 packs x, z, y; 47 terminates metadata at 127 and 775 at 255. Generating
-775 under the current rule would have produced wrong bytes that every
-per-protocol round-trip test would have accepted. The fix is to compile any type
-the schema defines and reserve hand-written codecs for names the schema declares
-native, which also changes protocol 47's generated API. It therefore lands
-before M3 migrates `server`, so the consumer migrates once.
-
 **M8.1: physics ground-truth pipeline** remains ready. It subdivides M8, but it
 depends only on the released `minecraft-reference` tool and the completed M0
 game-data contracts, not on M1 through M7. Its design and 8-task implementation
 plan are approved. It touches `minecraft-reference` and `minecraft-protocol`
-only, so it does not contend with M2 for the same files. The rest of M8 stays
+only, so it does not contend with M2.5 for the same files. The rest of M8 stays
 blocked on M4 and M7.
 
 ```mermaid
 flowchart LR
     M0["M0 Protocol 47 foundation<br/>Complete"]
     M1["M1 Managed stream + compression<br/>Complete"]
-    M2["M2 Encryption + login lifecycle<br/>Next"]
-    M25["M2.5 Schema-first codegen"]
+    M2["M2 Encryption + login lifecycle<br/>Complete"]
+    M25["M2.5 Schema-first codegen<br/>Next"]
     M3["M3 Server status/login migration"]
     M4["M4 Java 26.1 / protocol 775"]
     M5["M5 Routing, capture/replay, mcproto"]
@@ -71,8 +73,8 @@ flowchart LR
 | --- | --- | --- | --- | --- | --- |
 | M0 | Shared contracts, bounded Java wire primitives, immutable game data, generated Java 1.8 data, and reflection-free protocol 47 codecs | `minecraft-protocol` | Complete | — | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [wire extraction](docs/superpowers/plans/2026-08-13-java-1-8-wire-extraction.md), [immutable data](docs/superpowers/plans/2026-08-13-immutable-game-data-contracts.md), [Java 1.8 data](docs/superpowers/plans/2026-08-14-java-1-8-generated-data.md), [protocol 47 codecs](../minecraft-protocol/docs/plans/2026-08-14-java-1-8-protocol-codecs.md) |
 | M1 | Asynchronous managed stream, runtime state and compression changes, bounded pipelines, legacy `FE 01` pre-frame hook, disconnect-aware graceful shutdown, and observation points | `minecraft-protocol` | Complete | M0 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-14-managed-stream-compression-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-14-managed-stream-compression.md) |
-| M2 | AES-CFB8 transport encryption and complete, developer-controllable login lifecycle | `minecraft-protocol` | **Next** | M1 | [Protocol toolkit umbrella plan](docs/superpowers/plans/2026-08-13-current-protocol-stream-toolkit.md), [headless authentication plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md), [M2 design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-encryption-login-lifecycle-design.md), [M2 implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-encryption-login-lifecycle.md) |
-| M2.5 | Compile every schema-defined type from its own schema, share named types, bound decode recursion, and delete the superseded hand-written value types | `minecraft-protocol` | Planned | M2 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-schema-first-codegen-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-schema-first-codegen.md) |
+| M2 | AES-CFB8 transport encryption and complete, developer-controllable login lifecycle | `minecraft-protocol` | Complete | M1 | [Protocol toolkit umbrella plan](docs/superpowers/plans/2026-08-13-current-protocol-stream-toolkit.md), [headless authentication plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md), [M2 design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-encryption-login-lifecycle-design.md), [M2 implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-encryption-login-lifecycle.md) |
+| M2.5 | Compile every schema-defined type from its own schema, share named types, bound decode recursion, and delete the superseded hand-written value types | `minecraft-protocol` | **Next** | M2 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-schema-first-codegen-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-schema-first-codegen.md) |
 | M3 | Migrate one real connection path: server handshake, status, ping, login, disconnect, compression, and online/offline mode | `server`, `minecraft-protocol` | Planned | M2.5 | [Design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md), [implementation plan](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) |
 | M4 | Generate Java 26.1 data and protocol 775 codecs, retaining unknown source datasets | `minecraft-protocol` | Planned | M3 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) |
 | M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | Planned | M4 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) |
@@ -92,6 +94,8 @@ flowchart LR
   (`afab923`).
 - [x] Managed stream, compression, protocol 47 transitions, graceful
   disconnect, observation points, and Node interoperability tests.
+- [x] AES-CFB8 encryption, the Java key exchange, strict login identity types,
+  observation redaction, and the opt-in login negotiator.
 - [x] Standalone `minecraft-reference` workflow and release (`v1.0.1`).
 - [x] Initial `minecraft-simulation` repository boundary (`854e7d9`).
 
@@ -135,15 +139,38 @@ milestones:
 
 ### M2 — Encryption and login lifecycle
 
-- [ ] Approve a focused design and implementation plan.
-- [ ] Add AES-CFB8 at the transport boundary in the correct pipeline order.
-- [ ] Support offline and Microsoft-backed identities without coupling auth to
+Complete. Every item below is implemented and verified.
+
+- [x] Approve a focused design and implementation plan.
+- [x] Add AES-CFB8 at the transport boundary in the correct pipeline order.
+- [x] Support offline and Microsoft-backed identities without coupling auth to
   the stream.
-- [ ] Implement configuration and play transitions for modern Java login.
-- [ ] Keep automatic transitions optional: developers can inspect, accept,
+- [x] Keep automatic transitions optional: developers can inspect, accept,
   reject, delay, or replace state and compression decisions.
-- [ ] Test successful login, authentication rejection, timeout, cancellation,
+- [x] Test successful login, authentication rejection, timeout, cancellation,
   disconnect, and shutdown at every state.
+
+The modern-login item moved to M4. Protocol 775 codecs do not exist until M4,
+so hand-written configuration and play login packets would be discarded the
+moment M4 generates them.
+
+Three decisions made while implementing, recorded because they affect later
+milestones:
+
+- Encryption is applied, not proposed. No packet carries the plaintext session
+  key, so M3 and M6 consumers call `Stream.Control` with a
+  `java.EncryptionControl` after the key exchange rather than expecting a
+  session transition to enable it.
+- The `login` package is protocol 47 only. M4 either parameterizes it or adds a
+  second constructor, and M6 depends on whichever it chooses. M2 tagged the
+  generated packets with `protocol.LoginRole` so that choice is a change of
+  dispatch rather than a second negotiator.
+- The standard library's `cipher.NewCFBEncrypter` is cipher feedback with a
+  block-wide segment; Java Edition uses an eight-bit one. Two Go peers using
+  the standard library agree with each other and with no real implementation,
+  so every loopback test passed while the cipher was wrong. The pinned Node
+  lane is what caught it, which is the argument for keeping that gate required
+  in M10.
 
 ### M2.5 — Schema-first code generation
 
@@ -217,6 +244,9 @@ ordered by risk retired.
 | M4.4 | `v26_1.Protocol()` reports 775; the ProtoDef differential suite passes; the live check reaches play against Paper 26.1 and reports its largest frame |
 
 - [ ] Pin the PrismarineJS source manifest and aliases.
+- [ ] Implement configuration and play transitions for modern Java login,
+  moved here from M2 because the packets it needs do not exist until this
+  milestone generates them.
 - [ ] Import all exposed datasets and preserve unknown formats as raw data.
 - [ ] Generate deterministic protocol 775 packets and codecs.
 - [ ] Add byte fixtures and protocol 47 regression coverage.
