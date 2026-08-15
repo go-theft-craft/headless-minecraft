@@ -71,10 +71,22 @@ swap changed behavior. It did not: the matcher and the migrated registry are
 both correct, and the defect was a pre-existing shift-click handler that
 crafted once instead of draining the grid. Settled and fixed ahead of M6.
 
-**M4 is next.** It and **M5** have approved designs and implementation plans as well, written
-against the pinned upstream data rather than against expectations. They cannot
-start until M3 completes, but their interfaces are settled and the constraints
-they surfaced are recorded in their milestone sections below.
+**M4 is in progress**, with **stage M4.1 complete**. `minecraft-protocol` now
+describes a pinned data tree with manifest v2, and `mcproto data fetch` has
+pulled the real PrismarineJS Java 26.1 tree at commit `8a80816c`: 25 datasets,
+protocol 775 confirmed by the fetched `version` dataset itself. Fetching twice
+produces byte-identical output, `data:validate` passes for both trees, and
+protocol 47's generated code is unchanged.
+
+The six aliased datasets the plan predicted are confirmed against the real
+`dataPaths.json`, exactly as named: `blockLoot` and `entityLoot` at 1.20,
+`commands` at 1.20.3, `mapIcons` at 1.20.2, `windows` at 1.16.1, and `proto` at
+`latest`.
+
+**M5** has an approved design and implementation plan as well, written against
+the pinned upstream data rather than against expectations. It cannot start until
+M4 completes, but its interfaces are settled and the constraints it surfaced are
+recorded in its milestone section below.
 
 **M8.1: physics ground-truth pipeline** is in progress. It subdivides M8, but it
 depends only on the released `minecraft-reference` tool and the completed M0
@@ -95,7 +107,7 @@ flowchart LR
     M2["M2 Encryption + login lifecycle<br/>Complete"]
     M25["M2.5 Schema-first codegen<br/>Complete"]
     M3["M3 Server status/login migration<br/>Complete"]
-    M4["M4 Java 26.1 / protocol 775"]
+    M4["M4 Java 26.1 / protocol 775<br/>In progress"]
     M5["M5 Routing, capture/replay, mcproto"]
     M6["M6 Complete consumer migrations"]
     M7["M7 Observed client world state"]
@@ -115,7 +127,7 @@ flowchart LR
 | M2 | AES-CFB8 transport encryption and complete, developer-controllable login lifecycle | `minecraft-protocol` | Complete | M1 | [Protocol toolkit umbrella plan](docs/superpowers/plans/2026-08-13-current-protocol-stream-toolkit.md), [headless authentication plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md), [M2 design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-encryption-login-lifecycle-design.md), [M2 implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-encryption-login-lifecycle.md) |
 | M2.5 | Compile every schema-defined type from its own schema, share named types, bound decode recursion, and delete the superseded hand-written value types | `minecraft-protocol` | Complete | M2 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-schema-first-codegen-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-schema-first-codegen.md) |
 | M3 | Migrate one real connection path: server handshake, status, ping, login, disconnect, compression, and online/offline mode | `server`, `minecraft-protocol` | Complete | M2.5 | [Design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md), [implementation plan](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) |
-| M4 | Generate Java 26.1 data and protocol 775 codecs, retaining unknown source datasets | `minecraft-protocol` | **Next** | M3 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) |
+| M4 | Generate Java 26.1 data and protocol 775 codecs, retaining unknown source datasets | `minecraft-protocol` | **In progress** (M4.1 complete) | M3 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) |
 | M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | Planned | M4 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) |
 | M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Planned | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
 | M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Planned | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
@@ -337,7 +349,7 @@ ordered by risk retired.
 | M4.3 | Every 26.1 dataset decodes strictly with no unknown field, and every dataset name appears in `Raw` |
 | M4.4 | `v26_1.Protocol()` reports 775; the ProtoDef differential suite passes; the live check reaches play against Paper 26.1 and reports its largest frame |
 
-- [ ] Pin the PrismarineJS source manifest and aliases.
+- [x] Pin the PrismarineJS source manifest and aliases.
 - [ ] Implement configuration and play transitions for modern Java login,
   moved here from M2 because the packets it needs do not exist until this
   milestone generates them.
