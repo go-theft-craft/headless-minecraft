@@ -66,8 +66,10 @@ disconnect-logging faults, both fixed, and a survival block duplication that is
 recorded in
 [the session findings](../server/docs/verification/2026-08-15-m3-session-findings.md)
 and carried into M6, which owns the rest of the consumer migration. One of
-them — 2x2 crafting matching only some recipes — is still an open question
-about whether M3's registry swap changed behavior, and M6 must settle it.
+them — 2x2 crafting matching only some recipes — asked whether M3's registry
+swap changed behavior. It did not: the matcher and the migrated registry are
+both correct, and the defect was a pre-existing shift-click handler that
+crafted once instead of draining the grid. Settled and fixed ahead of M6.
 
 **M4 is next.** It and **M5** have approved designs and implementation plans as well, written
 against the pinned upstream data rather than against expectations. They cannot
@@ -400,8 +402,15 @@ to M1 or M2 code.
 
 ### M6–M7 — Consumers and observed state
 
-- [ ] Settle whether the 2x2 crafting matcher regressed on M3's registry swap,
+- [x] Settle whether the 2x2 crafting matcher regressed on M3's registry swap,
   and cover `matchRecipe2x2` against the real registry, which no test does.
+  Settled: **no regression.** The shared registry keeps wildcard ingredients as
+  `Metadata: -1`, and the matcher is correct across every case tried. The real
+  defect was pre-existing: shift-clicking the output crafted once instead of
+  draining the grid. Fixed, along with a duplication bug in `tryAddToSection`
+  found on the fix path. The matcher and the crafting click paths now have
+  tests against the real registry, and the `conn` test harness supplies real
+  game data rather than leaving it nil.
 - [ ] Complete server play-state migration to `minecraft-protocol`: replace the
   local packet structs in `pkg/gamedata/versions/pc_1_8` with generated types
   and delete the server's remaining codegen. M3 leaves play on those structs
