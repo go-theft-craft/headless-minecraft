@@ -166,9 +166,9 @@ flowchart LR
 | M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | **Partly next** (Tasks 1–7 unblocked) | M4, for Tasks 8–12 only | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md) (amended 2026-08-15), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) (amended 2026-08-15) |
 | M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Planned | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
 | M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Planned | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
-| M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 movement slice with canonical replay and server/client adapters | `minecraft-simulation` | Planned | M4, M7 | [Simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
+| M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 player movement slice with canonical replay and server/client adapters; items and arrows moved to M9 | `minecraft-simulation` | Planned | M4, M7 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
 | M8.1 | Extract Java 1.8.9 physics constants from a verified Mojang server jar and publish them as a pinned, generated Go package | `minecraft-reference`, `minecraft-protocol` | Complete | — | [Physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) |
-| M9 | Constructed components plus movement, digging, building, attack, containers, inventory, and crafting scenarios | `headless-minecraft`, `minecraft-simulation`, `server` | Planned | M8 | [World-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md); focused combat and scenario-runner plans still required |
+| M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic | `minecraft-simulation`, a new capture repository, `headless-minecraft`, `server` | Planned | M8.8 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md); per-stage plans written when each becomes next |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps; focused release plan still required |
 
 ## What is complete
@@ -556,45 +556,82 @@ the approved documents asserted:
 
 ### M8–M9 — Simulation and gameplay
 
-M8 subdivides into eight stages, ordered by risk retired rather than by layer.
-The [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md)
-holds the exit criterion and rationale for each.
+M8 subdivides into stages ordered by risk retired rather than by layer, and M9
+subdivides by mechanic. The
+[sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md)
+holds each stage's real dependency, its exit criterion, and the interfaces it
+may not change. The
+[physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md)
+holds the original rationale; where the two disagree, the sequencing design is
+newer and wins.
 
 ```mermaid
 flowchart LR
     A["M8.1 Ground-truth pipeline<br/>Complete"]
-    B["M8.2 Geometry + collision"]
+    B["M8.2 Geometry + collision<br/>Planned"]
     C["M8.3 Kernel contracts"]
     D["M8.4 v1_8 player"]
-    E["M8.5 Traces, items, arrows"]
     F["M8.6 Replay + determinism"]
     G["M8.7 v26_1 profile"]
     H["M8.8 Consumer integration"]
 
     A --> D
-    B --> C --> D --> E --> F --> G --> H
+    B --> C --> D --> H
+    C --> F
+    D --> G
 ```
 
 M8.1 and M8.2 have no dependency on each other. M8.1 needs no simulation code,
 and M8.2 needs no extracted constants.
 
-| Stage | Exit criterion |
-| --- | --- |
-| M8.1 | `v1_8.Physics()` returns slipperiness, the trigonometry table, and motion constants; `generate:check` passes with no JDK |
-| M8.2 | Property tests prove no tunneling, bounded step-up, and that zero motion is a fixed point |
-| M8.3 | An empty tick produces a stable digest and a change set that a stale store rejects |
-| M8.4 | Scripted walk, sprint, jump, and sneak against vanilla 1.8.9 draw zero correction packets |
-| M8.5 | Captured item and arrow traces replay within one thirty-second of a block |
-| M8.6 | Identical digest on Linux, macOS, and Windows, on amd64 and arm64 |
-| M8.7 | The same conformance suite passes on 26.1.2 |
-| M8.8 | Client prediction and server-authoritative validation both run the same kernel |
+Three changes to the original plan, all recorded in the sequencing design:
 
-Two constraints discovered while planning M8.1, recorded here because they
+- **M8.5 is retired.** Dropped items, arrows, and entity-trace capture move to
+  M9.1 and M9.2, so M8 delivers one deterministic player movement slice. The
+  identifier is not reused: an `M8.x` number means the same thing in every
+  document.
+- **M8.4 is gated on fixtures.** The zero-corrections test against a live
+  vanilla server needs M6 and M7, which the movement code itself does not. That
+  gate moves to M8.8, where the client adapter exists anyway.
+- **Capture needs a new repository.** The existing legacy proxy speaks a
+  different protocol family and cannot be extended into a protocol 47 capture
+  tool. M9.1 is a new repository, not the small subcommand originally budgeted.
+
+| Stage | Depends on | Exit criterion |
+| --- | --- | --- |
+| M8.1 | — | `v1_8.Physics()` returns slipperiness, the trigonometry table, and motion constants; `generate:check` passes with no JDK |
+| M8.2 | — | Property tests prove no tunneling, bounded step-up, and that zero motion is a fixed point |
+| M8.3 | M8.2 | An empty tick produces a stable digest and a change set that a stale store rejects |
+| M8.4 | M8.3 | Fixture conformance for walk, sprint, jump, sneak, fall, and collide |
+| M8.6 | M8.3 for encoding; M8.4 for the matrix | Identical digest on Linux, macOS, and Windows, on amd64 and arm64 |
+| M8.7 | M8.4, M4 | The M8.4 fixture suite passes on 26.1.2 |
+| M8.8 | M8.4, M6, M7 | Both adapters run one kernel; scripted input draws zero corrections from vanilla 1.8.9 |
+
+M9 follows M8.8 and subdivides by mechanic, because the packages and the
+conformance fixtures are already organized that way and each mechanic is
+independently verifiable against a vanilla server.
+
+| Stage | Deliverable | Exit criterion |
+| --- | --- | --- |
+| M9.1 | Entity-trace capture in a new protocol 47 proxy repository | A captured trace replays deterministically from its recording |
+| M9.2 | Dropped item and arrow rules, both profiles | Captured traces replay within one thirty-second of a block |
+| M9.3 | Movement scenarios | Correction, teleport, and disconnect mid-action behave as vanilla |
+| M9.4 | Digging and block breaking | Break times match vanilla for tool, block, and effect combinations |
+| M9.5 | Building and placement | Placement legality and resulting block state match vanilla |
+| M9.6 | Attack, damage, knockback | Reach validation, cooldown timing, damage, and death match vanilla |
+| M9.7 | Containers and inventory | Window open and close, slot synchronization, and rejected moves match vanilla |
+| M9.8 | Crafting | Recipe matching and result stacks match vanilla, including the 2x2 grid |
+
+Three constraints discovered while running M8.1, recorded here because they
 affect later stages:
 
 - Entity gravity and drag are numeric literals inside method bodies, not
   fields. No reflective dumper reaches them. They are transcribed from research
   notes and range-checked by tests. Every other constant is extracted.
+- Eleven of the twelve motion constants are `float` literals that Java widens
+  to `double` where they are applied, and the ground drag is computed as
+  `slipperiness * 0.91F` in `float32` before widening. A kernel that computes
+  that product in `float64` will not match vanilla bit for bit.
 - Captured traces verify trajectories to roughly one thirty-second of a block,
   not exactly, because Java Edition 1.8 transmits positions as fixed point.
   This catches wrong constants and wrong axis order, not last-place drift.
@@ -607,7 +644,10 @@ affect later stages:
   Java 1.8.9 and 26.1.2.
 - [ ] Implement the deterministic kernel, strict unknown-state handling,
   collision, movement, canonical result digest, and replay.
-- [ ] Prove the same simulation through server and headless adapters.
+- [ ] Prove the same simulation through server and headless adapters, gated on
+  zero corrections from a live vanilla 1.8.9 server (M8.8).
+- [ ] Build the protocol 47 capture repository, then verify dropped items and
+  arrows against its traces (M9.1 and M9.2).
 - [ ] Add movement scenarios: walk, sprint, sneak, jump, fall, collide,
   correction, teleport, and disconnect mid-action.
 - [ ] Add attack scenarios: target selection, reach validation, cooldown or
@@ -640,6 +680,7 @@ affect later stages:
 - [Headless client and shared protocol design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md)
 - [Minecraft simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md)
 - [Simulation physics first subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md) — subdivides M8 into M8.1–M8.8
+- [M8 and M9 sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md) — real per-stage dependencies, the retirement of M8.5, M9.1–M9.8, and the frozen interfaces
 - [Managed stream and compression design](../minecraft-protocol/docs/superpowers/specs/2026-08-14-managed-stream-compression-design.md)
 - [Encryption and login lifecycle design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-encryption-login-lifecycle-design.md)
 - [Schema-first code generation design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-schema-first-codegen-design.md) — adds M2.5
@@ -658,6 +699,7 @@ affect later stages:
 - [Schema-first code generation](../minecraft-protocol/docs/superpowers/plans/2026-08-15-schema-first-codegen.md) — approved; starts after M2
 - [Shared protocol migration](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) — approved; starts after M2.5
 - [M8.1 physics ground-truth pipeline](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) — complete
+- [M8.2 geometry and collision core](../minecraft-simulation/docs/superpowers/plans/2026-08-15-m8-2-geometry-collision-core.md) — planned, ready to execute
 - [Java 26.1 and protocol 775](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) — approved; starts after M3
 - [Routing, capture, replay, and CLI](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) — approved; amended 2026-08-15; Tasks 1–7 start now, 8–12 after M4
 - [Headless client and authentication](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) — foundation complete; lifecycle and authentication pending
