@@ -26,7 +26,7 @@ and passes its full release gate, including the new pinned Node
 passes its full release gate, including two new encrypted Node
 interoperability lanes.
 
-**M2.5: schema-first code generation** is next. Planning M4 against the real
+**M2.5: schema-first code generation** is complete. Planning M4 against the real
 protocol 775 schema found that the generator overrides schema types by bare
 name, and that `position` and `entityMetadata` exist in both schemas with
 different layouts — 47 packs x, y, z and 775 packs x, z, y; 47 terminates
@@ -34,8 +34,10 @@ metadata at 127 and 775 at 255. Generating 775 under the current rule would
 have produced wrong bytes that every per-protocol round-trip test would have
 accepted. The fix is to compile any type the schema defines and reserve
 hand-written codecs for names the schema declares native, which also changes
-protocol 47's generated API. It lands before M3 migrates `server`, so the
+protocol 47's generated API. It landed before M3 migrates `server`, so the
 consumer migrates once.
+
+**M3 is next.**
 
 **M4 and M5** have approved designs and implementation plans as well, written
 against the pinned upstream data rather than against expectations. They cannot
@@ -46,7 +48,7 @@ they surfaced are recorded in their milestone sections below.
 depends only on the released `minecraft-reference` tool and the completed M0
 game-data contracts, not on M1 through M7. Its design and 8-task implementation
 plan are approved. It touches `minecraft-reference` and `minecraft-protocol`
-only, so it does not contend with M2.5 for the same files. The rest of M8 stays
+only, so it does not contend with M3 for the same files. The rest of M8 stays
 blocked on M4 and M7.
 
 ```mermaid
@@ -54,8 +56,8 @@ flowchart LR
     M0["M0 Protocol 47 foundation<br/>Complete"]
     M1["M1 Managed stream + compression<br/>Complete"]
     M2["M2 Encryption + login lifecycle<br/>Complete"]
-    M25["M2.5 Schema-first codegen<br/>Next"]
-    M3["M3 Server status/login migration"]
+    M25["M2.5 Schema-first codegen<br/>Complete"]
+    M3["M3 Server status/login migration<br/>Next"]
     M4["M4 Java 26.1 / protocol 775"]
     M5["M5 Routing, capture/replay, mcproto"]
     M6["M6 Complete consumer migrations"]
@@ -74,8 +76,8 @@ flowchart LR
 | M0 | Shared contracts, bounded Java wire primitives, immutable game data, generated Java 1.8 data, and reflection-free protocol 47 codecs | `minecraft-protocol` | Complete | — | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [wire extraction](docs/superpowers/plans/2026-08-13-java-1-8-wire-extraction.md), [immutable data](docs/superpowers/plans/2026-08-13-immutable-game-data-contracts.md), [Java 1.8 data](docs/superpowers/plans/2026-08-14-java-1-8-generated-data.md), [protocol 47 codecs](../minecraft-protocol/docs/plans/2026-08-14-java-1-8-protocol-codecs.md) |
 | M1 | Asynchronous managed stream, runtime state and compression changes, bounded pipelines, legacy `FE 01` pre-frame hook, disconnect-aware graceful shutdown, and observation points | `minecraft-protocol` | Complete | M0 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-14-managed-stream-compression-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-14-managed-stream-compression.md) |
 | M2 | AES-CFB8 transport encryption and complete, developer-controllable login lifecycle | `minecraft-protocol` | Complete | M1 | [Protocol toolkit umbrella plan](docs/superpowers/plans/2026-08-13-current-protocol-stream-toolkit.md), [headless authentication plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md), [M2 design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-encryption-login-lifecycle-design.md), [M2 implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-encryption-login-lifecycle.md) |
-| M2.5 | Compile every schema-defined type from its own schema, share named types, bound decode recursion, and delete the superseded hand-written value types | `minecraft-protocol` | **Next** | M2 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-schema-first-codegen-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-schema-first-codegen.md) |
-| M3 | Migrate one real connection path: server handshake, status, ping, login, disconnect, compression, and online/offline mode | `server`, `minecraft-protocol` | Planned | M2.5 | [Design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md), [implementation plan](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) |
+| M2.5 | Compile every schema-defined type from its own schema, share named types, bound decode recursion, and delete the superseded hand-written value types | `minecraft-protocol` | Complete | M2 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-schema-first-codegen-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-schema-first-codegen.md) |
+| M3 | Migrate one real connection path: server handshake, status, ping, login, disconnect, compression, and online/offline mode | `server`, `minecraft-protocol` | **Next** | M2.5 | [Design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md), [implementation plan](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) |
 | M4 | Generate Java 26.1 data and protocol 775 codecs, retaining unknown source datasets | `minecraft-protocol` | Planned | M3 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) |
 | M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | Planned | M4 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) |
 | M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Planned | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
@@ -96,6 +98,8 @@ flowchart LR
   disconnect, observation points, and Node interoperability tests.
 - [x] AES-CFB8 encryption, the Java key exchange, strict login identity types,
   observation redaction, and the opt-in login negotiator.
+- [x] Schema-first code generation, shared named types, bounded decode
+  recursion, and removal of the hand-written value types.
 - [x] Standalone `minecraft-reference` workflow and release (`v1.0.1`).
 - [x] Initial `minecraft-simulation` repository boundary (`854e7d9`).
 
@@ -174,25 +178,46 @@ milestones:
 
 ### M2.5 — Schema-first code generation
 
-Design and implementation plan approved. Six tasks, protocol 47 only, and its
-exit criterion is that protocol 47's bytes do not change.
+Complete. Protocol 47's bytes did not change, which was the exit criterion.
 
-- [ ] Pin protocol 47's wire bytes with a round-trip test over every packet and
+- [x] Pin protocol 47's wire bytes with a round-trip test over every packet and
   hand-computed assertions for the position bit layout, written before anything
-  changes.
-- [ ] Bound decode recursion against the existing `Limits.recursionDepth`.
-- [ ] Resolve hand-written codecs against the schema's own native set, and pass
-  native invocation arguments through — `endVal` stops being a Go constant.
-- [ ] Generate named types once when they are recursive or used by two or more
+  changed.
+- [x] Bound decode recursion against the existing `Limits.recursionDepth`.
+- [x] Resolve hand-written codecs against the schema's own native set, and pass
+  native invocation arguments through — `endVal` is no longer a Go constant.
+- [x] Generate named types once when they are recursive or used by two or more
   packets, instead of inlining them per packet.
-- [ ] Delete `java.Position`, `java.Slot`, and `java.EntityMetadata`.
-- [ ] Prove the result with the existing byte fixtures and the pinned Node
+- [x] Delete `java.Position`, `java.Slot`, and `java.EntityMetadata`.
+- [x] Prove the result with the existing byte fixtures and the pinned Node
   interoperability lane.
 
-One thing this milestone may discover: if 1.8's hand-written `slot` codec
-encodes something the schema does not express, the fixtures will fail. That
-difference is a finding to record, not a reason to restore the override — the
-same gap would exist for protocol 775's `Slot`.
+The `slot` question this milestone raised is answered: protocol 47's schema
+expresses everything the hand-written `slot` codec did, and the fixtures passed
+unchanged. There is no gap to carry into M4.
+
+Four things found while implementing, recorded because they affect later
+milestones:
+
+- A name is native only when its definition is the native marker itself.
+  `string` is defined as an invocation of the native `pstring`, so its stored
+  node is a native node carrying a different name. Counting that as a native
+  declaration reintroduces the same bug one name further along, and M4 will
+  meet the pattern again in 775's alias-heavy type table.
+- Four packets cannot be reached by any canonical byte stream, because entity
+  metadata terminates at a byte the generator's test alphabet never produces
+  and NBT needs a structurally valid tag. They are pinned by hand. M4 needs the
+  same treatment for 775's equivalents.
+- Two latent defects surfaced only once `position` stopped being a scalar: an
+  option holding a struct rendered as `*(p).Field`, which Go parses as
+  `*((p).Field)`, and a `pstring` with a non-VarInt count type was read with
+  the VarInt-prefixed codec instead of being rejected. Both were unreachable
+  while every schema-defined type was overridden by name.
+- A parameterized type cannot be shared, because its shape depends on the
+  argument each invocation supplies. Protocol 47 has one, `entityMetadataItem`.
+  If 775 has a parameterized type that is also recursive, it cannot be compiled
+  at all under the current rules, and M4 should check for that before planning
+  its generation stage.
 
 ### M3 — First real consumer
 
