@@ -11,6 +11,7 @@ this file when a milestone starts, becomes blocked, or passes its release gate.
 | Status | Meaning |
 | --- | --- |
 | Complete | Implemented and verified in the repository named by the milestone. |
+| Client checks pending | Implemented, with every automated gate green, but a manual check its release gate requires has not been run. |
 | Next | Approved and ready to implement. |
 | Planned | Ordered, but its focused design or implementation plan is not yet approved. |
 | Blocked | Cannot start until the named dependency is complete. |
@@ -37,10 +38,23 @@ hand-written codecs for names the schema declares native, which also changes
 protocol 47's generated API. It landed before M3 migrates `server`, so the
 consumer migrates once.
 
-**M3 is in progress.** Stage M3.1 is complete: `minecraft-protocol` now holds
-both halves of the login sequence, and they are tested against each other over
-one connection. The remaining eleven tasks are in `server`, starting with the
-byte-parity fixtures that pin its current behavior before anything moves.
+**M3 is implemented and awaiting its client checks.** Eleven of its twelve
+tasks are done. `server` runs every connection on the managed stream, serves
+handshake and status from generated packets, accepts logins through
+`login.Acceptor`, negotiates compression, answers legacy pings, disconnects
+gracefully, and owns no wire code at all: `pkg/protocol` and `pkg/gamedata` are
+deleted apart from the play packet structs M6 replaces. `minecraft-protocol` is
+released as `v0.1.0` and consumed as a released module with no `replace`
+directive.
+
+Every byte-parity fixture captured from the unmigrated server still matches,
+and a pinned Node `minecraft-protocol` client reaches play against the migrated
+server with compression off and on.
+
+**Task 11 has not been run.** It needs a real 1.8.9 client for a full offline
+session and one authenticated online-mode login, and neither can run in CI. M3
+does not pass its release gate until they do; the record is
+[here](../server/docs/verification/2026-08-15-m3-client-checks.md).
 
 **M4 and M5** have approved designs and implementation plans as well, written
 against the pinned upstream data rather than against expectations. They cannot
@@ -60,7 +74,7 @@ flowchart LR
     M1["M1 Managed stream + compression<br/>Complete"]
     M2["M2 Encryption + login lifecycle<br/>Complete"]
     M25["M2.5 Schema-first codegen<br/>Complete"]
-    M3["M3 Server status/login migration<br/>In progress"]
+    M3["M3 Server status/login migration<br/>Client checks pending"]
     M4["M4 Java 26.1 / protocol 775"]
     M5["M5 Routing, capture/replay, mcproto"]
     M6["M6 Complete consumer migrations"]
@@ -80,7 +94,7 @@ flowchart LR
 | M1 | Asynchronous managed stream, runtime state and compression changes, bounded pipelines, legacy `FE 01` pre-frame hook, disconnect-aware graceful shutdown, and observation points | `minecraft-protocol` | Complete | M0 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-14-managed-stream-compression-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-14-managed-stream-compression.md) |
 | M2 | AES-CFB8 transport encryption and complete, developer-controllable login lifecycle | `minecraft-protocol` | Complete | M1 | [Protocol toolkit umbrella plan](docs/superpowers/plans/2026-08-13-current-protocol-stream-toolkit.md), [headless authentication plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md), [M2 design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-encryption-login-lifecycle-design.md), [M2 implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-encryption-login-lifecycle.md) |
 | M2.5 | Compile every schema-defined type from its own schema, share named types, bound decode recursion, and delete the superseded hand-written value types | `minecraft-protocol` | Complete | M2 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-schema-first-codegen-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-schema-first-codegen.md) |
-| M3 | Migrate one real connection path: server handshake, status, ping, login, disconnect, compression, and online/offline mode | `server`, `minecraft-protocol` | **In progress** (M3.1 complete) | M2.5 | [Design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md), [implementation plan](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) |
+| M3 | Migrate one real connection path: server handshake, status, ping, login, disconnect, compression, and online/offline mode | `server`, `minecraft-protocol` | **Client checks pending** | M2.5 | [Design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md), [implementation plan](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) |
 | M4 | Generate Java 26.1 data and protocol 775 codecs, retaining unknown source datasets | `minecraft-protocol` | Planned | M3 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) |
 | M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | Planned | M4 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) |
 | M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Planned | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
@@ -103,6 +117,11 @@ flowchart LR
   observation redaction, and the opt-in login negotiator.
 - [x] Schema-first code generation, shared named types, bounded decode
   recursion, and removal of the hand-written value types.
+- [x] `minecraft-protocol` `v0.1.0`, its first tagged release, consumed by
+  `server` as a released module.
+- [x] Server connections on the managed stream, with generated handshake and
+  status packets, the shared login acceptor, compression, legacy pings, and
+  graceful disconnects.
 - [x] Standalone `minecraft-reference` workflow and release (`v1.0.1`).
 - [x] Initial `minecraft-simulation` repository boundary (`854e7d9`).
 
@@ -232,19 +251,46 @@ which reads the same `mc` tags.
 - [x] Approve the server status/login migration plan.
 - [x] Add `login.Acceptor` to `minecraft-protocol` as the server-side
   counterpart to M2's client negotiator, tested against it over `net.Pipe`.
-- [ ] Pin the server's current bytes with a connection harness written against
+- [x] Pin the server's current bytes with a connection harness written against
   the unmigrated code.
-- [ ] Source game data from `minecraft-protocol/data` repo-wide.
-- [ ] Replace the blocking read loop and the swapped `io.ReadWriter` with a
+- [x] Source game data from `minecraft-protocol/data` repo-wide.
+- [x] Replace the blocking read loop and the swapped `io.ReadWriter` with a
   `protocol.Stream`, keeping `writePacket`'s signature so its eighty call sites
   do not move.
-- [ ] Migrate handshake, status, ping, and login to generated packets.
-- [ ] Enable compression, threshold configurable, defaulting to 256.
-- [ ] Answer legacy `FE 01` pings and send disconnect packets before closing.
-- [ ] Delete `pkg/protocol`, the server's cipher files, and the hand-written
+- [x] Migrate handshake, status, ping, and login to generated packets.
+- [x] Enable compression, threshold configurable, defaulting to 256.
+- [x] Answer legacy `FE 01` pings and send disconnect packets before closing.
+- [x] Delete `pkg/protocol`, the server's cipher files, and the hand-written
   server hash.
-- [ ] Prove it with byte-parity fixtures, the pinned Node client, a real 1.8.9
-  client through a full play session, and one online-mode login.
+- [x] Prove it with byte-parity fixtures and the pinned Node client.
+- [ ] Prove it with a real 1.8.9 client through a full play session, and one
+  online-mode login.
+
+Six things found while implementing M3, recorded because they affect later
+milestones:
+
+- A session proposes a transition only for a packet it can inspect. A
+  connection that writes a raw payload gets no transition, so the migration
+  drove state explicitly until handshake, status, and login moved to generated
+  values. M6 finishes this for play, and until it does the connection still
+  mirrors the session's state into a local enum.
+- `minecraft-protocol` requires Go 1.26.6, so `server` moved to the same
+  `openserbia/go-flake` pins. `devbox.json` must set `GOROOT` explicitly:
+  without it, a shell entered from a sibling repository leaks its GOROOT and
+  every build fails on a toolchain mismatch. M6 will hit this in `proxy` and
+  `headless-minecraft` too.
+- The shared data names Java 1.8 `"1.8.9"`; the server advertises `"1.8.8"`.
+  Both are protocol 47. The status response keeps `"1.8.8"` because M3 changes
+  no byte on the wire, and reconciling the two names is a decision of its own.
+- `cmd/dmd` survives. It downloads the `protocol.json` that the retained packet
+  codegen reads, so it cannot go until M6 deletes the packet structs.
+- `task lint` and `task build` were both failing in `server` before this
+  milestone — six pre-existing findings, and a build that pointed at a
+  directory holding no Go files. M3 could not report a green gate without
+  fixing them, so it did.
+- The offline UUID derivation moved into `minecraft-protocol` as
+  `login.OfflineUUID`. It is byte-identical to the server's own, which is what
+  keeps saved player files reachable: the server looks them up by UUID.
 
 Three constraints found while planning M3:
 
