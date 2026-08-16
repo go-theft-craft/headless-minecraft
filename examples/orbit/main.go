@@ -48,17 +48,38 @@ func run(logger *slog.Logger, address, username string, legacy, dryRun bool) int
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	bot, err := connect(ctx, logger, address, username, legacy)
+	bot, err := build(logger, address, username, legacy)
 	if err != nil {
-		logger.Error("connect", slog.Any("error", err))
+		logger.Error("build", slog.Any("error", err))
 
 		return 1
 	}
 	defer func() { _ = bot.Close() }()
 
+	// Subscribe before connecting. Connect publishes session.ready on its way
+	// through play and returns after it, so a subscription opened afterwards
+	// has already missed it — which is exactly what the first live run of this
+	// example did, and it looks like a bot that never joined.
+	events, err := bot.Subscribe(
+		event.DomainSession|event.DomainPlayer|event.DomainEntities,
+		eventBuffer,
+	)
+	if err != nil {
+		logger.Error("subscribe", slog.Any("error", err))
+
+		return 1
+	}
+	defer func() { _ = events.Close() }()
+
+	if err := bot.Connect(ctx); err != nil {
+		logger.Error("connect", slog.Any("error", err))
+
+		return 1
+	}
+
 	logger.Info("connected", slog.String("address", address))
 
-	code, err := drive(ctx, logger, bot)
+	code, err := drive(ctx, logger, events)
 	if err != nil {
 		logger.Error("run", slog.Any("error", err))
 	}
@@ -66,11 +87,16 @@ func run(logger *slog.Logger, address, username string, legacy, dryRun bool) int
 	return code
 }
 
-// connect builds and connects the client. Authorization is declared for this
-// endpoint and these scopes only: the library requires it before any automation
-// and it is the application's statement of intent, not proof the server agrees.
-func connect(
-	ctx context.Context,
+// eventBuffer is the subscription's capacity. The client closes a subscriber
+// that falls behind rather than dropping an event, so this is sized for the
+// burst that arrives with the first chunks, not for the steady state.
+const eventBuffer = 256
+
+// build constructs the client without touching the network. Authorization is
+// declared for this endpoint and these scopes only: the library requires it
+// before any automation and it is the application's statement of intent, not
+// proof the server agrees.
+func build(
 	logger *slog.Logger,
 	address, username string,
 	legacy bool,
@@ -101,12 +127,6 @@ func connect(
 		return nil, fmt.Errorf("new client: %w", err)
 	}
 
-	if err := bot.Connect(ctx); err != nil {
-		_ = bot.Close()
-
-		return nil, fmt.Errorf("connect: %w", err)
-	}
-
 	return bot, nil
 }
 
@@ -120,7 +140,7 @@ func profile(legacy bool) version.WireProfile {
 
 // drive runs the tick loop: fold events into a Tick, ask the core what to do,
 // and do it. This is the only goroutine that touches the bot.
-func drive(ctx context.Context, logger *slog.Logger, c *client.Client) (int, error) {
+func drive(ctx context.Context, logger *slog.Logger, events *client.Subscription) (int, error) {
 	bounds := DefaultBounds()
 	core := NewBot(bounds)
 
@@ -131,16 +151,17 @@ func drive(ctx context.Context, logger *slog.Logger, c *client.Client) (int, err
 		actuator Actuator = Pending{}
 	)
 
-	events, err := c.Subscribe(event.DomainSession|event.DomainPlayer|event.DomainEntities, 256)
-	if err != nil {
-		return 1, fmt.Errorf("subscribe: %w", err)
-	}
-	defer func() { _ = events.Close() }()
-
 	ticker := time.NewTicker(bounds.Tick)
 	defer ticker.Stop()
 
-	var pending Tick
+	var (
+		// Connect returned, so play was reached. That is the fact, and the
+		// event only confirms it: seeding this here means the bot does not
+		// depend on having caught a message that was published before anyone
+		// could be listening.
+		pending = Tick{Ready: true}
+		last    narration
+	)
 	for {
 		select {
 		case <-ctx.Done():
@@ -161,6 +182,7 @@ func drive(ctx context.Context, logger *slog.Logger, c *client.Client) (int, err
 		case now := <-ticker.C:
 			pending.Now = now
 			action := core.Advance(pending, world)
+			narrate(logger, core, action, &last)
 			// Edge-triggered facts are consumed by the tick that saw them.
 			// Leaving Died set would make the core respawn on every tick after
 			// a death.
@@ -188,6 +210,35 @@ func fold(t *Tick, e event.Event) {
 	t.Revision = e.Revision()
 }
 
+// narration is the last thing reported, so the log carries changes rather than
+// twenty identical lines a second.
+type narration struct {
+	state  State
+	reason string
+}
+
+// narrate logs what the bot is doing when it changes.
+//
+// A bot standing still has to say why. The first live run of this example
+// connected, reached play, and then printed nothing for twenty-five seconds
+// while it waited for a world that cannot answer yet — which reads exactly like
+// a working bot, and was not one.
+func narrate(logger *slog.Logger, core *Bot, action Action, last *narration) {
+	current := narration{state: core.State(), reason: action.Reason}
+	if current == *last {
+		return
+	}
+	*last = current
+
+	if action.Reason == "" {
+		logger.Info("state", slog.String("state", current.state.String()))
+
+		return
+	}
+
+	logger.Info(action.Reason, slog.String("state", current.state.String()))
+}
+
 // apply executes one action. It reports the exit status and whether the loop
 // should end.
 func apply(
@@ -209,12 +260,8 @@ func apply(
 	case SendRespawn:
 		err = actuator.Respawn(ctx)
 	case Exit:
-		logger.Info(
-			"stopping",
-			slog.String("reason", action.Reason),
-			slog.String("state", core.State().String()),
-		)
-
+		// narrate already printed the reason; repeating it here would put the
+		// same sentence on two consecutive lines.
 		return action.Code, true, nil
 	default:
 		return 70, true, fmt.Errorf("unknown action %d", action.Kind)

@@ -17,6 +17,23 @@ sealed-band trapping, standing without sending, resuming when the wall opens,
 the trapped budget, retaliation and all three ways a fight ends, one respawn per
 death, and the breaker budget.
 
+Running it against a live server found two things no unit test would have. Both
+are fixed and both are covered now.
+
+**A subscription opened after `Connect` has already missed `session.ready`.**
+`Connect` publishes the event on its way through play and returns after it, so
+the obvious order — connect, then subscribe, then loop — silently never sees the
+bot join. The example subscribes first. Any consumer will hit this, so it is
+worth a line in the client's own documentation rather than leaving each caller
+to find it: the fix is trivial once seen and invisible until then.
+
+**A bot that stands still has to say why.** The first live run connected and
+printed nothing for twenty-five seconds, which reads exactly like a working
+orbit. The shell now logs state and reason on change, and the wait for a spawn
+position is bounded by `JoinTimeout`, after which the bot exits 3 naming M7. A
+run today ends `in play for 30s with no world spawn; observed world state is M7`
+rather than in silence.
+
 What is not written is the binding. `World` and `Actuator` in `ports.go` are the
 whole seam, and both are `Pending{}` — every method reports the milestone that
 owes it. Running the program connects, reaches play, and stops with that list.

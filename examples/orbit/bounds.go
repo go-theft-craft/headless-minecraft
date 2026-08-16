@@ -35,6 +35,11 @@ type Bounds struct {
 	// Tick is the movement update period. Twenty hertz is what the server
 	// expects.
 	Tick time.Duration
+	// JoinTimeout is how long the bot waits after reaching play for the world
+	// to tell it where spawn is. Without it a bot whose world port cannot
+	// answer stands in silence forever, which is what the first live run of
+	// this example did.
+	JoinTimeout time.Duration
 	// WaypointRadius is how close counts as arrived. Smaller than this and the
 	// bot chases a point it overshoots every tick.
 	WaypointRadius float64
@@ -54,6 +59,7 @@ func DefaultBounds() Bounds {
 		TrappedBudget:  10 * time.Minute,
 		BreakerBudget:  5,
 		Tick:           50 * time.Millisecond,
+		JoinTimeout:    30 * time.Second,
 		WaypointRadius: 1,
 	}
 }
