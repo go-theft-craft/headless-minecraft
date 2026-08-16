@@ -1875,7 +1875,7 @@ before it dials.
 - Consumes: `version.WireProfile`, `auth.Provider`, `safety.Authorization`, `fanout`.
 - Produces: `Client`, `New(...Option) (*Client, error)`, `WithAddress`, `WithAuth`, `WithVersion`, `WithAuthorization`, `WithLogger`, `WithConnectTimeout`, `WithBundleLimit`, `(*Client).Subscribe`, `ErrInvalidClient`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package client_test
@@ -1992,7 +1992,7 @@ func TestNewAppliesADefaultConnectTimeout(t *testing.T) {
 
 Import `version` in the test file for `TestNewRejectsAnInvalidProfile`.
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 ```bash
 devbox run -- task test -- ./client
@@ -2000,7 +2000,7 @@ devbox run -- task test -- ./client
 
 Expected: FAIL, `client.New` undefined.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `client/client.go`:
 
@@ -2189,7 +2189,7 @@ func (c *Client) Subscribe(selector event.Domain, buffer int) (*Subscription, er
 }
 ```
 
-- [ ] **Step 4: Check the safety package's actual authorization method**
+- [x] **Step 4: Check the safety package's actual authorization method**
 
 `safety.Authorization` is constructed by `Authorize(endpoint string, scopes
 ...Scope)`. Read `safety/authorization.go` for the method that checks an
@@ -2197,7 +2197,7 @@ endpoint and scope. If it is not named `Permits`, use the real name; if no
 such method exists, add one in this task with its own test, because `New`
 must reject an authorization for a different endpoint.
 
-- [ ] **Step 5: Run and verify it passes**
+- [x] **Step 5: Run and verify it passes**
 
 ```bash
 devbox run -- task test -- ./client
@@ -2208,12 +2208,31 @@ red until Task 10. Write the tests now, mark them skipped with
 `t.Skip("needs version/java from Task 10")` on the ones that need a real
 profile, and remove the skips in Task 10.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add client/client.go client/client_test.go
 git commit -m "feat(client): validate a configuration before any network work"
 ```
+
+**What executing this task changed, and why.**
+
+- **The tests use a stub profile, so nothing is skipped.** The plan's tests
+  needed `java.Java1_8()` from Task 10 and told this task to skip until then.
+  `New` validates a profile rather than using one, so a stub profile in the
+  test file covers it now, and Task 10 has no skips to remove. The real
+  profiles are exercised end to end in Task 14.
+- **The authorization check is `Allows`, not `Permits`.** Step 4 anticipated
+  this. `safety.Authorization.Allows(endpoint, scope) bool` already existed,
+  so nothing was added to `safety`. The wrapped error still names
+  `safety.ErrUnauthorized`, which a test asserts.
+- **`Close` landed here rather than in Task 12.** This task's own tests call
+  it. It publishes `Closed` exactly once, closes every subscription, and is
+  idempotent; Task 12 extends it to stop the read loop and shut the stream
+  down.
+- **Four tests were added:** a nil option, an authorization missing the
+  observe scope, a table over every option's own validation, and one proving
+  `New` never calls the auth provider.
 
 ---
 
