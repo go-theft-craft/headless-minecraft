@@ -17,10 +17,10 @@ func TestCollectorReturnsEventsInAppendOrder(t *testing.T) {
 	if len(events) != 2 {
 		t.Fatalf("got %d events, want 2", len(events))
 	}
-	if events[0].Name() != event.SessionConnecting {
+	if events[0].Name() != event.NameSessionConnecting {
 		t.Errorf("first event is %q, want connecting", events[0].Name())
 	}
-	if events[1].Name() != event.SessionAuthenticated {
+	if events[1].Name() != event.NameSessionAuthenticated {
 		t.Errorf("second event is %q, want authenticated", events[1].Name())
 	}
 }
@@ -35,7 +35,7 @@ func TestCollectorEventsDoNotAliasTheCollector(t *testing.T) {
 	c.Reset()
 	event.Emit(&c, event.Closed{})
 
-	if len(events) != 1 || events[0].Name() != event.SessionConnecting {
+	if len(events) != 1 || events[0].Name() != event.NameSessionConnecting {
 		t.Fatal("Events returned a slice that the collector kept writing into")
 	}
 }

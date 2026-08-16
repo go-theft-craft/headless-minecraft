@@ -268,7 +268,7 @@ func TestReadinessReplyIsWrittenBeforeReadyIsSignalled(t *testing.T) {
 
 	var sawReady bool
 	for e := range sub.C() {
-		if e.Name() != event.SessionReady {
+		if e.Name() != event.NameSessionReady {
 			continue
 		}
 		if sawReady {

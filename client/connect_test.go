@@ -83,17 +83,17 @@ func TestConnectReachesReady(t *testing.T) {
 	}
 
 	events := drain(sub)
-	if got := count(events, event.SessionReady); got != 1 {
+	if got := count(events, event.NameSessionReady); got != 1 {
 		t.Errorf("got %d Ready events, want 1", got)
 	}
-	if got := count(events, event.SessionConnecting); got != 1 {
+	if got := count(events, event.NameSessionConnecting); got != 1 {
 		t.Errorf("got %d Connecting events, want 1", got)
 	}
-	if got := count(events, event.SessionAuthenticated); got != 1 {
+	if got := count(events, event.NameSessionAuthenticated); got != 1 {
 		t.Errorf("got %d Authenticated events, want 1", got)
 	}
 	// handshaking to login, and login to play.
-	if got := count(events, event.SessionStateChanged); got < 2 {
+	if got := count(events, event.NameSessionStateChanged); got < 2 {
 		t.Errorf("got %d StateChanged events, want the login and play transitions", got)
 	}
 }
@@ -200,7 +200,7 @@ func TestCloseEmitsClosedExactlyOnce(t *testing.T) {
 	_ = bot.Close()
 	_ = bot.Close()
 
-	if got := count(drain(sub), event.SessionClosed); got != 1 {
+	if got := count(drain(sub), event.NameSessionClosed); got != 1 {
 		t.Errorf("got %d Closed events, want exactly 1", got)
 	}
 }

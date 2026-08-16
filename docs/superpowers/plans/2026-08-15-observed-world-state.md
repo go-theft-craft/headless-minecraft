@@ -651,7 +651,43 @@ name:
   snapshot shape where the versions agree, and a documented difference where
   they do not.
 
-### Task 3: The player reducer
+### Task 3: The player reducer — done
+
+**How Stage B is built, settled here and used by every domain after it.**
+
+The world holds the state, the arithmetic, and the events; the version adapter
+holds the decoding. `world.Player` exposes mutators — `Login`, `Move`,
+`Health`, `Respawn` — and `internal/adapter/*/reduce.go` type-switches its own
+generated packets and calls them. Two protocols then share one store, one
+snapshot shape, and one set of events, and each keeps its own quirks where they
+belong: 47's position flag byte and 775's boolean struct both become
+`world.Relative`, and 47's numeric dimension and 775's `SpawnInfo.Name` both
+become a namespaced string.
+
+The alternative — reducers in `world` type-switching on both protocols' generated
+types — would tie the world to every version it supports and double every
+switch. The alternative in the other direction, a neutral update type per fact,
+is a second taxonomy to maintain alongside the event one.
+
+`version` cannot name this seam, because `world` imports `version` for `Batch`.
+So the client asserts the adapter to its own `reducerSource` interface and
+registers what it returns, in `New`, after every option has been applied.
+
+**What else executing this task changed.**
+
+- **Every taxonomy constant gained a `Name` prefix.** `event.PlayerSpawned` is
+  the struct; `event.NamePlayerSpawned` is its name. The session domain got
+  away with unprefixed constants because it was the only domain, but
+  `PlayerSpawned` and `EntitySpawned` both want to be structs, and both names
+  were taken. 73 constants renamed, mechanically.
+- **`PlayerView.Placed` and `.Known` are separate from the values.** A player
+  at the origin and a player the server has not placed are different, and so
+  are entity 0 and no entity.
+- **`Look` is `Move` with only the rotation.** 775 can send a rotation with no
+  position; routing it through the same mutator is what stops it moving the
+  player to the origin on the way past.
+
+### Task 3 as planned
 
 **Files:** `world/player.go`, `world/player_test.go`, `event/player.go`
 

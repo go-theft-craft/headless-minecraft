@@ -14,7 +14,7 @@ type Connecting struct {
 	Address string
 }
 
-func (Connecting) Name() Name     { return SessionConnecting }
+func (Connecting) Name() Name     { return NameSessionConnecting }
 func (Connecting) Domain() Domain { return DomainSession }
 
 // Authenticated reports that the auth provider returned an identity.
@@ -25,7 +25,7 @@ type Authenticated struct {
 	UUID     string
 }
 
-func (Authenticated) Name() Name     { return SessionAuthenticated }
+func (Authenticated) Name() Name     { return NameSessionAuthenticated }
 func (Authenticated) Domain() Domain { return DomainSession }
 
 // StateChanged reports a protocol state transition in either direction,
@@ -37,7 +37,7 @@ type StateChanged struct {
 	To   string
 }
 
-func (StateChanged) Name() Name     { return SessionStateChanged }
+func (StateChanged) Name() Name     { return NameSessionStateChanged }
 func (StateChanged) Domain() Domain { return DomainSession }
 
 // Ready reports that the server will accept action packets. It is emitted
@@ -50,7 +50,7 @@ type Ready struct {
 	GameMode  uint8
 }
 
-func (Ready) Name() Name     { return SessionReady }
+func (Ready) Name() Name     { return NameSessionReady }
 func (Ready) Domain() Domain { return DomainSession }
 
 // DisconnectSource says who ended the session.
@@ -72,7 +72,7 @@ type Disconnected struct {
 	State  string
 }
 
-func (Disconnected) Name() Name     { return SessionDisconnected }
+func (Disconnected) Name() Name     { return NameSessionDisconnected }
 func (Disconnected) Domain() Domain { return DomainSession }
 
 // Closed reports that Close finished and every owned goroutine stopped. It
@@ -81,7 +81,7 @@ type Closed struct {
 	Stamp
 }
 
-func (Closed) Name() Name     { return SessionClosed }
+func (Closed) Name() Name     { return NameSessionClosed }
 func (Closed) Domain() Domain { return DomainSession }
 
 // KeepAlivePonged reports that the client answered a keepalive.
@@ -92,7 +92,7 @@ type KeepAlivePonged struct {
 	Elapsed time.Duration
 }
 
-func (KeepAlivePonged) Name() Name     { return SessionKeepAlivePonged }
+func (KeepAlivePonged) Name() Name     { return NameSessionKeepAlivePonged }
 func (KeepAlivePonged) Domain() Domain { return DomainSession }
 
 // TransferRequested reports a server asking the client to move to another
@@ -105,7 +105,7 @@ type TransferRequested struct {
 	Port uint16
 }
 
-func (TransferRequested) Name() Name     { return SessionTransferRequested }
+func (TransferRequested) Name() Name     { return NameSessionTransferRequested }
 func (TransferRequested) Domain() Domain { return DomainSession }
 
 // ResourcePackOffered reports a pack the server offered. The client does not
@@ -119,7 +119,7 @@ type ResourcePackOffered struct {
 	Required bool
 }
 
-func (ResourcePackOffered) Name() Name     { return SessionResourcePackOffered }
+func (ResourcePackOffered) Name() Name     { return NameSessionResourcePackOffered }
 func (ResourcePackOffered) Domain() Domain { return DomainSession }
 
 // ResourcePackRevoked reports a pack the server withdrew.
@@ -129,7 +129,7 @@ type ResourcePackRevoked struct {
 	UUID string
 }
 
-func (ResourcePackRevoked) Name() Name     { return SessionResourcePackRevoked }
+func (ResourcePackRevoked) Name() Name     { return NameSessionResourcePackRevoked }
 func (ResourcePackRevoked) Domain() Domain { return DomainSession }
 
 // ServerMetadataChanged reports server-describing data: server data, links,
@@ -141,7 +141,7 @@ type ServerMetadataChanged struct {
 	Value map[string]string
 }
 
-func (ServerMetadataChanged) Name() Name     { return SessionServerMetadataChanged }
+func (ServerMetadataChanged) Name() Name     { return NameSessionServerMetadataChanged }
 func (ServerMetadataChanged) Domain() Domain { return DomainSession }
 
 // CookieRequested reports a server asking for a stored cookie.
@@ -151,7 +151,7 @@ type CookieRequested struct {
 	Key string
 }
 
-func (CookieRequested) Name() Name     { return SessionCookieRequested }
+func (CookieRequested) Name() Name     { return NameSessionCookieRequested }
 func (CookieRequested) Domain() Domain { return DomainSession }
 
 // CookieStored reports a server storing a cookie on the client.
@@ -162,7 +162,7 @@ type CookieStored struct {
 	Bytes int
 }
 
-func (CookieStored) Name() Name     { return SessionCookieStored }
+func (CookieStored) Name() Name     { return NameSessionCookieStored }
 func (CookieStored) Domain() Domain { return DomainSession }
 
 // CustomPayloadReceived reports a plugin message in configuration or play.
@@ -174,7 +174,7 @@ type CustomPayloadReceived struct {
 	Payload []byte
 }
 
-func (CustomPayloadReceived) Name() Name     { return SessionCustomPayloadReceived }
+func (CustomPayloadReceived) Name() Name     { return NameSessionCustomPayloadReceived }
 func (CustomPayloadReceived) Domain() Domain { return DomainSession }
 
 // PacketReceived carries one decoded inbound packet. It is delivered only to
@@ -191,7 +191,7 @@ type PacketReceived struct {
 	Bundled bool
 }
 
-func (PacketReceived) Name() Name     { return SessionPacketReceived }
+func (PacketReceived) Name() Name     { return NameSessionPacketReceived }
 func (PacketReceived) Domain() Domain { return DomainRaw }
 
 // PacketSent carries one packet the client wrote.
@@ -203,5 +203,5 @@ type PacketSent struct {
 	ID     int32
 }
 
-func (PacketSent) Name() Name     { return SessionPacketSent }
+func (PacketSent) Name() Name     { return NameSessionPacketSent }
 func (PacketSent) Domain() Domain { return DomainRaw }

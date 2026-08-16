@@ -13,10 +13,15 @@ type Snapshot struct {
 	// Revision is the number of batches this world has applied. It is zero
 	// on a world that has applied none.
 	Revision uint64
+	// Player is the local player.
+	Player PlayerView
 }
 
 // snapshot builds the snapshot. It runs under the world's lock, held by the
 // caller, and each domain added by a later task reads its view here.
 func (w *World) snapshot() Snapshot {
-	return Snapshot{Revision: w.revision}
+	return Snapshot{
+		Revision: w.revision,
+		Player:   w.player.view(),
+	}
 }

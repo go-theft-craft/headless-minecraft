@@ -139,6 +139,15 @@ func WithBundleLimit(n int) Option {
 	}
 }
 
+// reducerSource is an adapter that can build the world's reducers.
+//
+// The client asserts for it rather than the version package declaring it,
+// because version.WireProfile is what world depends on: naming this in
+// version would make the two packages import each other.
+type reducerSource interface {
+	Reducers(*world.World) []world.Reducer
+}
+
 // WithWorld installs the observed world state a connection maintains.
 //
 // Without one the client publishes events and keeps no state, which is what a
@@ -208,7 +217,37 @@ func New(options ...Option) (*Client, error) {
 		)
 	}
 
+	if err := c.registerReducers(); err != nil {
+		return nil, err
+	}
+
 	return c, nil
+}
+
+// registerReducers gives the installed world the adapter's reducers.
+//
+// It runs after every option, not inside WithWorld, because it needs the
+// profile: an option that read another option's value would make the order
+// they were passed in matter.
+func (c *Client) registerReducers() error {
+	if c.world == nil {
+		return nil
+	}
+
+	// An adapter with no reducers is legal: it observes nothing, and the
+	// world still counts batches.
+	source, ok := c.profile.Adapter.(reducerSource)
+	if !ok {
+		return nil
+	}
+
+	for _, reducer := range source.Reducers(c.world) {
+		if err := c.world.Register(reducer); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidClient, err)
+		}
+	}
+
+	return nil
 }
 
 // ConnectTimeout reports the deadline Connect applies.

@@ -47,16 +47,16 @@ func TestEndToEndReachesReadyAndClosesCleanly(t *testing.T) {
 	}
 
 	events := drain(session)
-	if got := count(events, event.SessionReady); got != 1 {
+	if got := count(events, event.NameSessionReady); got != 1 {
 		t.Errorf("got %d Ready events, want 1", got)
 	}
-	if got := count(events, event.SessionClosed); got != 1 {
+	if got := count(events, event.NameSessionClosed); got != 1 {
 		t.Errorf("got %d Closed events, want 1", got)
 	}
 
 	// The last thing a subscriber sees is Closed. Anything after it would be
 	// an event published on a session that had already ended.
-	if len(events) == 0 || events[len(events)-1].Name() != event.SessionClosed {
+	if len(events) == 0 || events[len(events)-1].Name() != event.NameSessionClosed {
 		t.Errorf("the last event was %v, want closed", events[len(events)-1].Name())
 	}
 
@@ -137,10 +137,10 @@ func TestEndToEndSurvivesTheServerHangingUp(t *testing.T) {
 	}
 
 	events := drain(session)
-	if got := count(events, event.SessionDisconnected); got != 1 {
+	if got := count(events, event.NameSessionDisconnected); got != 1 {
 		t.Errorf("got %d Disconnected events, want 1", got)
 	}
-	if got := count(events, event.SessionClosed); got != 1 {
+	if got := count(events, event.NameSessionClosed); got != 1 {
 		t.Errorf("got %d Closed events, want 1", got)
 	}
 

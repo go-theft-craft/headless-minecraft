@@ -281,3 +281,27 @@ func TestWorldReportsTheInstalledWorld(t *testing.T) {
 		t.Errorf("client reports revision %d, want the world's 1", got)
 	}
 }
+
+func TestAnInstalledWorldGetsTheAdaptersReducers(t *testing.T) {
+	t.Parallel()
+
+	// The order the options were passed must not matter: reducers are
+	// registered once the profile and the world are both known.
+	w := world.New()
+	options := []client.Option{client.WithWorld(w)}
+	options = append(options, testOptions(t)...)
+
+	bot, err := client.New(options...)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = bot.Close() }()
+
+	// The stub adapter supplies none, so registration is still open. A real
+	// profile's reducers are covered in the adapter packages.
+	if err := w.Register(world.Func(func(*world.Context, version.Batch, *event.Collector) error {
+		return nil
+	})); err != nil {
+		t.Errorf("Register after New: %v", err)
+	}
+}

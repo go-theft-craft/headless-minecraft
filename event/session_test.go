@@ -13,20 +13,20 @@ func TestSessionEventsReportTheirOwnNames(t *testing.T) {
 		value event.Event
 		name  event.Name
 	}{
-		{event.Connecting{Address: "localhost:25565"}, event.SessionConnecting},
-		{event.Authenticated{Username: "tester"}, event.SessionAuthenticated},
-		{event.StateChanged{From: "login", To: "play"}, event.SessionStateChanged},
-		{event.Ready{EntityID: 7}, event.SessionReady},
-		{event.Disconnected{Reason: "kicked"}, event.SessionDisconnected},
-		{event.Closed{}, event.SessionClosed},
-		{event.KeepAlivePonged{ID: 3}, event.SessionKeepAlivePonged},
-		{event.TransferRequested{Host: "elsewhere"}, event.SessionTransferRequested},
-		{event.ResourcePackOffered{UUID: "u"}, event.SessionResourcePackOffered},
-		{event.ResourcePackRevoked{UUID: "u"}, event.SessionResourcePackRevoked},
-		{event.ServerMetadataChanged{Kind: "links"}, event.SessionServerMetadataChanged},
-		{event.CookieRequested{Key: "k"}, event.SessionCookieRequested},
-		{event.CookieStored{Key: "k"}, event.SessionCookieStored},
-		{event.CustomPayloadReceived{Channel: "c"}, event.SessionCustomPayloadReceived},
+		{event.Connecting{Address: "localhost:25565"}, event.NameSessionConnecting},
+		{event.Authenticated{Username: "tester"}, event.NameSessionAuthenticated},
+		{event.StateChanged{From: "login", To: "play"}, event.NameSessionStateChanged},
+		{event.Ready{EntityID: 7}, event.NameSessionReady},
+		{event.Disconnected{Reason: "kicked"}, event.NameSessionDisconnected},
+		{event.Closed{}, event.NameSessionClosed},
+		{event.KeepAlivePonged{ID: 3}, event.NameSessionKeepAlivePonged},
+		{event.TransferRequested{Host: "elsewhere"}, event.NameSessionTransferRequested},
+		{event.ResourcePackOffered{UUID: "u"}, event.NameSessionResourcePackOffered},
+		{event.ResourcePackRevoked{UUID: "u"}, event.NameSessionResourcePackRevoked},
+		{event.ServerMetadataChanged{Kind: "links"}, event.NameSessionServerMetadataChanged},
+		{event.CookieRequested{Key: "k"}, event.NameSessionCookieRequested},
+		{event.CookieStored{Key: "k"}, event.NameSessionCookieStored},
+		{event.CustomPayloadReceived{Channel: "c"}, event.NameSessionCustomPayloadReceived},
 	}
 
 	for _, tc := range cases {
@@ -49,8 +49,8 @@ func TestRawPacketEventsReportTheRawDomain(t *testing.T) {
 		value event.Event
 		name  event.Name
 	}{
-		{event.PacketReceived{Packet: "chunk_data"}, event.SessionPacketReceived},
-		{event.PacketSent{Packet: "keep_alive"}, event.SessionPacketSent},
+		{event.PacketReceived{Packet: "chunk_data"}, event.NameSessionPacketReceived},
+		{event.PacketSent{Packet: "keep_alive"}, event.NameSessionPacketSent},
 	}
 
 	for _, tc := range cases {

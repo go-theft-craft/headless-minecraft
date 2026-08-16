@@ -22,7 +22,7 @@ func TestSubscriberReceivesOnlySelectedDomains(t *testing.T) {
 	})
 
 	got := <-sub.C()
-	if got.Name() != event.SessionConnecting {
+	if got.Name() != event.NameSessionConnecting {
 		t.Fatalf("received %q, want connecting", got.Name())
 	}
 

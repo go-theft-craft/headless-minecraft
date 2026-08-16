@@ -80,10 +80,23 @@ type World struct {
 	// local carries the local player's entity ID across batches, since the
 	// Login packet that supplies it arrives once.
 	local LocalRef
+
+	player *Player
 }
 
 // New returns an empty world with no reducers.
-func New() *World { return &World{} }
+//
+// The domain stores exist from the start and are empty. A version adapter
+// builds the reducers that fill them, because decoding is the only part of
+// observed state that differs between protocols.
+func New() *World {
+	return &World{player: newPlayer()}
+}
+
+// Player returns the local player's store, for a version adapter to write
+// through. A caller reading state wants Snapshot instead: this is not
+// synchronised on its own.
+func (w *World) Player() *Player { return w.player }
 
 // Register adds a reducer. It must be called before the first Apply, because
 // a reducer that missed earlier batches holds state nobody can reconstruct.

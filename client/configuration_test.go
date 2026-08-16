@@ -133,10 +133,10 @@ func TestConfigurationIsDrivenByTheClientIntoPlay(t *testing.T) {
 		names[e.Name()]++
 	}
 	for _, name := range []event.Name{
-		event.SessionServerMetadataChanged,
-		event.SessionResourcePackOffered,
-		event.SessionKeepAlivePonged,
-		event.SessionReady,
+		event.NameSessionServerMetadataChanged,
+		event.NameSessionResourcePackOffered,
+		event.NameSessionKeepAlivePonged,
+		event.NameSessionReady,
 	} {
 		if names[name] == 0 {
 			t.Errorf("no %s event was published from the configuration phase", name)
