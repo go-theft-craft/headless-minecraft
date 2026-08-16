@@ -143,6 +143,21 @@ Three findings are worth carrying into M8.2 and later:
   so the 26.1 tree still generates. M8.7 adds a second dumper for 26.1.2;
   `Dump` already rejects every version but 1.8.9 with an explicit error.
 
+**M11: server framework is newly planned.** The eight items in
+`server/docs/todo.md` fit no existing plan, because every server plan is
+protocol migration, and this file had no milestone for `server` becoming
+something people build with. M11 is that track, subdivided into M11.1 through
+M11.7, depending on M6.1 alone and running parallel to M7 through M10.
+
+Designing it settled two questions the todo list only implied. `server` is a
+framework rather than an application, so every item is a seam with a default
+implementation rather than a feature, and `cmd/server` becomes
+`examples/vanilla`. And per-item identity, which the duplication requirement
+forces, turns out to be affordable at 64 bits per item while per-block identity
+is not: universal block IDs cost roughly 512 MB for a 500×500 area before a
+single provenance record, so identity is sparse and covers placed blocks, with
+the key space left able to hold the universal case behind a flag.
+
 ```mermaid
 flowchart LR
     M0["M0 Protocol 47 foundation<br/>Complete"]
@@ -157,9 +172,16 @@ flowchart LR
     M8["M8 Deterministic simulation slice"]
     M9["M9 Movement, attack, inventory, craft"]
     M10["M10 Conformance and stable v1"]
+    M11["M11 Server framework<br/>M11.1–M11.7"]
 
     M0 --> M1 --> M2 --> M25 --> M3 --> M4 --> M5 --> M6 --> M7 --> M8 --> M9 --> M10
+    M6 --> M11
 ```
+
+M11 is a parallel track, not a step in the protocol pipeline. It depends on
+M6.1 alone and nothing depends on it, so it runs beside M7 through M10 whenever
+there is capacity. Its only hard obligation to the rest of the plan is that
+`server` keeps working as the test harness M9 and M10 both need.
 
 ## Milestone tracker
 
@@ -178,6 +200,7 @@ flowchart LR
 | M8.1 | Extract Java 1.8.9 physics constants from a verified Mojang server jar and publish them as a pinned, generated Go package | `minecraft-reference`, `minecraft-protocol` | Complete | — | [Physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) |
 | M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic | `minecraft-simulation`, a new capture repository, `headless-minecraft`, `server` | Planned | M8.8 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md); per-stage plans written when each becomes next |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps; focused release plan still required |
+| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | Planned | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md); per-stage plans written when each becomes next |
 
 ## What is complete
 
@@ -719,6 +742,49 @@ affect later stages:
 - [ ] Add public API compatibility tests and migration notes.
 - [ ] Publish stable releases only after all release gates pass.
 
+### M11 — Server framework
+
+`server` is a framework first and an application never. `cmd/server` becomes
+`examples/vanilla`, and the eight items in `server/docs/todo.md` become seams
+rather than features. The
+[design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md)
+subdivides the track and settles ten decisions; each sub-milestone gets its own
+focused design and plan when it becomes next.
+
+The three worth carrying furthest:
+
+- **Immutable sections with a swap on write** answer overlapping writers,
+  saving without freezing the tick, and chunk ownership as one decision rather
+  than three. `headless-minecraft` M7 reached the same model independently, so
+  both repositories describe chunks the same way.
+- **A live ID-to-location index is the duplication detector**, not a forensic
+  log. Any write placing an existing item ID in a second location without
+  removing it from the first is caught where it happens. The same index answers
+  "where is this item now" and, persisted, is the item sidecar. It is also the
+  instrument that would settle the unexplained survival block duplication in
+  the M3 session findings.
+- **Non-vanilla data lives beside the vanilla file, never inside it.** Custom
+  NBT tags would work and would be dropped silently by any external reader.
+  Keeping them separate costs a consistency problem, answered by writing both
+  stores from one snapshot with a shared generation stamp and reconciling at
+  load, which turns an external edit into a recorded event instead of silent
+  corruption.
+
+- [ ] M11.1 Framework shape: `server.New` and options, `cmd/server` moves to
+  `examples/`, seams declared, plain resource counters.
+- [ ] M11.2 World model and chunk ownership: interned block states, per-version
+  adapters, immutable sections.
+- [ ] M11.3 Storage: `WorldStore` and `SideStore`, native format research,
+  vanilla Anvil adapter, snapshot saving.
+- [ ] M11.4 World generation: parameters, named world types, version-neutral
+  output. No separate repository.
+- [ ] M11.5 Provenance: item and block identity, the ID index, the audit log and
+  its queries, reconciliation on load.
+- [ ] M11.6 Observability: one `Observer` interface, per-player, per-feature,
+  and per-chunk attribution.
+- [ ] M11.7 Commands: `Command`, `Set`, `vanilla.Stubs()`, brigadier rendering
+  on protocol 775 and tab-complete on 47.
+
 ## Document index
 
 ### Approved specifications
@@ -735,6 +801,7 @@ affect later stages:
 - [Routing, capture, replay, and CLI design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md) — amended 2026-08-15
 - [Headless connection design](docs/superpowers/specs/2026-08-15-headless-connection-design.md) — subdivides M6 into M6.1–M6.4 and fixes the 73-name event taxonomy
 - [Observed world state design](docs/superpowers/specs/2026-08-16-observed-world-state-design.md) — M7; draft for review. Puts two prerequisites back on M6.3: the revision on `Event`, and a client loop that owns the configuration phase
+- [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md) — adds M11 and subdivides it into M11.1–M11.7
 
 ### Focused implementation plans
 
@@ -762,6 +829,32 @@ affect later stages:
 
 - [Shared protocol extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md) — Tasks 1–5 complete. Task 6 is superseded by the M3 migration plan, which splits it: game data moves in M3, packet structs in M6. Tasks 7 and 8 remain for M6.
 - [Current protocol and stream toolkit](docs/superpowers/plans/2026-08-13-current-protocol-stream-toolkit.md) — use only as an umbrella. M1 superseded its stream and compression portion, M2 its encryption and login portion, M4 its Tasks 1–5, and M5 its Tasks 8–10. Nothing in it is current guidance.
+
+## Repository conventions
+
+`server`, `headless-minecraft`, `minecraft-protocol`, and `minecraft-simulation`
+are frameworks. Applications are not what they ship; composable pieces are.
+
+Every one of them carries an `examples/` directory that binds its pieces
+together into runnable programs, and `examples/` is its own Go module. The
+library keeps the dependency list its plan declares, examples pull whatever they
+need to be realistic, and the cost is a second CI step because `go test ./...`
+from the root does not descend into a nested module.
+
+**Examples are the integration test surface, not documentation.** End-to-end
+lanes drive an example rather than a harness that exists only inside a `_test.go`
+file: `server` points its byte-parity fixtures and its pinned Node client lane at
+`examples/vanilla`, and `headless-minecraft` drives `examples/connect` and
+`examples/observe`. An example that only demonstrates rots quietly, and an
+example CI runs cannot. In a repository where most plans are written well ahead
+of the code, that is worth a CI step by itself.
+
+| Repository | Examples | Owning milestone |
+| --- | --- | --- |
+| `headless-minecraft` | `connect` | M6.3 |
+| | `microsoft` | M6.4 |
+| | `observe` | M7 |
+| `server` | `minimal`, `flat`, `vanilla` | M11.1 |
 
 ## Update rule
 
