@@ -107,13 +107,24 @@ true and not enough — they did not compile, for two reasons a test now covers 
 and roles alone cannot drive a login, because two protocols agree about the
 parts of one and about almost nothing else.
 
-**M5** has an approved design and implementation plan, amended on 2026-08-15
-against the current repository. The amendment found that its capture format
-would have written the login encryption exchange to disk unredacted under its
-own documented defaults, that nothing resolves the protocol ID its header
-carries, and that M2's secret stage had no record kind. All three are settled;
-the reasoning is in the M5 section below. All twelve tasks are unblocked now
-that the second protocol exists.
+**M5 is complete.** Routing and middleware sit above framing without importing
+the stream, the capture format is written straight from the observation path,
+a bounded history ring is the one sink allowed to lose data, replay is
+deterministic and reports its own divergences, and `mcproto` has the full
+command set behind documented exit codes.
+
+The amendment's headline defect was real and is fixed: a capture written with
+the documented defaults would have held the login key exchange in the clear,
+because the raw frame record is written before the frame is decoded and the
+packet-level redaction check could not answer for it. The fix took a different
+shape than the amendment specified, for a reason only the code showed — the
+packet ID is not at the front of a frame payload once compression is on. That
+and five other findings are in the M5 section below.
+
+M5 also found things only a real connection could: replaying a genuine 26.1
+login failed until the player learned that a capture holds both directions and
+a session decodes one. Every synthetic fixture held a single direction, so
+nothing before the live capture could have shown it.
 
 **M8.1: physics ground-truth pipeline is complete.** It subdivided M8 and
 depended only on the released `minecraft-reference` tool and the completed M0
@@ -165,9 +176,9 @@ flowchart LR
     M2["M2 Encryption + login lifecycle<br/>Complete"]
     M25["M2.5 Schema-first codegen<br/>Complete"]
     M3["M3 Server status/login migration<br/>Complete"]
-    M4["M4 Java 26.1 / protocol 775<br/>In progress"]
-    M5["M5 Routing, capture/replay, mcproto"]
-    M6["M6 Complete consumer migrations"]
+    M4["M4 Java 26.1 / protocol 775<br/>Complete"]
+    M5["M5 Routing, capture/replay, mcproto<br/>Complete"]
+    M6["M6 Complete consumer migrations<br/>Next"]
     M7["M7 Observed client world state"]
     M8["M8 Deterministic simulation slice"]
     M9["M9 Movement, attack, inventory, craft"]
@@ -193,7 +204,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M2.5 | Compile every schema-defined type from its own schema, share named types, bound decode recursion, and delete the superseded hand-written value types | `minecraft-protocol` | Complete | M2 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-schema-first-codegen-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-schema-first-codegen.md) |
 | M3 | Migrate one real connection path: server handshake, status, ping, login, disconnect, compression, and online/offline mode | `server`, `minecraft-protocol` | Complete | M2.5 | [Design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md), [implementation plan](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) |
 | M4 | Generate Java 26.1 data and protocol 775 codecs, retaining unknown source datasets | `minecraft-protocol` | Complete | M3 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) |
-| M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | **Partly next** (Tasks 1–7 unblocked) | M4, for Tasks 8–12 only | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md) (amended 2026-08-15), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) (amended 2026-08-15) |
+| M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | Complete | M4 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md) (amended 2026-08-15), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) (amended 2026-08-15) |
 | M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Planned | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
 | M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Planned | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
 | M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 player movement slice with canonical replay and server/client adapters; items and arrows moved to M9 | `minecraft-simulation` | Planned | M4, M7 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
@@ -537,30 +548,62 @@ milestones:
 
 ### M5 — Routing, capture/history, replay, and CLI
 
-Design and implementation plan approved, and **amended on 2026-08-15** against
-the repository as it now stands rather than as it stood when they were written.
-The capture format is a JSON header followed by CRC-checked, length-prefixed
-binary records; redaction is enforced at the observation point and again by the
-writer, and disclosure requires an explicitly constructed writer.
+**Complete.** Every task landed, and the command set was verified end to end
+against the same Paper 26.1.2 server M4 measured: capture a login, inspect it,
+replay it, and compare the digest against the one the capture recorded.
 
 - [x] Approve the capture record format and redaction policy.
 - [x] Amend both documents for what M2 and M4 changed under them.
-- [ ] Redact sensitive raw frames and observe rejected writes.
-- [ ] Add packet routing and ordered middleware outside framing.
-- [ ] Record raw frame, decoded packet, secret, state, compression, timing,
+- [x] Redact sensitive raw frames and observe rejected writes.
+- [x] Add packet routing and ordered middleware outside framing.
+- [x] Record raw frame, decoded packet, secret, state, compression, timing,
   direction, and lifecycle observations without blocking the stream.
-- [ ] Provide bounded in-memory history plus durable capture sinks.
-- [ ] Replay deterministically from a capture with explicit timing modes.
-- [ ] Add non-interactive `mcproto status`, `login`, `capture`, `inspect`, and
+- [x] Provide bounded in-memory history plus durable capture sinks.
+- [x] Replay deterministically from a capture with explicit timing modes.
+- [x] Add non-interactive `mcproto status`, `login`, `capture`, `inspect`, and
   `replay` commands with predictable exit codes and machine-readable output.
 
-**M5 is partially unblocked.** Tasks 1 through 7 — middleware, the router, the
-observation-path changes, the capture format, the file sink, the history ring,
-and the digest — depend on nothing M4 produces and can begin while M4.3 and
-M4.4 finish. Tasks 8 through 12 need the second protocol and stay blocked.
+What M5 found or decided differently from its approved plan:
 
-Four constraints found while amending M5, each of which invalidated something
-the approved documents asserted:
+- **The redaction defect was real, and the fix has a shape the amendment did
+  not.** The amendment specified `SensitiveFrame(State, int32)`, answered from
+  a packet ID peeked before decode. A frame payload is the compression
+  envelope, not the packet body, so the ID is not at the front of it and the
+  stream cannot find it without decompressing. The session can, and it is the
+  only thing that knows how, so the interface is
+  `SensitiveFrame(Direction, framePayload []byte)` and the generated sessions
+  answer false immediately outside the login state — which is what keeps a
+  per-frame check off the cost of play traffic.
+- **`OriginalLen` cannot be reported for a redacted secret record**, and that
+  is correct rather than an omission: the material is never read at all unless
+  disclosure was asked for, so measuring it would mean materializing the key.
+- **A capture holds both directions and a session decodes one.** Offline replay
+  of a real login failed on the client's own outbound frame until it learned to
+  skip the direction it cannot decode. It still has to follow those packets'
+  transitions, because a client's login acknowledgement is what moves the
+  connection to configuration — and the state to follow comes from the packet
+  record, not the raw one, because a raw record is stamped before the
+  transition commits. Only a real capture exposed this; every synthetic fixture
+  held one direction.
+- **`Dispatch` is exported after all.** M6.3's plan assumed it would not be,
+  and wrote an interface seam to work without it. `Run` owns a loop over a
+  `Receiver`, and a consumer that groups packets before applying them — which
+  protocol 775's bundle delimiter requires — needs the single-packet form `Run`
+  already used internally. Exporting it is one method over existing behaviour.
+  M6.3 may use the router directly or keep its own table; the seam still works
+  either way.
+- **Record kinds are numbered in stage order**, 1 through 4, rather than the
+  "kind 5" the amendment sketched for the secret record. The amendment's point
+  was that the secret stage needs a record kind at all, which it now has;
+  leaving a hole at 3 to reach 5 would be a number without a reason.
+- **Code generation did not move into `mcproto generate`.** The plan's last
+  task asked for it with `cmd/mcdata-gen` left as an alias. It is a refactor of
+  the one path every other gate depends on, and it buys a command name rather
+  than a capability, so it was left alone and recorded rather than done
+  quietly. Maintenance is not duplicated in YAML either way.
+
+The four constraints found while amending M5, each of which invalidated
+something the approved documents asserted:
 
 - **A capture written with M5's documented defaults would have leaked the login
   encryption exchange.** Redaction is applied to `ObservationPacket` records
