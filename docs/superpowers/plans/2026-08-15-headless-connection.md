@@ -2820,7 +2820,7 @@ rule, and publishes the collector once per batch.
 - Consumes: `version.Batcher`, `version.ReadinessRule`, `event.Collector`, `fanout`.
 - Produces: `receiver`, `sender`, `dispatcher`, `tableDispatcher`, `newTableDispatcher(map[string]version.Handler) *tableDispatcher`, `(*Client).runLoop(...) error`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Drive the loop over a fake receiver, never a real stream.
 
@@ -3088,7 +3088,7 @@ func (blockingReceiver) Receive(ctx context.Context) (protocol.Packet, error) {
 }
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 ```bash
 devbox run -- task test -- ./client
@@ -3096,7 +3096,7 @@ devbox run -- task test -- ./client
 
 Expected: FAIL, `runLoop` undefined.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `client/loop.go`:
 
@@ -3243,7 +3243,7 @@ func (c *Client) runLoop(
 }
 ```
 
-- [ ] **Step 4: Run and verify it passes**
+- [x] **Step 4: Run and verify it passes**
 
 ```bash
 devbox run -- task test -- ./client
@@ -3251,12 +3251,29 @@ devbox run -- task test -- ./client
 
 Expected: PASS, all six loop tests, under `-race`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/loop.go client/loop_test.go
 git commit -m "feat(client): batch, dispatch, and publish inbound packets"
 ```
+
+**What executing this task changed, and why.**
+
+- **The loop stamps revision zero, under a named constant.** M7's world is
+  what bumps a revision per batch; until it exists there is no snapshot for an
+  event to name, and zero is the value no revision takes. The constant is
+  where M7 changes one line.
+- **`Ready` is published through a collector**, like everything else, rather
+  than built as a bare event and handed to `publish`. Nothing outside the
+  collector can stamp an event, so a hand-built one would be the single event
+  M7 forgets to revise.
+- **Five tests were added:** that a readiness reply is reported as a
+  `PacketSent` to raw subscribers, that a failed reply write stops the loop,
+  that the dispatcher sees every packet it registered for and unregistered
+  ones are not an error, that a handler's error stops the loop, and that a
+  second ready never reaches the channel — the channel holds one value and
+  nothing drains it, so a second blocking send would deadlock the loop.
 
 ### Task 12: Connect and Close
 
