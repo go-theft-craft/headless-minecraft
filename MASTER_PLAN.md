@@ -137,6 +137,28 @@ login failed until the player learned that a capture holds both directions and
 a session decodes one. Every synthetic fixture held a single direction, so
 nothing before the live capture could have shown it.
 
+**M6.1: server play-state migration is Client checks pending.** Every
+automated gate is green and the manual play-state client check has not been run.
+The server's play state is off its own protocol 47 packet structs and onto
+`minecraft-protocol`'s generated types: the local packet package and its code
+generation are deleted, and the server now owns no wire code at all. Every
+packet is a generated `minecraft-protocol` type, consumed from the released and
+vendored `v0.1.0` module with no `replace` directive.
+
+All six byte-parity fixtures captured from the unmigrated server are
+byte-identical to what they were before the migration, and all five parity
+tests still compare produced bytes against them. `task lint`, `task test`, the
+new `task test:race`, `task test:interop`, and `task build` all pass. The play
+read path no longer decodes packets twice; 13 hand-written `java.Unmarshal`
+calls and 8 hand-rolled parsers are gone.
+
+The one gate left is the vanilla-client play session. The strict generated
+decode has been proven against the pinned Node loopback interop lane, **not**
+against a real client — that is exactly the half M3 left on local structs, and
+the check that has not been run. Its prepared record is
+[here](../server/docs/verification/2026-08-15-m6-1-client-check.md); M6.1 is not
+Complete until that session runs with its decode-error count recorded.
+
 **M8.1: physics ground-truth pipeline is complete.** It subdivided M8 and
 depended only on the released `minecraft-reference` tool and the completed M0
 game-data contracts, not on M1 through M7. The rest of M8 stays blocked on M4
@@ -678,10 +700,15 @@ something the approved documents asserted:
   found on the fix path. The matcher and the crafting click paths now have
   tests against the real registry, and the `conn` test harness supplies real
   game data rather than leaving it nil.
-- [ ] Complete server play-state migration to `minecraft-protocol`: replace the
-  local packet structs in `pkg/gamedata/versions/pc_1_8` with generated types
-  and delete the server's remaining codegen. M3 leaves play on those structs
-  deliberately, decoding them with the shared reflect codec.
+- [~] Complete server play-state migration to `minecraft-protocol` (M6.1):
+  replace the local packet structs in `pkg/gamedata/versions/pc_1_8` with
+  generated types and delete the server's remaining codegen. M3 left play on
+  those structs deliberately, decoding them with the shared reflect codec.
+  **Client checks pending:** the migration and every automated gate are done —
+  the package and its codegen are deleted, the server owns no wire code, the
+  parity fixtures are unchanged, and lint, test, race, interop, and build are
+  green — but the vanilla-client play session has not been run. See the
+  [prepared record](../server/docs/verification/2026-08-15-m6-1-client-check.md).
 - [ ] Migrate proxy wire imports while keeping the legacy protocol private to `proxy`.
 - [ ] Finish headless lifecycle, authentication, event subscriptions, and
   bounded stream ownership.
