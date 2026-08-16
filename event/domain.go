@@ -43,7 +43,30 @@ type Name string
 
 // Event is one immutable observation. Implementations are values, not
 // pointers, so a subscriber cannot mutate what another subscriber sees.
+//
+// Revision names the observed-state revision that produced the event. Every
+// event published from one batch reports the same revision, and that revision
+// already exists by the time a subscriber sees it, so Snapshot at that
+// revision shows the state the event describes. Until the world exists the
+// number is zero, which no revision ever uses.
 type Event interface {
 	Name() Name
 	Domain() Domain
+	Revision() uint64
 }
+
+// Stamp carries the revision. Every event embeds it rather than declaring the
+// field, so a new event type gains the revision by embedding one struct.
+//
+// The field is unexported and there is no exported setter, so the revision is
+// not something a handler, a reducer, or a subscriber can set or forge. Only
+// Collector.Events writes it, once, for a whole batch.
+type Stamp struct {
+	revision uint64
+}
+
+// Revision reports the revision this event was stamped with, or zero when it
+// has not been published yet.
+func (s Stamp) Revision() uint64 { return s.revision }
+
+func (s *Stamp) setRevision(revision uint64) { s.revision = revision }

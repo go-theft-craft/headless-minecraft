@@ -15,6 +15,16 @@ linters:
     - unconvert
     - usestdlibvars
     - wastedassign
+  exclusions:
+    rules:
+      # Every event type implements Event with a one-line Name and Domain.
+      # What those methods mean is documented once, on the interface; a
+      # comment on each of the dozens of implementations would repeat that
+      # sentence and say nothing about the event it sits on. The event's own
+      # doc comment, which revive still requires, is where the meaning is.
+      - path: ^event/
+        linters: [revive]
+        text: 'exported method \w+\.(Name|Domain|Revision) should have comment'
 
 formatters:
   enable:

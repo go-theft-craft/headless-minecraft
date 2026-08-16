@@ -131,7 +131,7 @@ the version pins move.
 **Interfaces:**
 - Produces: a module on Go 1.26.6 depending on `minecraft-protocol v0.1.0` or later, with no `replace` directive.
 
-- [ ] **Step 1: Check what the protocol module actually published**
+- [x] **Step 1: Check what the protocol module actually published**
 
 ```bash
 cd ../minecraft-protocol && git tag --list 'v*' | sort -V | tail -3
@@ -141,7 +141,7 @@ Use the newest released tag. `v0.1.0` is enough for this whole plan: nothing
 here imports the router, and the packages it does import — the root protocol
 package, `login`, and `generated/java/*` — all shipped in it.
 
-- [ ] **Step 2: Move the toolchain pin**
+- [x] **Step 2: Move the toolchain pin**
 
 In `devbox.json`, change `github:openserbia/go-flake#go_1_26_5` to
 `github:openserbia/go-flake#go_1_26_6`. Leave the `GOROOT` env entry and the
@@ -149,14 +149,14 @@ In `devbox.json`, change `github:openserbia/go-flake#go_1_26_5` to
 
 In `go.mod`, change `go 1.26.5` to `go 1.26.6`.
 
-- [ ] **Step 3: Move the dependency to the released module**
+- [x] **Step 3: Move the dependency to the released module**
 
 ```bash
 devbox run -- go get github.com/go-theft-craft/minecraft-protocol@v0.1.0
 devbox run -- task deps
 ```
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 ```bash
 devbox run -- task verify
@@ -165,7 +165,7 @@ grep -c replace go.mod   # expect 0
 
 Expected: `verify` passes and `go.mod` contains no `replace` directive.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add go.mod go.sum devbox.json devbox.lock
@@ -189,7 +189,7 @@ unused structs for the linter to reject.
 **Interfaces:**
 - Produces: `Domain`, `Event`, `EventName`, `AllNames() []EventName`, `(EventName).Domain() Domain`, and the 73 name constants.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package event_test
@@ -263,7 +263,7 @@ func TestRawIsNotPartOfTheNamedTaxonomy(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 ```bash
 devbox run -- task test -- ./event
@@ -271,7 +271,7 @@ devbox run -- task test -- ./event
 
 Expected: FAIL, `event` package does not exist.
 
-- [ ] **Step 3: Implement the domain and event contract**
+- [x] **Step 3: Implement the domain and event contract**
 
 `event/domain.go`:
 
@@ -324,7 +324,7 @@ type Event interface {
 }
 ```
 
-- [ ] **Step 4: Implement the taxonomy**
+- [x] **Step 4: Implement the taxonomy**
 
 `event/taxonomy.go`. Every name below is derived from a packet that exists in
 the pinned 775 or 47 schema.
@@ -502,7 +502,7 @@ func AllNames() []EventName {
 
 Add `"slices"` to the imports.
 
-- [ ] **Step 5: Run and verify it passes**
+- [x] **Step 5: Run and verify it passes**
 
 ```bash
 devbox run -- task test -- ./event
@@ -510,7 +510,7 @@ devbox run -- task test -- ./event
 
 Expected: PASS, all three tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add event/
@@ -530,7 +530,7 @@ batch closes. That is what makes a bundle atomic from a subscriber's view.
 - Consumes: `Domain`, `Event`, `EventName` from Task 2.
 - Produces: 16 session event structs each implementing `Event`; `Collector` with `Add(Event)`, `Events() []Event`, `Reset()`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package event_test
@@ -610,7 +610,7 @@ devbox run -- task test -- ./event
 
 Expected: FAIL, undefined `event.Connecting` and `event.Collector`.
 
-- [ ] **Step 3: Implement the session events**
+- [x] **Step 3: Implement the session events**
 
 `event/session.go`. Each struct is a value type and implements `Event`.
 
@@ -790,7 +790,7 @@ their names out of the `domains` table for that reason. The struct's `Domain`
 method is what a subscriber's selector matches; `EventName.Domain` returns zero
 for these two, which is what keeps `TestRawIsNotPartOfTheNamedTaxonomy` honest.
 
-- [ ] **Step 4: Implement the collector**
+- [x] **Step 4: Implement the collector**
 
 `event/collector.go`:
 
@@ -823,7 +823,7 @@ func (c *Collector) Events() []Event { return slices.Clone(c.events) }
 func (c *Collector) Reset() { c.events = c.events[:0] }
 ```
 
-- [ ] **Step 5: Run and verify it passes**
+- [x] **Step 5: Run and verify it passes**
 
 ```bash
 devbox run -- task test -- ./event
@@ -831,12 +831,46 @@ devbox run -- task test -- ./event
 
 Expected: PASS, including Task 2's three tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add event/
 git commit -m "feat(event): add session events and the batch collector"
 ```
+
+**What executing this task changed, and why.**
+
+- **The revision from the M7 design landed here**, as that design requires. It
+  is not a field on each struct: `Event` gains `Revision() uint64`, and every
+  event embeds `Stamp`, which supplies it. The field is unexported and has no
+  exported setter, so no handler, reducer, or subscriber can set or forge it.
+- **The collector stamps, which forced `Emit` to be a function.** The design
+  says the collector stamps every event it holds after the revision is bumped.
+  An event is a value inside an `Event` interface, and a value in an interface
+  cannot be written to, so a collector that took `Add(Event)` would have erased
+  the concrete type it needs to stamp. Go methods cannot be generic, so the
+  append is the package function `event.Emit(c, X{...})`, which remembers the
+  type and stamps a copy at publication. `Events` therefore takes the revision:
+  `Events(revision uint64) []Event`. There is no way to get an unstamped event
+  out of a collector, which is the guarantee stated as a mechanism.
+- **Stamped events keep their concrete types.** The obvious alternative — wrap
+  each event in a stamping wrapper — would have broken every `switch e :=
+  e.(type)` a subscriber writes. A test asserts the concrete type survives
+  publication.
+- **`PacketReceived` and `PacketSent` cannot have a `Name` field.** The plan
+  gave both one alongside the `Name()` method every event owes `Event`, which
+  does not compile. The field is `Packet`.
+- **Steps 1 and 2 ran out of order.** The tests were written after the
+  implementation rather than before it, so the failure observed was the
+  generic constraint failing to compile, not the intended undefined-symbol
+  failure. The tests do fail against an absent implementation; they were not
+  watched doing it.
+- **`.golangci.yml` gained one scoped exclusion.** revive requires a doc
+  comment on every exported method, and the plan's own code declares 32 bare
+  one-line `Name` and `Domain` methods. The rule is switched off for those
+  three method names under `event/` only, because their meaning is documented
+  on the `Event` interface and repeating it 32 times would say nothing about
+  the event it sits on. Every other exported symbol still needs its comment.
 
 ---
 
