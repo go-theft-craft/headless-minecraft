@@ -146,7 +146,7 @@ Four things the design fixed land here rather than being discovered later:
   later `Apply` and `Snapshot` reports the same error rather than answering
   from half-applied state.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package world_test
@@ -313,7 +313,7 @@ func TestRegisterAfterFirstApplyIsAnError(t *testing.T) {
 Declare `failingReducer` returning a sentinel error, and add `"errors"` to the
 imports. Write the two sketched bodies in full.
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 ```bash
 devbox run -- task test -- ./world
@@ -321,7 +321,7 @@ devbox run -- task test -- ./world
 
 Expected: FAIL, package does not exist.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 // Package world holds what the connection has observed.
@@ -490,7 +490,7 @@ It sets the revision on every event the collector holds, and it belongs beside
 `snapshot.go` starts with only the revision. Each later task adds its domain's
 view to `Snapshot` and to the `Snapshot()` method, under the same read lock.
 
-- [ ] **Step 4: Run and verify it passes**
+- [x] **Step 4: Run and verify it passes**
 
 ```bash
 devbox run -- task test -- ./world
@@ -498,12 +498,32 @@ devbox run -- task test -- ./world
 
 Expected: PASS, all eight tests, including the race test.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add world/
 git commit -m "feat(world): add the reducer spine and revision counter"
 ```
+
+**What executing this task changed, and why.**
+
+- **`Apply` returns the revision it produced**, rather than the world stamping
+  the collector. M6.3's collector stamps at publication — `Events(revision)` —
+  because a value inside an interface cannot be written to after the fact, so
+  there is no `Stamp` for the world to call. The caller passes what `Apply`
+  returns straight to `Events`, which keeps the same guarantee: a reducer never
+  names a revision, and every event from one batch names the one that now
+  exists.
+- **`version.Batch` gained `State`**, as the plan anticipated. An empty bundle
+  reports the state of the delimiter that opened it.
+- **`LocalRef` carries `Known` beside the ID.** Entity 0 is a legal entity, so
+  a zero value would otherwise claim the local player is whichever entity holds
+  that ID.
+- **A poisoned world keeps the reducer's own error**, wrapped under
+  `ErrWorldPoisoned`, so the session says what broke rather than only that
+  something did.
+- **Two tests were added:** that a fact one reducer sets survives into the next
+  batch, which is what `Local` exists for, and that `Register` rejects nil.
 
 ### Task 2: Wire the world into the client
 

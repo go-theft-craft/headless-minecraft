@@ -24,6 +24,12 @@ var ErrBundleUnterminated = errors.New("bundle was never closed")
 type Batch struct {
 	Packets []protocol.Packet
 	Bundled bool
+	// State is the protocol state the batch arrived in. It is on the batch
+	// rather than read from the first packet so that an empty bundle still
+	// reports one, and because "registry data has not arrived yet" and
+	// "this connection is past configuration and never will" are different
+	// answers a reducer has to be able to give.
+	State protocol.State
 }
 
 // Batcher groups inbound packets at bundle boundaries.
@@ -34,6 +40,7 @@ type Batcher struct {
 	limit     int
 	pending   []protocol.Packet
 	open      bool
+	state     protocol.State
 }
 
 // NewBatcher returns a batcher for one protocol.
@@ -59,18 +66,19 @@ func (b *Batcher) Open() bool { return b.open }
 // boolean is false while a bundle is still accumulating.
 func (b *Batcher) Accept(p protocol.Packet) (Batch, bool, error) {
 	if b.delimiter == "" {
-		return Batch{Packets: []protocol.Packet{p}}, true, nil
+		return Batch{Packets: []protocol.Packet{p}, State: p.State}, true, nil
 	}
 
 	if p.Name == b.delimiter {
 		if !b.open {
 			b.open = true
+			b.state = p.State
 
 			return Batch{}, false, nil
 		}
 
 		// Cloned because the pending slice is reused by the next bundle.
-		batch := Batch{Packets: slices.Clone(b.pending), Bundled: true}
+		batch := Batch{Packets: slices.Clone(b.pending), Bundled: true, State: b.state}
 		b.pending = b.pending[:0]
 		b.open = false
 
@@ -78,7 +86,7 @@ func (b *Batcher) Accept(p protocol.Packet) (Batch, bool, error) {
 	}
 
 	if !b.open {
-		return Batch{Packets: []protocol.Packet{p}}, true, nil
+		return Batch{Packets: []protocol.Packet{p}, State: p.State}, true, nil
 	}
 
 	if len(b.pending) >= b.limit {

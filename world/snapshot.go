@@ -1,0 +1,22 @@
+package world
+
+// Snapshot is one instant of observed state, taken at one revision.
+//
+// Every domain's view in a snapshot was read under the same lock at the same
+// revision, which is the property the whole design exists for: six domains
+// read at one revision describe one instant, not six instants that happen to
+// be close together.
+//
+// A snapshot is immutable from the caller's perspective. Nothing in it aliases
+// state the world keeps mutating.
+type Snapshot struct {
+	// Revision is the number of batches this world has applied. It is zero
+	// on a world that has applied none.
+	Revision uint64
+}
+
+// snapshot builds the snapshot. It runs under the world's lock, held by the
+// caller, and each domain added by a later task reads its view here.
+func (w *World) snapshot() Snapshot {
+	return Snapshot{Revision: w.revision}
+}

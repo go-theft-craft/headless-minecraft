@@ -167,3 +167,22 @@ func TestNewBatcherRejectsANonPositiveLimit(t *testing.T) {
 		t.Fatal("NewBatcher accepted a zero limit")
 	}
 }
+
+func TestABatchReportsTheStateItArrivedIn(t *testing.T) {
+	t.Parallel()
+
+	b, _ := version.NewBatcher("bundle_delimiter", 16)
+
+	loose, _, _ := b.Accept(packet("keep_alive"))
+	if loose.State != "play" {
+		t.Errorf("a loose packet's batch reports state %q, want play", loose.State)
+	}
+
+	// A bundle takes its state from the delimiter that opened it, so an
+	// empty bundle still reports one.
+	_, _, _ = b.Accept(packet("bundle_delimiter"))
+	bundle, _, _ := b.Accept(packet("bundle_delimiter"))
+	if bundle.State != "play" {
+		t.Errorf("an empty bundle reports state %q, want play", bundle.State)
+	}
+}
