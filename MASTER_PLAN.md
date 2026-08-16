@@ -1,6 +1,6 @@
 # Go Theft Craft master plan
 
-Last reviewed: 2026-08-15
+Last reviewed: 2026-08-16
 
 This file is the cross-repository source of truth for what remains. Detailed
 designs and implementation plans remain in their owning repositories. Update
@@ -71,7 +71,7 @@ swap changed behavior. It did not: the matcher and the migrated registry are
 both correct, and the defect was a pre-existing shift-click handler that
 crafted once instead of draining the grid. Settled and fixed ahead of M6.
 
-**M4 is complete except for one measurement.** All four stages landed.
+**M4 is complete.** All four stages landed and the live check has been run.
 `minecraft-protocol` describes both pinned data trees with manifest v2,
 generates `generated/java/v26_1` — 256 framed packets across five states, typed
 game data for all 25 datasets, every dataset kept as the bytes upstream
@@ -82,18 +82,26 @@ passes through configuration, from the roles and the login exchange each
 version declares. A 42-fixture differential suite compares the 775 codecs
 against pinned Node ProtoDef in both directions.
 
-What is not done is the live check. It is written, skips cleanly without a
-server, and reports every number the limit decision needs, but running it takes
-a Java 26.1 server to install. Until someone runs `task check:live`, the
-default limits — 2 MiB per frame, 8 MiB decompressed — stand on the
-specification rather than on traffic, and nothing here may claim they fit a
-modern login.
+The live check has now been run, against Paper 26.1.2 build 74, and it earned
+its keep on the first run: the negotiator never answered `select_known_packs`,
+and a 26.1 server sends no registry data and never finishes configuration
+until it is answered. The connection stalled in configuration looking perfectly
+healthy, and every scripted test passed throughout, because no script sent the
+packet. Fixed, and the scripted server now withholds the finish handshake
+until the answer arrives.
+
+With that fixed the check reaches play, and the default limits — 2 MiB per
+frame, 8 MiB decompressed — stand on traffic through login: the largest raw
+frame a real server sent was 12,564 bytes and the largest decoded body 32,316
+bytes, both `configuration/tags`. Neither limit moves. Play is still
+unmeasured, and the vanilla-client half of M4's last gate is not reachable from
+here; the M4 section says why.
 
 Protocol 47 is unchanged throughout, apart from one added file:
 `generated/java/v1_8/login_exchange.go`. Its generated output is otherwise
 byte-identical and its loopback interoperability suite still passes.
 
-The six things M4 found are recorded in its milestone section below. The two
+The seven things M4 found are recorded in its milestone section below. The two
 worth carrying furthest: M4.2's report that the 775 codecs "parse as Go" was
 true and not enough — they did not compile, for two reasons a test now covers —
 and roles alone cannot drive a login, because two protocols agree about the
@@ -162,7 +170,7 @@ flowchart LR
 | M2 | AES-CFB8 transport encryption and complete, developer-controllable login lifecycle | `minecraft-protocol` | Complete | M1 | [Protocol toolkit umbrella plan](docs/superpowers/plans/2026-08-13-current-protocol-stream-toolkit.md), [headless authentication plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md), [M2 design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-encryption-login-lifecycle-design.md), [M2 implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-encryption-login-lifecycle.md) |
 | M2.5 | Compile every schema-defined type from its own schema, share named types, bound decode recursion, and delete the superseded hand-written value types | `minecraft-protocol` | Complete | M2 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-schema-first-codegen-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-schema-first-codegen.md) |
 | M3 | Migrate one real connection path: server handshake, status, ping, login, disconnect, compression, and online/offline mode | `server`, `minecraft-protocol` | Complete | M2.5 | [Design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md), [implementation plan](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) |
-| M4 | Generate Java 26.1 data and protocol 775 codecs, retaining unknown source datasets | `minecraft-protocol` | **In progress** (M4.1 complete) | M3 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) |
+| M4 | Generate Java 26.1 data and protocol 775 codecs, retaining unknown source datasets | `minecraft-protocol` | Complete | M3 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) |
 | M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | **Partly next** (Tasks 1–7 unblocked) | M4, for Tasks 8–12 only | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md) (amended 2026-08-15), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) (amended 2026-08-15) |
 | M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Planned | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
 | M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Planned | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
@@ -377,16 +385,32 @@ Three constraints found while planning M3:
 
 ### M4 — Java 26.1 and protocol 775
 
-**Complete except for one measurement.** All four stages landed; the opt-in
-live check against a real 26.1 server is written and has not been run, so the
-resource limits still stand on the specification rather than on traffic.
+**Complete against a real server.** All four stages landed, and the live check
+has been run against Paper 26.1.2 build 74 on 2026-08-16. It found a defect no
+scripted test could: the negotiator never answered `select_known_packs`, and a
+26.1 server sends no registry data and never finishes configuration until it
+is answered, so a live login stalled in configuration while looking healthy.
+Fixed, with a scripted server that now withholds the finish handshake until
+the answer arrives. The remaining gap is the vanilla client, below.
+
+The measurement the limits were waiting for, through handshake, login,
+configuration, and the first play packet:
+
+| Measurement | Value | Limit | Headroom |
+| --- | --- | --- | --- |
+| Largest raw frame | 12,564 bytes (a compressed `configuration/tags` frame) | 2 MiB | 167x |
+| Largest decoded body | 32,316 bytes (`configuration/tags`) | 8 MiB | 259x |
+
+Both defaults hold with room to spare, so no limit moves. This measures login
+only. Play is where chunk data is the largest thing a server sends, and
+nothing here has measured it — M7 is where that check belongs.
 
 | Stage | Exit criterion |
 | --- | --- |
 | M4.1 | `task data:fetch` twice produces no diff; `data:validate` passes for both versions; protocol 47 output is byte-identical after the manifest migration |
 | M4.2 | The 775 schema compiles with zero unsupported constructs, and `position` compiles from the 775 schema rather than inheriting 1.8's bit order |
 | M4.3 | Every 26.1 dataset decodes strictly with no unknown field, and every dataset name appears in `Raw` |
-| M4.4 | `v26_1.Protocol()` reports 775; the ProtoDef differential suite passes; the live check reaches play against Paper 26.1 and reports its largest frame — **the live check is written and unrun** |
+| M4.4 | `v26_1.Protocol()` reports 775; the ProtoDef differential suite passes; the live check reaches play against Paper 26.1 and reports its largest frame — **met** |
 
 - [x] Pin the PrismarineJS source manifest and aliases.
 - [x] Implement configuration and play transitions for modern Java login,
@@ -395,8 +419,15 @@ resource limits still stand on the specification rather than on traffic.
 - [x] Import all exposed datasets and preserve unknown formats as raw data.
 - [x] Generate deterministic protocol 775 packets and codecs.
 - [x] Add byte fixtures and protocol 47 regression coverage.
-- [ ] Verify status/login against a compatible Paper server and a vanilla Java
-  26.1 client. **Not done**, and the one part of M4 that is not.
+- [x] Verify status and login against a compatible Paper server. Done against
+  Paper 26.1.2 build 74; `livecheck/README.md` records the numbers.
+- [ ] Verify against a vanilla Java 26.1 client. **Not done, and not reachable
+  from here.** It needs the game client, which is a windowed application with
+  an account behind it, and no third-party implementation available here
+  speaks 775 — the pinned `minecraft-protocol` npm package stops at 1.21.11,
+  so it cannot stand in. The half this would exercise is the acceptor, and a
+  real client also needs registry data in configuration, which this repository
+  does not produce. Its natural home is M6, against the server.
 
 What M4 produced: `generated/java/v26_1` with 256 framed packets across five
 states, the typed game data for all 25 datasets, every dataset kept as the
@@ -406,7 +437,7 @@ and a 42-fixture differential suite against pinned Node ProtoDef. Protocol 47's
 generated output is unchanged apart from one added file, `login_exchange.go`,
 and its loopback interoperability suite still passes.
 
-Six things M4 found that the plan did not predict, each recorded in full in the
+Seven things M4 found that the plan did not predict, each recorded in full in the
 [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md):
 
 - **"Parses as Go" was a weaker claim than it sounded.** M4.2 reported the 775
@@ -428,6 +459,13 @@ Six things M4 found that the plan did not predict, each recorded in full in the
 - **Two dataset shapes read wrong at first glance**: a loot drop's stack size
   range has an open end written as a null bound, and one tint category keys by
   number where every other keys by biome name.
+- **A driver cannot pass through what a server is waiting for.** The
+  negotiator treated `select_known_packs` as configuration content and skipped
+  it, which is correct for everything else a server sends in configuration and
+  wrong for this one packet: the server sends no registry data and never
+  finishes configuration without the answer. Only the live check could find it,
+  because a scripted server sends what the script says and this script had
+  nothing to say about a packet nobody had thought about.
 - **The version-string reconciliation was mostly unnecessary.** Of the seven
   documents naming `26.1.2`, all but two were naming a game build — a Mojang
   artifact or a server under test — which is the correct use. Only the
@@ -467,10 +505,12 @@ milestones:
   reconciled them: `26.1` for data and generated code, a patch version only when
   naming a game build or a server under test. Most mentions were already the
   latter and stayed.
-- The default limits — 2 MiB per frame, 8 MiB decompressed — are still
-  unmeasured. `task check:live` measures them against a real server and
-  `livecheck/README.md` says how to prepare one; until someone runs it, no
-  milestone here may claim the limits fit a modern login.
+- The default limits — 2 MiB per frame, 8 MiB decompressed — have been measured
+  through login against Paper 26.1.2 build 74 and hold with 167x and 259x
+  headroom. `livecheck/README.md` records the numbers and how the server was
+  prepared. Play is not covered: chunk data is the largest thing a server
+  sends, and no check has measured it, so no milestone may claim these limits
+  fit play until one does.
 
 ### M5 — Routing, capture/history, replay, and CLI
 
@@ -552,6 +592,12 @@ the approved documents asserted:
   bounded stream ownership.
 - [ ] Connect the headless client to the current Java profile.
 - [ ] Build immutable observed-world snapshots and wire-ordered reducers.
+  M7's design review put two prerequisites back on M6.3. `Event` has to carry
+  the snapshot revision, which M6.3's design promised and its plan dropped, and
+  the client has to own the configuration phase rather than letting
+  `login.Negotiate` consume it. Without the second one, registry data, feature
+  flags, and the inbound resource-pack offer never reach a handler on the first
+  pass, which breaks M7's registry domain and two of M6.3's own session events.
 - [ ] Preserve unknown metadata, namespaced values, and custom payloads.
 
 ### M8–M9 — Simulation and gameplay
@@ -687,6 +733,8 @@ affect later stages:
 - [Shared protocol migration design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md) — M3
 - [Java 26.1 and protocol 775 design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md) — subdivides M4 into M4.1–M4.4
 - [Routing, capture, replay, and CLI design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md) — amended 2026-08-15
+- [Headless connection design](docs/superpowers/specs/2026-08-15-headless-connection-design.md) — subdivides M6 into M6.1–M6.4 and fixes the 73-name event taxonomy
+- [Observed world state design](docs/superpowers/specs/2026-08-16-observed-world-state-design.md) — M7; draft for review. Puts two prerequisites back on M6.3: the revision on `Event`, and a client loop that owns the configuration phase
 
 ### Focused implementation plans
 
@@ -702,6 +750,9 @@ affect later stages:
 - [M8.2 geometry and collision core](../minecraft-simulation/docs/superpowers/plans/2026-08-15-m8-2-geometry-collision-core.md) — planned, ready to execute
 - [Java 26.1 and protocol 775](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) — approved; starts after M3
 - [Routing, capture, replay, and CLI](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) — approved; amended 2026-08-15; Tasks 1–7 start now, 8–12 after M4
+- [Headless connection](docs/superpowers/plans/2026-08-15-headless-connection.md) — M6.3; approved, ready to execute. Two amendments pending from the M7 design
+- [Microsoft authentication](docs/superpowers/plans/2026-08-15-microsoft-authentication.md) — M6.4; planned, starts after M6.3
+- [Observed world state](docs/superpowers/plans/2026-08-15-observed-world-state.md) — M7; planned. Six amendments pending from its design review before Task 1
 - [Headless client and authentication](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) — foundation complete; lifecycle and authentication pending
 - [Constructed components, world state, and operations](docs/superpowers/plans/2026-08-13-world-state-actions.md) — pending
 - [Minecraft reference extraction](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md) — reference tool extracted and released; simulation research catalog pending
