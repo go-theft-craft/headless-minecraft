@@ -3835,6 +3835,46 @@ git commit -m "feat(adapter): translate protocol 775 session packets"
   MOTD and the icon do not fit a string map, so `server_data` reports whether
   an icon arrived rather than inventing a rendering of either.
 
+### Amendment: the client owns the configuration phase
+
+Added after Task 14, from M7's design decision 6. It is a change to Tasks 5,
+9, 10, 11, and 13 rather than a new task, because every part of it lands on a
+seam those tasks already built.
+
+- [x] **`version.Adapter` names its terminal login state.** `LoginTerminalState`
+  returns configuration for protocol 775 and nothing for protocol 47, and
+  `Connect` passes it to `login.WithTerminalState`. The negotiator then stops
+  after the login acknowledgement and the loop drives configuration into play,
+  so the registries, tags, feature flags, and resource-pack offers a server
+  sends there reach handlers instead of being consumed inside the login
+  sequence.
+- [x] **Handlers answer through `version.Outbox`.** The design proposed
+  extending the readiness rule, and that does not work: the rule stops
+  observing the moment the player is placed, while a keepalive must be
+  answered for the whole session. An outbox is the collector's shape for
+  packets — batch-scoped, owned by the read goroutine, drained and written by
+  the loop before the readiness reply, each write reported as a `PacketSent`.
+  `WireProfile` carries it beside the collector and `Validate` requires it.
+- [x] **The client answers keepalives, in both states.** It never did. The
+  taxonomy names the event `KeepAlivePonged` and the adapters published it
+  without sending anything, so a real server would have dropped the session
+  after about twenty seconds. Nothing in this plan or its design assigned the
+  answer to anyone, and no test caught it: the fixture never sends a keepalive
+  and the event it asserted did exist.
+- [x] **The 775 adapter answers `select_known_packs` and
+  `finish_configuration`.** The first is the question M4's live check found a
+  26.1 server stops on — no registry data and no finish handshake arrive until
+  it is answered, and the connection looks healthy while it waits. The answer
+  is an empty pack list, which is honest for a client that ships no pack data
+  and is what the shared login exchange answers too.
+- [x] **A scripted 775 configuration run covers it.** `client` drives the real
+  `java.Current()` profile through known packs, registry data, feature flags,
+  a pack offer, a keepalive, the finish handshake, and into login and
+  placement, asserting both what the client sent and that configuration
+  content reached handlers. It is not a live server — the shared
+  `login.Acceptor` is written against the v1_8 types, so none can be stood up
+  here — but it exercises everything after the negotiator hands over.
+
 ---
 
 ## Stage F — Gate

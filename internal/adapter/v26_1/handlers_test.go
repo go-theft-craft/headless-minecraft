@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-theft-craft/headless-minecraft/event"
 	adapter "github.com/go-theft-craft/headless-minecraft/internal/adapter/v26_1"
+	"github.com/go-theft-craft/headless-minecraft/version"
 )
 
 // The descriptor's own names for two packets this milestone cares about. A
@@ -32,7 +33,8 @@ func handle(t *testing.T, p protocol.Packet) []event.Event {
 	t.Helper()
 
 	var c event.Collector
-	handler, ok := adapter.New(&c).Handlers()[p.Name]
+	var o version.Outbox
+	handler, ok := adapter.New(&c, &o).Handlers()[p.Name]
 	if !ok {
 		t.Fatalf("no handler registered for %q", p.Name)
 	}
@@ -317,7 +319,8 @@ func TestEveryHandlerIgnoresAValueItDoesNotRecognize(t *testing.T) {
 	t.Parallel()
 
 	var c event.Collector
-	a := adapter.New(&c)
+	var o version.Outbox
+	a := adapter.New(&c, &o)
 
 	// An undecodable packet arrives as an UnknownPacket under the same name.
 	// A bare type assertion would panic on it.
@@ -337,7 +340,8 @@ func TestTheBundleDelimiterHasNoHandler(t *testing.T) {
 	t.Parallel()
 
 	var c event.Collector
-	if _, registered := adapter.New(&c).Handlers()[adapter.BundleDelimiter]; registered {
+	var o version.Outbox
+	if _, registered := adapter.New(&c, &o).Handlers()[adapter.BundleDelimiter]; registered {
 		t.Error("the delimiter has a handler; it is a framing marker, not an event source")
 	}
 }
@@ -348,7 +352,147 @@ func TestRegistryDataIsNotHandledHere(t *testing.T) {
 	// registry.data_received is M7's to implement. This milestone must not
 	// emit a name for which it has defined no struct.
 	var c event.Collector
-	if _, registered := adapter.New(&c).Handlers()[registryDataName]; registered {
+	var o version.Outbox
+	if _, registered := adapter.New(&c, &o).Handlers()[registryDataName]; registered {
 		t.Fatal("M6.3 registered a handler for registry data, which is M7's")
+	}
+}
+
+// answers dispatches one packet and returns what the adapter queued to send.
+func answers(t *testing.T, p protocol.Packet) []protocol.Packet {
+	t.Helper()
+
+	var c event.Collector
+	var o version.Outbox
+	handler, ok := adapter.New(&c, &o).Handlers()[p.Name]
+	if !ok {
+		t.Fatalf("no handler registered for %q", p.Name)
+	}
+	if err := handler.Handle(t.Context(), p); err != nil {
+		t.Fatalf("Handle(%s): %v", p.Name, err)
+	}
+
+	return o.Drain()
+}
+
+func TestKeepAliveIsAnsweredInTheStateItArrivedIn(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		packet protocol.Packet
+		state  protocol.State
+	}{
+		"play": {
+			clientbound("keep_alive", &gen.PlayClientboundKeepAlive{KeepAliveID: 7}),
+			gen.StatePlay,
+		},
+		"configuration": {
+			configuration("keep_alive", &gen.ConfigurationClientboundKeepAlive{KeepAliveID: 7}),
+			gen.StateConfiguration,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			queued := answers(t, tc.packet)
+			if len(queued) != 1 {
+				t.Fatalf("queued %d answers, want 1", len(queued))
+			}
+			if queued[0].State != tc.state {
+				t.Errorf("answer is addressed to %q, want %q", queued[0].State, tc.state)
+			}
+			if queued[0].Direction != protocol.DirectionServerbound {
+				t.Errorf("answer is %v, want serverbound", queued[0].Direction)
+			}
+
+			switch value := queued[0].Value.(type) {
+			case *gen.PlayServerboundKeepAlive:
+				if value.KeepAliveID != 7 {
+					t.Errorf("answer carries ID %d, want 7", value.KeepAliveID)
+				}
+			case *gen.ConfigurationServerboundKeepAlive:
+				if value.KeepAliveID != 7 {
+					t.Errorf("answer carries ID %d, want 7", value.KeepAliveID)
+				}
+			default:
+				t.Fatalf("answer is %T, want a serverbound keepalive", queued[0].Value)
+			}
+		})
+	}
+}
+
+func TestKnownPacksIsAnsweredWithAnEmptyList(t *testing.T) {
+	t.Parallel()
+
+	// A 26.1 server sends no registry data and never finishes configuration
+	// until this is answered, and a connection that never answers looks
+	// perfectly healthy while it waits forever.
+	packet := configuration("select_known_packs", &gen.ConfigurationClientboundSelectKnownPacks{
+		Packs: make([]gen.ConfigurationClientboundSelectKnownPacksPacksItem, 3),
+	})
+
+	queued := answers(t, packet)
+	if len(queued) != 1 {
+		t.Fatalf("queued %d answers, want 1", len(queued))
+	}
+	answer, ok := queued[0].Value.(*gen.ConfigurationServerboundSelectKnownPacks)
+	if !ok {
+		t.Fatalf("answer is %T, want *ConfigurationServerboundSelectKnownPacks", queued[0].Value)
+	}
+	// A headless client ships no pack data, so it holds none of them, and
+	// claiming otherwise makes the server skip registries it needs.
+	if len(answer.Packs) != 0 {
+		t.Errorf("answer claims %d known packs, want none", len(answer.Packs))
+	}
+	if queued[0].Name != "select_known_packs" {
+		t.Errorf("answer is named %q", queued[0].Name)
+	}
+}
+
+func TestFinishConfigurationIsAcknowledged(t *testing.T) {
+	t.Parallel()
+
+	packet := configuration("finish_configuration", &gen.ConfigurationClientboundFinishConfiguration{})
+
+	queued := answers(t, packet)
+	if len(queued) != 1 {
+		t.Fatalf("queued %d answers, want 1", len(queued))
+	}
+	if _, ok := queued[0].Value.(*gen.ConfigurationServerboundFinishConfiguration); !ok {
+		t.Fatalf("answer is %T, want the finish acknowledgement", queued[0].Value)
+	}
+	if queued[0].Name != "finish_configuration" {
+		t.Errorf("answer is named %q", queued[0].Name)
+	}
+}
+
+func TestObservedConfigurationPacketsQueueNoAnswer(t *testing.T) {
+	t.Parallel()
+
+	// Everything else in configuration is content, not a question. Answering
+	// one would put a packet on the wire the server never asked for.
+	quiet := []protocol.Packet{
+		configuration("feature_flags", &gen.ConfigurationClientboundFeatureFlags{}),
+		configuration("add_resource_pack", &gen.ConfigurationClientboundAddResourcePack{}),
+		configuration("custom_payload", &gen.ConfigurationClientboundCustomPayload{}),
+		configuration("cookie_request", &gen.ConfigurationClientboundCookieRequest{}),
+	}
+
+	for _, packet := range quiet {
+		if queued := answers(t, packet); len(queued) != 0 {
+			t.Errorf("%s queued %d answers, want none", packet.Name, len(queued))
+		}
+	}
+}
+
+func TestProtocol775StopsAtConfiguration(t *testing.T) {
+	t.Parallel()
+
+	var c event.Collector
+	var o version.Outbox
+	if got := adapter.New(&c, &o).LoginTerminalState(); got != gen.StateConfiguration {
+		t.Errorf("terminal state is %q, want configuration", got)
 	}
 }

@@ -752,14 +752,32 @@ something the approved documents asserted:
 
 #### M6.3 — What the headless connection found
 
-- **The client does not own the configuration phase yet.** M7's design requires
-  it, and M6.3 did not do it: `login.Negotiate` still runs configuration to
-  completion, so registry data, feature flags, and the inbound resource-pack
-  offer pass through without reaching a handler. The 775 adapter has the
-  handlers for the last two already; what is missing is stopping the
-  negotiator at configuration with `login.WithTerminalState` and driving the
-  rest from the loop. **M7 Task 1 must do this before its registry domain can
-  work.**
+- **The client owns the configuration phase.** This was M7's second
+  prerequisite and it is now done. The adapter names the state the client
+  takes over at — `LoginTerminalState`, configuration for 775 and nothing for
+  47 — `Connect` passes it to `login.WithTerminalState`, and the loop drives
+  configuration into play. Registry data, feature flags, resource-pack offers,
+  cookies, and custom payloads now reach handlers instead of being consumed
+  inside the login sequence. A scripted 775 configuration run in `client`
+  covers it end to end short of a real server. **M7 Task 7 is unblocked**: its
+  registry reducer receives `registry_data` in configuration, in wire order,
+  in its own batch.
+- **The client never answered keepalives, and now does.** Found while wiring
+  the configuration phase, not by review. The taxonomy names the event
+  `KeepAlivePonged` and the adapters published it without sending anything, so
+  a real server would have dropped the session after about twenty seconds —
+  and in configuration, before play was ever reached. No test caught it: the
+  fixture server never sends a keepalive, and the client's own tests asserted
+  the event, which existed. **Nothing in M6.3's design or plan assigned the
+  answer to anyone.**
+- **Answering needed a seam, and it is `version.Outbox`.** The readiness rule
+  was the only outbound path and it stops observing the moment the player is
+  placed, so it cannot own an answer that recurs for the whole session.
+  Handlers now queue answers in a batch-scoped outbox that the loop drains and
+  writes, before the readiness reply and in the order queued, reporting each
+  as a `PacketSent`. It is the same shape as the collector, for the same
+  reason: the read goroutine owns both ends of one batch. M9's actions are the
+  next thing that will want it.
 - **The bundle limit was never approached.** The default is 4096 packets per
   bundle. Nothing in this milestone exercises a real bundle: the fixture
   server speaks protocol 47, which has no delimiter, so every batch held one

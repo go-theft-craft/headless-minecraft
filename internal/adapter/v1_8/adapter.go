@@ -24,17 +24,26 @@ const BundleDelimiter = ""
 // ProtocolID names the profile this adapter translates for.
 const ProtocolID = "java/1.8.9"
 
-type adapter struct{ collector *event.Collector }
+type adapter struct {
+	collector *event.Collector
+	outbox    *version.Outbox
+}
 
-// New returns an adapter that appends to the given collector.
+// New returns an adapter that appends to the given collector and queues its
+// answers in the given outbox.
 //
-// The collector is owned by the read loop and reset per batch, so handlers
-// never publish and a batch's events reach subscribers together.
-func New(collector *event.Collector) version.Adapter {
-	return adapter{collector: collector}
+// Both are owned by the read loop and scoped to one batch, so handlers never
+// publish and never write: a batch's events reach subscribers together, and
+// its answers reach the server together.
+func New(collector *event.Collector, outbox *version.Outbox) version.Adapter {
+	return adapter{collector: collector, outbox: outbox}
 }
 
 func (adapter) ProtocolID() string { return ProtocolID }
+
+// LoginTerminalState is empty: protocol 47 has no configuration state, so
+// there is nothing before play for the client to take over.
+func (adapter) LoginTerminalState() protocol.State { return "" }
 
 // Handshake asks for login: next state 2. Protocol 47 sends its own protocol
 // number, which the server compares against its own.
@@ -77,8 +86,20 @@ func (a adapter) keepAlive(_ context.Context, p protocol.Packet) error {
 	if !ok {
 		return nil
 	}
-	// Elapsed stays zero: measuring it needs the send time of the answer,
-	// which the loop owns, not the adapter.
+	// Answering is what keeps the session alive: a server drops a client that
+	// stays silent. The event is named for the answer, so the answer is
+	// queued here rather than left to a consumer that may not be listening.
+	answer := &gen.PlayServerboundKeepAlive{KeepAliveID: value.KeepAliveID}
+	a.outbox.Add(protocol.Packet{
+		State:     gen.StatePlay,
+		Direction: protocol.DirectionServerbound,
+		ID:        answer.PacketID(),
+		Name:      "keep_alive",
+		Value:     answer,
+	})
+
+	// Elapsed stays zero: measuring it needs the round trip, which the loop
+	// owns, not the adapter.
 	event.Emit(a.collector, event.KeepAlivePonged{ID: int64(value.KeepAliveID)})
 
 	return nil

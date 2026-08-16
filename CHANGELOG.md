@@ -11,4 +11,6 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
 - `auth`: the identity seam, with an offline provider whose UUID matches the server's own derivation.
 - `version`: bundle batching, the version-owned readiness rule, and the adapter contract for handshakes and packet handlers.
 - `version/java`: the built-in `Java1_8` and `Current` profiles for protocol 47 and protocol 775.
+- `version`: `Outbox`, the batch-scoped seam handlers queue answers in. The client answers keepalives in both play and configuration, and answers the two questions a protocol 775 server stops configuration on.
+- `client`: the client owns the configuration phase on protocol 775 — it takes the connection over from the login negotiator at configuration, so registry data, feature flags, and resource-pack offers reach handlers rather than being consumed inside the login sequence.
 - `client`: connect, close, wait, and bounded event subscriptions. A client dials, logs in, and returns once the server will accept action packets; a subscriber that falls behind is closed rather than blocked.

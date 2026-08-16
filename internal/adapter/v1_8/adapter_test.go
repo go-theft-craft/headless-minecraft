@@ -25,7 +25,8 @@ func TestKeepAliveProducesAPongedEvent(t *testing.T) {
 	t.Parallel()
 
 	var c event.Collector
-	a := adapter.New(&c)
+	var o version.Outbox
+	a := adapter.New(&c, &o)
 
 	handler, ok := a.Handlers()["keep_alive"]
 	if !ok {
@@ -49,11 +50,54 @@ func TestKeepAliveProducesAPongedEvent(t *testing.T) {
 	}
 }
 
+func TestKeepAliveIsAnswered(t *testing.T) {
+	t.Parallel()
+
+	var c event.Collector
+	var o version.Outbox
+	a := adapter.New(&c, &o)
+
+	packet := clientbound("keep_alive", &gen.PlayClientboundKeepAlive{KeepAliveID: 7})
+	if err := a.Handlers()["keep_alive"].Handle(t.Context(), packet); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	// A server drops a client that stays silent. The event says the client
+	// ponged, so the pong has to exist.
+	answers := o.Drain()
+	if len(answers) != 1 {
+		t.Fatalf("queued %d answers, want 1", len(answers))
+	}
+	answer, ok := answers[0].Value.(*gen.PlayServerboundKeepAlive)
+	if !ok {
+		t.Fatalf("answer is %T, want *PlayServerboundKeepAlive", answers[0].Value)
+	}
+	if answer.KeepAliveID != 7 {
+		t.Errorf("answer carries ID %d, want the one the server sent", answer.KeepAliveID)
+	}
+	if answers[0].Name != "keep_alive" || answers[0].Direction != protocol.DirectionServerbound {
+		t.Errorf("answer is addressed %q/%v", answers[0].Name, answers[0].Direction)
+	}
+}
+
+func TestProtocol47StopsNowhereBeforePlay(t *testing.T) {
+	t.Parallel()
+
+	var c event.Collector
+	var o version.Outbox
+	// Protocol 47 has no configuration state, so the negotiator runs to play
+	// and there is nothing for the client to take over.
+	if got := adapter.New(&c, &o).LoginTerminalState(); got != "" {
+		t.Errorf("terminal state is %q, want empty", got)
+	}
+}
+
 func TestCustomPayloadCopiesItsPayload(t *testing.T) {
 	t.Parallel()
 
 	var c event.Collector
-	a := adapter.New(&c)
+	var o version.Outbox
+	a := adapter.New(&c, &o)
 
 	data := []byte{1, 2, 3}
 	packet := clientbound("custom_payload", &gen.PlayClientboundCustomPayload{Channel: "MC|Brand", Data: data})
@@ -81,7 +125,8 @@ func TestKickDisconnectReportsTheServerAsTheSource(t *testing.T) {
 	t.Parallel()
 
 	var c event.Collector
-	a := adapter.New(&c)
+	var o version.Outbox
+	a := adapter.New(&c, &o)
 
 	packet := clientbound("kick_disconnect", &gen.PlayClientboundKickDisconnect{Reason: "kicked"})
 	if err := a.Handlers()["kick_disconnect"].Handle(t.Context(), packet); err != nil {
@@ -104,7 +149,8 @@ func TestHandlersIgnoreAPacketOfTheWrongType(t *testing.T) {
 	t.Parallel()
 
 	var c event.Collector
-	a := adapter.New(&c)
+	var o version.Outbox
+	a := adapter.New(&c, &o)
 
 	// An unknown packet retains its payload rather than a decoded value. A
 	// handler that type-asserted without checking would panic on it.
@@ -273,7 +319,8 @@ func TestAdapterIdentifiesItsProtocol(t *testing.T) {
 	t.Parallel()
 
 	var c event.Collector
-	if got := adapter.New(&c).ProtocolID(); got != "java/1.8.9" {
+	var o version.Outbox
+	if got := adapter.New(&c, &o).ProtocolID(); got != "java/1.8.9" {
 		t.Errorf("ProtocolID is %q, want java/1.8.9", got)
 	}
 }
@@ -282,7 +329,8 @@ func TestHandshakeAsksForLogin(t *testing.T) {
 	t.Parallel()
 
 	var c event.Collector
-	packet := adapter.New(&c).Handshake("example.test", 25565)
+	var o version.Outbox
+	packet := adapter.New(&c, &o).Handshake("example.test", 25565)
 
 	value, ok := packet.Value.(*gen.HandshakingServerboundSetProtocol)
 	if !ok {

@@ -24,6 +24,16 @@ type Handler interface {
 // Adapter translates one protocol's packets into client events.
 type Adapter interface {
 	ProtocolID() string
+	// LoginTerminalState is the state at which the client takes over from the
+	// shared login negotiator, or empty when the protocol has no state before
+	// play worth owning.
+	//
+	// Protocol 775 stops at configuration, because that is where a server
+	// sends the registries, tags, feature flags, and resource-pack offers a
+	// client needs, and a negotiator that ran through it would consume every
+	// one of them. Protocol 47 has no configuration state, so it stops
+	// nowhere and its login ends at success.
+	LoginTerminalState() protocol.State
 	// Handshake builds the packet that opens a connection and asks for
 	// login. It is version-owned because nothing about it is shared: the
 	// packet type, its protocol number, and its field types all differ, and
@@ -50,6 +60,9 @@ type WireProfile struct {
 	// a loop that reset a different collector would publish nothing a
 	// handler produced.
 	Collector *event.Collector
+	// Outbox is the batch-scoped outbox the adapter's handlers queue answers
+	// in. It belongs to the profile for the same reason the collector does.
+	Outbox *Outbox
 }
 
 // Validate checks the wire profile without performing network work.
@@ -79,6 +92,9 @@ func (p WireProfile) Validate() error {
 	}
 	if p.Collector == nil {
 		return fmt.Errorf("%w: missing event collector", ErrInvalidProfile)
+	}
+	if p.Outbox == nil {
+		return fmt.Errorf("%w: missing outbox", ErrInvalidProfile)
 	}
 
 	return nil

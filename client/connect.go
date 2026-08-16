@@ -137,7 +137,13 @@ func (c *Client) negotiate(ctx context.Context, stream *protocol.Stream, identit
 		return fmt.Errorf("write handshake: %w", err)
 	}
 
-	negotiator, err := login.NewNegotiator(identity.Authenticator)
+	// The client takes the connection over at the state the profile names,
+	// so configuration packets reach handlers instead of being consumed
+	// inside the login sequence. Protocol 47 names none and runs to play.
+	negotiator, err := login.NewNegotiator(
+		identity.Authenticator,
+		login.WithTerminalState(c.profile.Adapter.LoginTerminalState()),
+	)
 	if err != nil {
 		return fmt.Errorf("new negotiator: %w", err)
 	}
@@ -175,6 +181,7 @@ func (c *Client) startLoop(
 			newTableDispatcher(c.profile.Adapter.Handlers()),
 			batcher,
 			c.profile.Collector,
+			c.profile.Outbox,
 			c.profile.Readiness,
 			ready,
 		)

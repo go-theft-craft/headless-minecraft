@@ -15,35 +15,42 @@ import (
 	"github.com/go-theft-craft/headless-minecraft/version"
 )
 
-// Java1_8 returns the protocol 47 profile with its own collector.
-func Java1_8() version.WireProfile { return Java1_8With(new(event.Collector)) }
+// Java1_8 returns the protocol 47 profile with its own collector and outbox.
+func Java1_8() version.WireProfile {
+	return Java1_8With(new(event.Collector), new(version.Outbox))
+}
 
-// Java1_8With returns the protocol 47 profile bound to a caller's collector.
-// The client uses this form so its loop owns the collector it resets per
-// batch.
-func Java1_8With(collector *event.Collector) version.WireProfile {
+// Java1_8With returns the protocol 47 profile bound to a caller's collector
+// and outbox. The client uses this form so its loop owns the two it resets
+// per batch.
+func Java1_8With(collector *event.Collector, outbox *version.Outbox) version.WireProfile {
 	return version.WireProfile{
 		ID:        adapter1_8.ProtocolID,
 		Protocol:  gen1_8.Protocol(),
-		Adapter:   adapter1_8.New(collector),
+		Adapter:   adapter1_8.New(collector, outbox),
 		Limits:    defaultLimits(),
 		Readiness: adapter1_8.Readiness(),
 		Collector: collector,
+		Outbox:    outbox,
 	}
 }
 
 // Current returns the current stable Java profile, protocol 775.
-func Current() version.WireProfile { return CurrentWith(new(event.Collector)) }
+func Current() version.WireProfile {
+	return CurrentWith(new(event.Collector), new(version.Outbox))
+}
 
-// CurrentWith returns the protocol 775 profile bound to a collector.
-func CurrentWith(collector *event.Collector) version.WireProfile {
+// CurrentWith returns the protocol 775 profile bound to a collector and an
+// outbox.
+func CurrentWith(collector *event.Collector, outbox *version.Outbox) version.WireProfile {
 	return version.WireProfile{
 		ID:        adapter26_1.ProtocolID,
 		Protocol:  gen26_1.Protocol(),
-		Adapter:   adapter26_1.New(collector),
+		Adapter:   adapter26_1.New(collector, outbox),
 		Limits:    defaultLimits(),
 		Readiness: adapter26_1.Readiness(),
 		Collector: collector,
+		Outbox:    outbox,
 	}
 }
 

@@ -25,14 +25,24 @@ const BundleDelimiter = "bundle_delimiter"
 // ProtocolID names the profile this adapter translates for.
 const ProtocolID = "java/26.1"
 
-type adapter struct{ collector *event.Collector }
+type adapter struct {
+	collector *event.Collector
+	outbox    *version.Outbox
+}
 
-// New returns an adapter that appends to the given collector.
-func New(collector *event.Collector) version.Adapter {
-	return adapter{collector: collector}
+// New returns an adapter that appends to the given collector and queues its
+// answers in the given outbox.
+func New(collector *event.Collector, outbox *version.Outbox) version.Adapter {
+	return adapter{collector: collector, outbox: outbox}
 }
 
 func (adapter) ProtocolID() string { return ProtocolID }
+
+// LoginTerminalState is configuration: the client takes the connection over
+// from the login negotiator there, so the registries, tags, feature flags,
+// and resource-pack offers a server sends in configuration reach handlers
+// instead of being consumed inside the login sequence.
+func (adapter) LoginTerminalState() protocol.State { return gen.StateConfiguration }
 
 // Handshake asks for login: next state 2.
 func (adapter) Handshake(host string, port uint16) protocol.Packet {

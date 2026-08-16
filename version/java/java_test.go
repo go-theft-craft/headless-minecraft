@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/go-theft-craft/headless-minecraft/event"
+	"github.com/go-theft-craft/headless-minecraft/version"
 	"github.com/go-theft-craft/headless-minecraft/version/java"
 )
 
@@ -48,7 +49,8 @@ func TestProfilesBindTheCallersCollector(t *testing.T) {
 	// The loop resets one collector per batch, so the adapter has to append
 	// to the collector the loop owns, not one the profile made.
 	var c event.Collector
-	p := java.Java1_8With(&c)
+	var o version.Outbox
+	p := java.Java1_8With(&c, &o)
 
 	handler, ok := p.Adapter.Handlers()["kick_disconnect"]
 	if !ok {

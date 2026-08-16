@@ -32,7 +32,8 @@ func TestAdapterIdentifiesItsProtocol(t *testing.T) {
 	t.Parallel()
 
 	var c event.Collector
-	if got := adapter.New(&c).ProtocolID(); got != "java/26.1" {
+	var o version.Outbox
+	if got := adapter.New(&c, &o).ProtocolID(); got != "java/26.1" {
 		t.Errorf("ProtocolID is %q, want java/26.1", got)
 	}
 }
@@ -183,7 +184,8 @@ func TestEverySessionPacketHasAHandler(t *testing.T) {
 	}
 
 	var c event.Collector
-	handlers := adapter.New(&c).Handlers()
+	var o version.Outbox
+	handlers := adapter.New(&c, &o).Handlers()
 	for _, name := range want {
 		if _, ok := handlers[name]; !ok {
 			t.Errorf("no handler registered for %q", name)
@@ -195,7 +197,8 @@ func TestHandshakeAsksForLogin(t *testing.T) {
 	t.Parallel()
 
 	var c event.Collector
-	packet := adapter.New(&c).Handshake("example.test", 25565)
+	var o version.Outbox
+	packet := adapter.New(&c, &o).Handshake("example.test", 25565)
 
 	value, ok := packet.Value.(*gen.HandshakingServerboundSetProtocol)
 	if !ok {

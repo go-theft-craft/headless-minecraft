@@ -72,6 +72,7 @@ func (c *Client) runLoop(
 	d dispatcher,
 	batcher *version.Batcher,
 	collector *event.Collector,
+	outbox *version.Outbox,
 	readiness version.ReadinessRule,
 	ready chan<- version.ReadyState,
 ) error {
@@ -99,6 +100,7 @@ func (c *Client) runLoop(
 		}
 
 		collector.Reset()
+		_ = outbox.Drain()
 
 		for _, p := range batch.Packets {
 			if d != nil {
@@ -114,15 +116,20 @@ func (c *Client) runLoop(
 			})
 		}
 
+		// Handlers answer through the outbox rather than writing: keepalives
+		// for the whole session, and the two questions a configuration server
+		// stops on. They go out before the readiness reply, in the order they
+		// were queued.
+		if err := c.send(ctx, w, collector, outbox.Drain()); err != nil {
+			return err
+		}
+
 		state, reply, err := readiness.Observe(batch)
 		if err != nil {
 			return err
 		}
-		for _, p := range reply {
-			if err := w.Write(ctx, p); err != nil {
-				return fmt.Errorf("write readiness reply: %w", err)
-			}
-			event.Emit(collector, event.PacketSent{State: string(p.State), Packet: p.Name, ID: p.ID})
+		if err := c.send(ctx, w, collector, reply); err != nil {
+			return err
 		}
 
 		// Publish before signalling ready, so a subscriber that was waiting
@@ -139,6 +146,23 @@ func (c *Client) runLoop(
 			}
 		}
 	}
+}
+
+// send writes one batch's answers and reports each as a sent packet.
+func (c *Client) send(
+	ctx context.Context,
+	w sender,
+	collector *event.Collector,
+	packets []protocol.Packet,
+) error {
+	for _, p := range packets {
+		if err := w.Write(ctx, p); err != nil {
+			return fmt.Errorf("write %s: %w", p.Name, err)
+		}
+		event.Emit(collector, event.PacketSent{State: string(p.State), Packet: p.Name, ID: p.ID})
+	}
+
+	return nil
 }
 
 // publishReady announces the one point in a connection where the server will

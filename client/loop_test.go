@@ -102,6 +102,7 @@ type harness struct {
 	sender    *recordingSender
 	batcher   *version.Batcher
 	collector *event.Collector
+	outbox    *version.Outbox
 	ready     chan version.ReadyState
 }
 
@@ -129,6 +130,7 @@ func newHarness(t *testing.T, delimiter string, limit int, names ...string) *har
 		sender:    &recordingSender{},
 		batcher:   batcher,
 		collector: new(event.Collector),
+		outbox:    new(version.Outbox),
 		ready:     make(chan version.ReadyState, 1),
 	}
 }
@@ -137,7 +139,7 @@ func newHarness(t *testing.T, delimiter string, limit int, names ...string) *har
 // tolerate, because a client with no registered handlers is a valid client.
 func (h *harness) run(ctx context.Context, rule version.ReadinessRule) error {
 	return h.client.runLoop(
-		ctx, h.receiver, h.sender, nil, h.batcher, h.collector, rule, h.ready,
+		ctx, h.receiver, h.sender, nil, h.batcher, h.collector, h.outbox, rule, h.ready,
 	)
 }
 
@@ -238,7 +240,8 @@ func TestLoopReturnsContextErrorOnCancellation(t *testing.T) {
 	// A receiver that blocks until the context ends, so cancellation is
 	// observed mid-read rather than after EOF.
 	err := h.client.runLoop(
-		ctx, blockingReceiver{}, h.sender, nil, h.batcher, h.collector, &countingReadiness{}, h.ready,
+		ctx, blockingReceiver{}, h.sender, nil, h.batcher, h.collector, h.outbox,
+		&countingReadiness{}, h.ready,
 	)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("got %v, want context.Canceled", err)
@@ -317,7 +320,7 @@ func TestAFailedReplyWriteStopsTheLoop(t *testing.T) {
 
 	err := h.client.runLoop(
 		t.Context(), h.receiver, failingSender{err: sentinel}, nil,
-		h.batcher, h.collector, &countingReadiness{}, h.ready,
+		h.batcher, h.collector, h.outbox, &countingReadiness{}, h.ready,
 	)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("got %v, want the write error", err)
@@ -345,7 +348,7 @@ func TestDispatcherSeesEveryPacketInWireOrder(t *testing.T) {
 	err := h.client.runLoop(
 		t.Context(), h.receiver, h.sender,
 		newTableDispatcher(map[string]version.Handler{"keep_alive": handler}),
-		h.batcher, h.collector, &countingReadiness{}, h.ready,
+		h.batcher, h.collector, h.outbox, &countingReadiness{}, h.ready,
 	)
 	if err != nil {
 		t.Fatalf("runLoop: %v", err)
@@ -367,7 +370,7 @@ func TestAFailingHandlerStopsTheLoop(t *testing.T) {
 	err := h.client.runLoop(
 		t.Context(), h.receiver, h.sender,
 		newTableDispatcher(map[string]version.Handler{"keep_alive": failingHandler{err: sentinel}}),
-		h.batcher, h.collector, &countingReadiness{}, h.ready,
+		h.batcher, h.collector, h.outbox, &countingReadiness{}, h.ready,
 	)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("got %v, want the handler's error", err)
@@ -391,5 +394,118 @@ func TestReadyIsNotSignalledTwice(t *testing.T) {
 	}
 	if len(h.ready) != 1 {
 		t.Errorf("ready channel holds %d states, want 1", len(h.ready))
+	}
+}
+
+// queueingHandler stands in for an adapter handler that answers.
+type queueingHandler struct {
+	outbox *version.Outbox
+	answer string
+}
+
+func (h queueingHandler) Handle(context.Context, protocol.Packet) error {
+	h.outbox.Add(protocol.Packet{Name: h.answer, State: "play"})
+
+	return nil
+}
+
+func TestHandlerAnswersAreWrittenAndReported(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t, "", 16, "keep_alive")
+	sub, _ := h.client.events.subscribe(event.DomainRaw, 16)
+
+	err := h.client.runLoop(
+		t.Context(), h.receiver, h.sender,
+		newTableDispatcher(map[string]version.Handler{
+			"keep_alive": queueingHandler{outbox: h.outbox, answer: "keep_alive"},
+		}),
+		h.batcher, h.collector, h.outbox, &countingReadiness{}, h.ready,
+	)
+	if err != nil {
+		t.Fatalf("runLoop: %v", err)
+	}
+	_ = sub.Close()
+
+	if len(h.sender.sent) != 1 || h.sender.sent[0].Name != "keep_alive" {
+		t.Fatalf("sent %v, want the handler's answer", h.sender.sent)
+	}
+
+	var reported int
+	for e := range sub.C() {
+		if packet, ok := e.(event.PacketSent); ok && packet.Packet == "keep_alive" {
+			reported++
+		}
+	}
+	if reported != 1 {
+		t.Errorf("the answer was reported %d times as a sent packet, want 1", reported)
+	}
+}
+
+func TestHandlerAnswersGoOutBeforeTheReadinessReply(t *testing.T) {
+	t.Parallel()
+
+	// One batch, one handler answer, and a readiness reply. The answer to
+	// what the server asked comes first; the readiness reply is this client
+	// moving on.
+	h := newHarness(t, "", 16, "position")
+
+	err := h.client.runLoop(
+		t.Context(), h.receiver, h.sender,
+		newTableDispatcher(map[string]version.Handler{
+			"position": queueingHandler{outbox: h.outbox, answer: "answer"},
+		}),
+		h.batcher, h.collector, h.outbox, &countingReadiness{}, h.ready,
+	)
+	if err != nil {
+		t.Fatalf("runLoop: %v", err)
+	}
+
+	if len(h.sender.sent) != 2 {
+		t.Fatalf("sent %v, want the answer and the readiness reply", h.sender.sent)
+	}
+	if h.sender.sent[0].Name != "answer" || h.sender.sent[1].Name != "teleport_confirm" {
+		t.Errorf("sent %v in the wrong order", h.sender.sent)
+	}
+}
+
+func TestAnAnswerFromOneBatchIsNotResentByTheNext(t *testing.T) {
+	t.Parallel()
+
+	// The outbox is scoped to one batch. A stale answer resent on the next
+	// batch would be a duplicate keepalive, or worse, a duplicate action.
+	h := newHarness(t, "", 16, "keep_alive", "chat", "chat")
+
+	err := h.client.runLoop(
+		t.Context(), h.receiver, h.sender,
+		newTableDispatcher(map[string]version.Handler{
+			"keep_alive": queueingHandler{outbox: h.outbox, answer: "keep_alive"},
+		}),
+		h.batcher, h.collector, h.outbox, &countingReadiness{}, h.ready,
+	)
+	if err != nil {
+		t.Fatalf("runLoop: %v", err)
+	}
+
+	if len(h.sender.sent) != 1 {
+		t.Errorf("sent %v, want exactly one answer across three batches", h.sender.sent)
+	}
+}
+
+func TestAFailedAnswerWriteStopsTheLoop(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t, "", 16, "keep_alive")
+	sentinel := errors.New("connection gone")
+
+	err := h.client.runLoop(
+		t.Context(), h.receiver, failingSender{err: sentinel},
+		newTableDispatcher(map[string]version.Handler{
+			"keep_alive": queueingHandler{outbox: h.outbox, answer: "keep_alive"},
+		}),
+		h.batcher, h.collector, h.outbox, &countingReadiness{}, h.ready,
+	)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("got %v, want the write error", err)
 	}
 }

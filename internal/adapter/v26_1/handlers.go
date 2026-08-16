@@ -41,24 +41,85 @@ func (a adapter) handlers() map[string]handlerFunc {
 		"feature_flags":          a.featureFlags,
 		"custom_report_details":  a.reportDetails,
 		"low_disk_space_warning": a.lowDiskSpace,
+		"select_known_packs":     a.selectKnownPacks,
+		"finish_configuration":   a.finishConfiguration,
 	}
 }
 
+// keepAlive answers in whichever state the keepalive arrived in. A server
+// drops a client that stays silent, and configuration is long enough on a
+// modded server for that to happen before play is ever reached.
 func (a adapter) keepAlive(_ context.Context, p protocol.Packet) error {
 	var id int64
+	var answer protocol.Packet
 	switch value := p.Value.(type) {
 	case *gen.PlayClientboundKeepAlive:
 		id = value.KeepAliveID
+		reply := &gen.PlayServerboundKeepAlive{KeepAliveID: id}
+		answer = serverbound(gen.StatePlay, "keep_alive", reply.PacketID(), reply)
 	case *gen.ConfigurationClientboundKeepAlive:
 		id = value.KeepAliveID
+		reply := &gen.ConfigurationServerboundKeepAlive{KeepAliveID: id}
+		answer = serverbound(gen.StateConfiguration, "keep_alive", reply.PacketID(), reply)
 	default:
 		return nil
 	}
-	// Elapsed stays zero: measuring it needs the send time of the answer,
-	// which the loop owns, not the adapter.
+
+	a.outbox.Add(answer)
+	// Elapsed stays zero: measuring it needs the round trip, which the loop
+	// owns, not the adapter.
 	event.Emit(a.collector, event.KeepAlivePonged{ID: id})
 
 	return nil
+}
+
+// selectKnownPacks answers the question a 26.1 server stops on.
+//
+// No registry data and no finish handshake arrive until the client states
+// which packs it already holds, and a connection that never answers looks
+// perfectly healthy while it waits forever — the defect M4's live check
+// found. The list is empty, which is the honest answer for a headless client
+// that ships no pack data, and it is what the shared login exchange answers
+// too.
+func (a adapter) selectKnownPacks(_ context.Context, p protocol.Packet) error {
+	if _, ok := p.Value.(*gen.ConfigurationClientboundSelectKnownPacks); !ok {
+		return nil
+	}
+
+	answer := &gen.ConfigurationServerboundSelectKnownPacks{}
+	a.outbox.Add(serverbound(
+		gen.StateConfiguration, "select_known_packs", answer.PacketID(), answer,
+	))
+
+	return nil
+}
+
+// finishConfiguration acknowledges the end of configuration, which is what
+// moves the connection into play.
+func (a adapter) finishConfiguration(_ context.Context, p protocol.Packet) error {
+	if _, ok := p.Value.(*gen.ConfigurationClientboundFinishConfiguration); !ok {
+		return nil
+	}
+
+	answer := &gen.ConfigurationServerboundFinishConfiguration{}
+	a.outbox.Add(serverbound(
+		gen.StateConfiguration, "finish_configuration", answer.PacketID(), answer,
+	))
+
+	return nil
+}
+
+// serverbound addresses one answer. Every field matters: the state and
+// direction pick the codec, and the name is what a capture, a log, or a
+// PacketSent event identifies it by.
+func serverbound(state protocol.State, name string, id int32, value any) protocol.Packet {
+	return protocol.Packet{
+		State:     state,
+		Direction: protocol.DirectionServerbound,
+		ID:        id,
+		Name:      name,
+		Value:     value,
+	}
 }
 
 func (a adapter) customPayload(_ context.Context, p protocol.Packet) error {
