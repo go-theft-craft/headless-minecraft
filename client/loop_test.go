@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-theft-craft/headless-minecraft/event"
 	"github.com/go-theft-craft/headless-minecraft/version"
+	"github.com/go-theft-craft/headless-minecraft/world"
 )
 
 // sliceReceiver replays packets and then returns io.EOF.
@@ -509,3 +510,102 @@ func TestAFailedAnswerWriteStopsTheLoop(t *testing.T) {
 		t.Fatalf("got %v, want the write error", err)
 	}
 }
+
+func TestEachBatchAdvancesTheWorldRevisionOnce(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t, "bundle", 16, "bundle", "a", "b", "bundle", "c")
+	w := world.New()
+	h.client.world = w
+
+	if err := h.run(t.Context(), &countingReadiness{}); err != nil {
+		t.Fatalf("runLoop: %v", err)
+	}
+
+	// One bundle plus one loose packet is two batches, not three packets.
+	if got := w.Snapshot().Revision; got != 2 {
+		t.Errorf("world revision is %d, want 2", got)
+	}
+}
+
+func TestEventsCarryTheRevisionThatProducedThem(t *testing.T) {
+	t.Parallel()
+
+	// A subscriber must be able to correlate an event with a snapshot. An
+	// event published before the bump would name a revision that does not
+	// yet exist.
+	h := newHarness(t, "", 16, "a", "b")
+	h.client.world = world.New()
+	sub, _ := h.client.events.subscribe(event.DomainRaw, 16)
+
+	if err := h.run(t.Context(), &countingReadiness{}); err != nil {
+		t.Fatalf("runLoop: %v", err)
+	}
+	_ = sub.Close()
+
+	var revisions []uint64
+	for e := range sub.C() {
+		if _, ok := e.(event.PacketReceived); ok {
+			revisions = append(revisions, e.Revision())
+		}
+	}
+
+	want := []uint64{1, 2}
+	if len(revisions) != len(want) {
+		t.Fatalf("published revisions %v, want %v", revisions, want)
+	}
+	for i := range want {
+		if revisions[i] != want[i] {
+			t.Fatalf("published revisions %v, want %v", revisions, want)
+		}
+	}
+}
+
+func TestAConfigurationBatchReachesTheWorld(t *testing.T) {
+	t.Parallel()
+
+	// Registry data arrives once, in configuration. A loop that started
+	// applying at play would drop it, and the failure would surface as an
+	// empty registry domain rather than as a wiring fault.
+	h := newHarness(t, "", 16)
+	h.receiver = &sliceReceiver{packets: []protocol.Packet{
+		{Name: "registry_data", State: "configuration", Direction: protocol.DirectionClientbound},
+	}}
+
+	w := world.New()
+	var seen []string
+	_ = w.Register(world.Func(func(ctx *world.Context, _ version.Batch, _ *event.Collector) error {
+		seen = append(seen, ctx.State)
+
+		return nil
+	}))
+	h.client.world = w
+
+	if err := h.run(t.Context(), &countingReadiness{}); err != nil {
+		t.Fatalf("runLoop: %v", err)
+	}
+
+	if len(seen) != 1 || seen[0] != "configuration" {
+		t.Errorf("the world saw batches in states %v, want one configuration batch", seen)
+	}
+}
+
+func TestAWorldErrorStopsTheLoop(t *testing.T) {
+	t.Parallel()
+
+	// A poisoned world can no longer describe the server's state, so the
+	// session ends rather than continuing to publish from it.
+	h := newHarness(t, "", 16, "a", "b")
+	w := world.New()
+	_ = w.Register(world.Func(func(*world.Context, version.Batch, *event.Collector) error {
+		return errWorldTest
+	}))
+	h.client.world = w
+
+	err := h.run(t.Context(), &countingReadiness{})
+	if !errors.Is(err, world.ErrWorldPoisoned) {
+		t.Fatalf("got %v, want ErrWorldPoisoned", err)
+	}
+}
+
+var errWorldTest = errors.New("reducer invariant broke")

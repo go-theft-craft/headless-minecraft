@@ -13,6 +13,7 @@ import (
 	"github.com/go-theft-craft/headless-minecraft/event"
 	"github.com/go-theft-craft/headless-minecraft/safety"
 	"github.com/go-theft-craft/headless-minecraft/version"
+	"github.com/go-theft-craft/headless-minecraft/world"
 )
 
 const (
@@ -39,6 +40,7 @@ type Client struct {
 	bundleLimit    int
 
 	events fanout
+	world  *world.World
 
 	mu         sync.Mutex
 	closed     bool
@@ -135,6 +137,33 @@ func WithBundleLimit(n int) Option {
 
 		return nil
 	}
+}
+
+// WithWorld installs the observed world state a connection maintains.
+//
+// Without one the client publishes events and keeps no state, which is what a
+// consumer that only watches traffic wants. With one, every batch is applied
+// to it before its events are published, so an event and the snapshot it
+// names describe the same instant.
+func WithWorld(w *world.World) Option {
+	return func(c *Client) error {
+		if w == nil {
+			return fmt.Errorf("%w: nil world", ErrInvalidClient)
+		}
+		c.world = w
+
+		return nil
+	}
+}
+
+// World returns the current observed state, or the zero snapshot when no
+// world is installed.
+func (c *Client) World() world.Snapshot {
+	if c.world == nil {
+		return world.Snapshot{}
+	}
+
+	return c.world.Snapshot()
 }
 
 // New validates a configuration and returns a client that has not connected.

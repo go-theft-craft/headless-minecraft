@@ -537,7 +537,7 @@ than only in a unit test.
 **Interfaces:**
 - Produces: `(*Client).World() world.Snapshot`, `WithWorld(*world.World) Option`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestEachBatchAdvancesTheWorldRevisionOnce(t *testing.T) {
@@ -567,9 +567,9 @@ func TestAWorldErrorStopsTheLoop(t *testing.T) { ... }
 
 Write the two sketched bodies in full.
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `runLoop`, apply the batch after dispatch and before publishing:
 
@@ -600,14 +600,29 @@ silently in Task 8.
 Add `World()` to `Client`, returning `c.world.Snapshot()`, and a zero snapshot
 when no world is installed.
 
-- [ ] **Step 4: Run and verify it passes**
+- [x] **Step 4: Run and verify it passes**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/ 
 git commit -m "feat(client): apply each batch to observed world state"
 ```
+
+**What executing this task changed, and why.**
+
+- **The loop stamps with what `Apply` returns**, rather than the world
+  stamping the collector. Same guarantee, one fewer method: see Task 1.
+- **A world is optional.** `WithWorld` installs one; without it the client
+  publishes events and keeps no state, which is what a consumer that only
+  watches traffic wants, and `World()` returns the zero snapshot rather than
+  panicking.
+- **The configuration wiring is asserted, and it holds.** A configuration
+  batch reaches the world with `Context.State` set to `configuration`, which
+  is what Task 8 needs. M6.3's configuration-ownership prerequisite is what
+  makes that true.
+- **A poisoned world stops the loop**, wrapped as `apply batch:` so the
+  session error says which stage failed.
 
 ---
 

@@ -13,6 +13,7 @@ import (
 	"github.com/go-theft-craft/headless-minecraft/event"
 	"github.com/go-theft-craft/headless-minecraft/safety"
 	"github.com/go-theft-craft/headless-minecraft/version"
+	"github.com/go-theft-craft/headless-minecraft/world"
 )
 
 // The real profiles arrive in Task 10. These stubs let construction be tested
@@ -232,5 +233,51 @@ func TestNewDoesNotAuthenticate(t *testing.T) {
 
 	if provider.calls != 0 {
 		t.Errorf("New authenticated %d times, want 0", provider.calls)
+	}
+}
+
+func TestWorldIsZeroWithoutOne(t *testing.T) {
+	t.Parallel()
+
+	bot, err := client.New(testOptions(t)...)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = bot.Close() }()
+
+	// A consumer that only watches traffic installs no world, and asking for
+	// one must not panic or lie.
+	if got := bot.World().Revision; got != 0 {
+		t.Errorf("a client with no world reports revision %d, want 0", got)
+	}
+}
+
+func TestWithWorldRejectsNil(t *testing.T) {
+	t.Parallel()
+
+	options := append(testOptions(t), client.WithWorld(nil))
+	if _, err := client.New(options...); !errors.Is(err, client.ErrInvalidClient) {
+		t.Fatalf("got %v, want ErrInvalidClient", err)
+	}
+}
+
+func TestWorldReportsTheInstalledWorld(t *testing.T) {
+	t.Parallel()
+
+	w := world.New()
+	var c event.Collector
+	if _, err := w.Apply(version.Batch{State: "play"}, &c); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	options := append(testOptions(t), client.WithWorld(w))
+	bot, err := client.New(options...)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = bot.Close() }()
+
+	if got := bot.World().Revision; got != 1 {
+		t.Errorf("client reports revision %d, want the world's 1", got)
 	}
 }

@@ -132,9 +132,20 @@ func (c *Client) runLoop(
 			return err
 		}
 
+		// The world is applied after the handlers, so a session event and a
+		// state event from one batch publish together, and before the
+		// publish, so every event names a revision that already exists.
+		revision := uint64(unrevised)
+		if c.world != nil {
+			revision, err = c.world.Apply(batch, collector)
+			if err != nil {
+				return fmt.Errorf("apply batch: %w", err)
+			}
+		}
+
 		// Publish before signalling ready, so a subscriber that was waiting
 		// on Connect has already seen everything the placing batch produced.
-		c.events.publish(collector.Events(unrevised))
+		c.events.publish(collector.Events(revision))
 
 		if state.Ready && !readySent {
 			readySent = true
