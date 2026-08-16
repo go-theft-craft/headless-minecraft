@@ -211,3 +211,154 @@ func TestPacketsInOneBundleApplyInWireOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestFiveMovementPacketsProduceOneEventShape(t *testing.T) {
+	t.Parallel()
+
+	// 775 has one more movement packet than 47 and the same one event.
+	w, events := script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundSpawnEntity{EntityID: 7, Type: 3, X: 10, Y: 20, Z: 30}),
+		},
+		[]protocol.Packet{play(&gen.PlayClientboundRelEntityMove{EntityID: 7, DX: 4096})},
+		[]protocol.Packet{play(&gen.PlayClientboundEntityLook{EntityID: 7, Yaw: 64})},
+		[]protocol.Packet{play(&gen.PlayClientboundEntityMoveLook{EntityID: 7, DY: 4096})},
+		[]protocol.Packet{play(&gen.PlayClientboundEntityTeleport{EntityID: 7, X: 1, Y: 2, Z: 3})},
+		[]protocol.Packet{play(&gen.PlayClientboundSyncEntityPosition{EntityID: 7, X: 5, Y: 6, Z: 7})},
+	)
+
+	var moves int
+	for _, e := range events {
+		if _, ok := e.(event.EntityMoved); ok {
+			moves++
+		}
+	}
+	if moves != 6 {
+		t.Errorf("published %d entity.moved events, want one per movement packet", moves)
+	}
+
+	entity, ok := w.Snapshot().Entities.Get(7)
+	if !ok {
+		t.Fatal("the entity is not tracked")
+	}
+	if entity.X != 5 || entity.Y != 6 || entity.Z != 7 {
+		t.Errorf("entity is at %v,%v,%v, want the synced 5,6,7", entity.X, entity.Y, entity.Z)
+	}
+}
+
+func TestRelativeMovesUseThisProtocolsUnits(t *testing.T) {
+	t.Parallel()
+
+	// 4096 sixteenths is one block in 775, where one block was 32 in 47. The
+	// snapshot is in blocks either way.
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundSpawnEntity{EntityID: 7, X: 10}),
+		},
+		[]protocol.Packet{play(&gen.PlayClientboundRelEntityMove{EntityID: 7, DX: 4096})},
+	)
+
+	entity, _ := w.Snapshot().Entities.Get(7)
+	if entity.X != 11 {
+		t.Errorf("entity x is %v, want one block past 10", entity.X)
+	}
+}
+
+func TestMetadataKeepsTheTypeNameTheServerSent(t *testing.T) {
+	t.Parallel()
+
+	// 775 names its metadata types where 47 numbers them, and an index this
+	// client has no name for is kept either way.
+	w, _ := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundEntityMetadata{EntityID: 7, Metadata: []gen.PlayClientboundEntityMetadataMetadataItem{
+			{Key: 0, Type: "byte"},
+			{Key: 240, Type: "something_a_mod_added"},
+		}}),
+	})
+
+	entity, _ := w.Snapshot().Entities.Get(7)
+	if len(entity.Metadata) != 2 {
+		t.Fatalf("entity holds %d metadata entries, want both", len(entity.Metadata))
+	}
+	// 47 terminates metadata at 0x7F and 775 at 0xFF, so this index cannot
+	// exist on 47 and must survive on 775.
+	if entity.Metadata[240].Type != "something_a_mod_added" {
+		t.Errorf("index 240 has type %q", entity.Metadata[240].Type)
+	}
+}
+
+func TestPassengersAndVehiclesAreBothRecorded(t *testing.T) {
+	t.Parallel()
+
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundSetPassengers{EntityID: 7, Passengers: []int32{8, 9}}),
+		},
+	)
+
+	vehicle, _ := w.Snapshot().Entities.Get(7)
+	if len(vehicle.Passengers) != 2 {
+		t.Fatalf("vehicle carries %v", vehicle.Passengers)
+	}
+	rider, ok := w.Snapshot().Entities.Get(8)
+	if !ok || rider.Vehicle != 7 {
+		t.Errorf("rider 8 reports vehicle %d, want 7", rider.Vehicle)
+	}
+
+	// Dismounting clears both directions.
+	w, _ = script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundSetPassengers{EntityID: 7, Passengers: []int32{8}}),
+		},
+		[]protocol.Packet{play(&gen.PlayClientboundSetPassengers{EntityID: 7})},
+	)
+	rider, _ = w.Snapshot().Entities.Get(8)
+	if rider.Vehicle != 0 {
+		t.Errorf("a dismounted rider still reports vehicle %d", rider.Vehicle)
+	}
+}
+
+func TestDamageCarriesItsSourceOn775(t *testing.T) {
+	t.Parallel()
+
+	// Protocol 47 reports damage as an entity status with no source; 775
+	// says what did it, and the same event carries both.
+	_, events := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundDamageEvent{EntityID: 7, SourceTypeID: 11}),
+	})
+
+	last := events[len(events)-1].(event.EntityDamaged)
+	if last.EntityID != 7 || last.SourceTypeID != 11 {
+		t.Errorf("damage is %+v", last)
+	}
+}
+
+func TestSnapshotEntitiesDoNotAliasTheStore(t *testing.T) {
+	t.Parallel()
+
+	w, _ := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundEntityMetadata{EntityID: 7, Metadata: []gen.PlayClientboundEntityMetadataMetadataItem{
+			{Key: 1, Type: "byte"},
+		}}),
+	})
+
+	snapshot := w.Snapshot()
+	delete(snapshot.Entities.Tracked, 7)
+	entity := snapshot.Entities.Tracked[7]
+	_ = entity
+
+	if _, ok := w.Snapshot().Entities.Get(7); !ok {
+		t.Fatal("deleting from a snapshot reached the world")
+	}
+}

@@ -15,6 +15,8 @@ type Snapshot struct {
 	Revision uint64
 	// Player is the local player.
 	Player PlayerView
+	// Entities is every other entity the client is tracking.
+	Entities EntitiesView
 }
 
 // snapshot builds the snapshot. It runs under the world's lock, held by the
@@ -23,5 +25,6 @@ func (w *World) snapshot() Snapshot {
 	return Snapshot{
 		Revision: w.revision,
 		Player:   w.player.view(),
+		Entities: w.entities.view(),
 	}
 }

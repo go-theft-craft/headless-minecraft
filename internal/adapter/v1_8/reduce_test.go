@@ -322,3 +322,176 @@ func TestHealthExperienceAndAbilitiesAreRecorded(t *testing.T) {
 		t.Errorf("abilities are %+v", player)
 	}
 }
+
+func TestFourMovementPacketsProduceOneEventShape(t *testing.T) {
+	t.Parallel()
+
+	// The taxonomy's motivating case: a subscriber written against
+	// entity.moved keeps working whichever packet carried the fact.
+	w, events := script(
+		t,
+		[]protocol.Packet{
+			login(1),
+			play(&gen.PlayClientboundSpawnEntityLiving{EntityID: 7, Type: 54, X: 320, Y: 640, Z: 960}),
+		},
+		[]protocol.Packet{play(&gen.PlayClientboundRelEntityMove{EntityID: 7, DX: 32})},
+		[]protocol.Packet{play(&gen.PlayClientboundEntityLook{EntityID: 7, Yaw: 64})},
+		[]protocol.Packet{play(&gen.PlayClientboundEntityMoveLook{EntityID: 7, DY: 32})},
+		[]protocol.Packet{play(&gen.PlayClientboundEntityTeleport{EntityID: 7, X: 640, Y: 640, Z: 960})},
+	)
+
+	var moves int
+	for _, e := range events {
+		if _, ok := e.(event.EntityMoved); ok {
+			moves++
+		}
+	}
+	// One per packet, and the move-look packet moves and looks.
+	if moves != 5 {
+		t.Errorf("published %d entity.moved events, want one per movement packet", moves)
+	}
+
+	entity, ok := w.Snapshot().Entities.Get(7)
+	if !ok {
+		t.Fatal("the entity is not tracked")
+	}
+	// The teleport is absolute, so it wins over everything relative before it.
+	if entity.X != 20 || entity.Y != 20 || entity.Z != 30 {
+		t.Errorf("entity is at %v,%v,%v, want the teleported 20,20,30", entity.X, entity.Y, entity.Z)
+	}
+}
+
+func TestRelativeMovesAccumulateAgainstTheStoredPosition(t *testing.T) {
+	t.Parallel()
+
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			login(1),
+			play(&gen.PlayClientboundSpawnEntityLiving{EntityID: 7, X: 320, Y: 0, Z: 0}),
+		},
+		[]protocol.Packet{play(&gen.PlayClientboundRelEntityMove{EntityID: 7, DX: 32})},
+		[]protocol.Packet{play(&gen.PlayClientboundRelEntityMove{EntityID: 7, DX: 32})},
+	)
+
+	entity, _ := w.Snapshot().Entities.Get(7)
+	if entity.X != 12 {
+		t.Errorf("entity x is %v, want 10 plus two one-block steps", entity.X)
+	}
+}
+
+func TestMetadataIsMergedByIndexAndKeepsUnknownOnes(t *testing.T) {
+	t.Parallel()
+
+	// An index this client has no name for is the whole point on a modded
+	// server, and a packet carrying one index must not clear the others.
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			login(1),
+			play(&gen.PlayClientboundEntityMetadata{EntityID: 7, Metadata: gen.EntityMetadata{
+				{AnonymousBitField1: gen.EntityMetadataItemAnonymousBitField1Bits{Key: 0, Type: 0}},
+				{AnonymousBitField1: gen.EntityMetadataItemAnonymousBitField1Bits{Key: 99, Type: 3}},
+			}}),
+		},
+		[]protocol.Packet{
+			play(&gen.PlayClientboundEntityMetadata{EntityID: 7, Metadata: gen.EntityMetadata{
+				{AnonymousBitField1: gen.EntityMetadataItemAnonymousBitField1Bits{Key: 0, Type: 0}},
+			}}),
+		},
+	)
+
+	entity, _ := w.Snapshot().Entities.Get(7)
+	if len(entity.Metadata) != 2 {
+		t.Fatalf("entity holds %d metadata entries, want both indices", len(entity.Metadata))
+	}
+	unknown, ok := entity.Metadata[99]
+	if !ok {
+		t.Fatal("an unknown metadata index was dropped")
+	}
+	if unknown.Type != "float" {
+		t.Errorf("index 99 has type %q, want the type the server sent", unknown.Type)
+	}
+}
+
+func TestDestroyReleasesEverythingAboutAnEntity(t *testing.T) {
+	t.Parallel()
+
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			login(1),
+			play(&gen.PlayClientboundSpawnEntityLiving{EntityID: 7}),
+			play(&gen.PlayClientboundEntityMetadata{EntityID: 7, Metadata: gen.EntityMetadata{
+				{AnonymousBitField1: gen.EntityMetadataItemAnonymousBitField1Bits{Key: 1}},
+			}}),
+		},
+		[]protocol.Packet{play(&gen.PlayClientboundEntityDestroy{EntityIds: []int32{7}})},
+	)
+
+	if _, ok := w.Snapshot().Entities.Get(7); ok {
+		t.Error("a destroyed entity is still tracked; a long session would grow without bound")
+	}
+}
+
+func TestAPacketForAnUnknownEntityIsNotAnError(t *testing.T) {
+	t.Parallel()
+
+	// Packets arrive for entities this client never saw spawn — after a
+	// chunk unload, for instance. What the server said is kept rather than
+	// dropped, and the session survives.
+	w, _ := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundEntityTeleport{EntityID: 404, X: 320, Y: 320, Z: 320}),
+	})
+
+	if _, err := w.SnapshotErr(); err != nil {
+		t.Fatalf("an unknown entity poisoned the world: %v", err)
+	}
+	entity, ok := w.Snapshot().Entities.Get(404)
+	if !ok || entity.X != 10 {
+		t.Errorf("the unknown entity was dropped rather than tracked: %+v", entity)
+	}
+}
+
+func TestTheLocalPlayerIsNotAnEntity(t *testing.T) {
+	t.Parallel()
+
+	// The boundary in the other direction from the player test: an effect
+	// naming the local player must not create an entity for it.
+	w, _ := script(t, []protocol.Packet{
+		login(42),
+		play(&gen.PlayClientboundEntityEffect{EntityID: 42, EffectID: 1, Duration: 100}),
+		play(&gen.PlayClientboundEntityEffect{EntityID: 7, EffectID: 1, Duration: 100}),
+	})
+
+	if _, ok := w.Snapshot().Entities.Get(42); ok {
+		t.Error("the local player is tracked as an entity too")
+	}
+	if _, ok := w.Snapshot().Entities.Get(7); !ok {
+		t.Error("another entity's effect did not track it")
+	}
+}
+
+func TestCollectingAnItemReleasesIt(t *testing.T) {
+	t.Parallel()
+
+	w, events := script(
+		t,
+		[]protocol.Packet{
+			login(1),
+			play(&gen.PlayClientboundSpawnEntity{EntityID: 7, Type: 2}),
+		},
+		[]protocol.Packet{
+			play(&gen.PlayClientboundCollect{CollectedEntityID: 7, CollectorEntityID: 42}),
+		},
+	)
+
+	if _, ok := w.Snapshot().Entities.Get(7); ok {
+		t.Error("a collected item is still tracked")
+	}
+	last := events[len(events)-1].(event.EntityItemCollected)
+	if last.CollectedID != 7 || last.CollectorID != 42 {
+		t.Errorf("collection is %+v", last)
+	}
+}

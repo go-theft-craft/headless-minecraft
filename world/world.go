@@ -81,7 +81,8 @@ type World struct {
 	// Login packet that supplies it arrives once.
 	local LocalRef
 
-	player *Player
+	player   *Player
+	entities *Entities
 }
 
 // New returns an empty world with no reducers.
@@ -90,13 +91,17 @@ type World struct {
 // builds the reducers that fill them, because decoding is the only part of
 // observed state that differs between protocols.
 func New() *World {
-	return &World{player: newPlayer()}
+	return &World{player: newPlayer(), entities: newEntities()}
 }
 
 // Player returns the local player's store, for a version adapter to write
 // through. A caller reading state wants Snapshot instead: this is not
 // synchronised on its own.
 func (w *World) Player() *Player { return w.player }
+
+// Entities returns the tracked-entity store, for a version adapter to write
+// through.
+func (w *World) Entities() *Entities { return w.entities }
 
 // Register adds a reducer. It must be called before the first Apply, because
 // a reducer that missed earlier batches holds state nobody can reconstruct.

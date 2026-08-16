@@ -1,6 +1,8 @@
 package v1_8
 
 import (
+	"strconv"
+
 	protocol "github.com/go-theft-craft/minecraft-protocol"
 	gen "github.com/go-theft-craft/minecraft-protocol/generated/java/v1_8"
 
@@ -23,6 +25,7 @@ import (
 func Reducers(w *world.World) []world.Reducer {
 	return []world.Reducer{
 		playerReducer(w.Player()),
+		entityReducer(w.Entities()),
 	}
 }
 
@@ -117,3 +120,188 @@ func relativeFlags(flags int8) world.Relative {
 		Pitch: flags&0x10 != 0,
 	}
 }
+
+// Protocol 47 sends entity positions as fixed-point integers with five
+// fractional bits, and relative moves in the same units. Dividing here rather
+// than in the world is deliberate: 775 sends doubles and sixteenths, and the
+// world takes blocks.
+const (
+	fixedPoint47 = 32.0
+	deltaScale47 = 32.0
+	// Yaw and pitch are one byte covering a full turn.
+	angleScale47 = 360.0 / 256.0
+)
+
+// entityReducer decodes the packets that describe every entity except the
+// local player.
+func entityReducer(entities *world.Entities) world.Func {
+	return func(ctx *world.Context, batch version.Batch, c *event.Collector) error {
+		for _, packet := range batch.Packets {
+			reduceEntityPacket(ctx, entities, packet, c)
+		}
+
+		return nil
+	}
+}
+
+// by arm would hide the one thing worth seeing: which packets feed which fact.
+//
+//nolint:gocyclo // One switch over one protocol's entity packets. Splitting it
+func reduceEntityPacket(
+	ctx *world.Context,
+	entities *world.Entities,
+	packet protocol.Packet,
+	c *event.Collector,
+) {
+	switch value := packet.Value.(type) {
+	case *gen.PlayClientboundSpawnEntity:
+		entities.Spawned(c, value.EntityID, "", objectType(value.Type),
+			block47(value.X), block47(value.Y), block47(value.Z),
+			angle47(value.Yaw), angle47(value.Pitch))
+
+	case *gen.PlayClientboundSpawnEntityLiving:
+		entities.Spawned(c, value.EntityID, "", mobType(value.Type),
+			block47(value.X), block47(value.Y), block47(value.Z),
+			angle47(value.Yaw), angle47(value.Pitch))
+		entities.MetadataChanged(c, value.EntityID, metadata47(value.Metadata))
+		entities.VelocityChanged(c, value.EntityID, value.VelocityX, value.VelocityY, value.VelocityZ)
+
+	case *gen.PlayClientboundNamedEntitySpawn:
+		entities.Spawned(c, value.EntityID, value.PlayerUUID.String(), "minecraft:player",
+			block47(value.X), block47(value.Y), block47(value.Z),
+			angle47(value.Yaw), angle47(value.Pitch))
+		entities.MetadataChanged(c, value.EntityID, metadata47(value.Metadata))
+
+	case *gen.PlayClientboundEntityDestroy:
+		for _, id := range value.EntityIds {
+			entities.Removed(c, id)
+		}
+
+	// Four packets, one EntityMoved. This is the taxonomy's motivating case.
+	case *gen.PlayClientboundRelEntityMove:
+		entities.MovedBy(c, value.EntityID,
+			delta47(value.DX), delta47(value.DY), delta47(value.DZ), value.OnGround)
+
+	case *gen.PlayClientboundEntityMoveLook:
+		entities.MovedBy(c, value.EntityID,
+			delta47(value.DX), delta47(value.DY), delta47(value.DZ), value.OnGround)
+		entities.Looked(c, value.EntityID, angle47(value.Yaw), angle47(value.Pitch), value.OnGround)
+
+	case *gen.PlayClientboundEntityLook:
+		entities.Looked(c, value.EntityID, angle47(value.Yaw), angle47(value.Pitch), value.OnGround)
+
+	case *gen.PlayClientboundEntityTeleport:
+		entities.Moved(c, value.EntityID,
+			block47(value.X), block47(value.Y), block47(value.Z),
+			angle47(value.Yaw), angle47(value.Pitch), value.OnGround)
+
+	case *gen.PlayClientboundEntityHeadRotation:
+		entities.HeadLooked(c, value.EntityID, angle47(value.HeadYaw))
+
+	case *gen.PlayClientboundEntityMetadata:
+		entities.MetadataChanged(c, value.EntityID, metadata47(value.Metadata))
+
+	case *gen.PlayClientboundEntityEquipment:
+		entities.EquipmentChanged(c, value.EntityID, map[int32]any{int32(value.Slot): value.Item})
+
+	case *gen.PlayClientboundUpdateAttributes:
+		attributes := make([]world.Attribute, 0, len(value.Properties))
+		for _, property := range value.Properties {
+			attributes = append(attributes, world.Attribute{Key: property.Key, Value: property.Value})
+		}
+		entities.AttributesChanged(c, value.EntityID, attributes)
+
+	case *gen.PlayClientboundEntityVelocity:
+		entities.VelocityChanged(c, value.EntityID, value.VelocityX, value.VelocityY, value.VelocityZ)
+
+	case *gen.PlayClientboundAttachEntity:
+		entities.Attached(c, value.EntityID, value.VehicleID)
+
+	case *gen.PlayClientboundEntityStatus:
+		// Protocol 47 has no damage packet: hurt is one of many entity
+		// statuses, and the source is not sent.
+		if value.EntityStatus == statusHurt {
+			entities.Damaged(c, value.EntityID, 0)
+		}
+
+	case *gen.PlayClientboundAnimation:
+		entities.Animated(c, value.EntityID, value.Animation)
+
+	case *gen.PlayClientboundCollect:
+		entities.ItemCollected(c, value.CollectedEntityID, value.CollectorEntityID, 0)
+
+	case *gen.PlayClientboundEntityEffect:
+		if !isLocal(ctx, value.EntityID) {
+			entities.EffectApplied(c, value.EntityID,
+				int32(value.EffectID), int32(value.Amplifier), value.Duration)
+		}
+
+	case *gen.PlayClientboundRemoveEntityEffect:
+		if !isLocal(ctx, value.EntityID) {
+			entities.EffectRemoved(c, value.EntityID, int32(value.EffectID))
+		}
+	}
+}
+
+// statusHurt is the entity status protocol 47 uses for damage.
+const statusHurt int8 = 2
+
+func block47(fixed int32) float64 { return float64(fixed) / fixedPoint47 }
+
+func delta47(d int8) float64 { return float64(d) / deltaScale47 }
+
+func angle47(a int8) float32 { return float32(a) * angleScale47 }
+
+// metadata47 converts protocol 47's packed metadata into the world's
+// index-addressed form, keeping every index including ones this client has no
+// name for.
+func metadata47(items gen.EntityMetadata) []world.Metadata {
+	entries := make([]world.Metadata, 0, len(items))
+	for _, item := range items {
+		entries = append(entries, world.Metadata{
+			Index: item.AnonymousBitField1.Key,
+			Type:  metadataType47(item.AnonymousBitField1.Type),
+			Value: item.Value,
+		})
+	}
+
+	return entries
+}
+
+// metadataType47 names protocol 47's numeric metadata types. An unnamed one
+// keeps its number, because dropping it would lose what the server said.
+func metadataType47(kind uint8) string {
+	switch kind {
+	case 0:
+		return "byte"
+	case 1:
+		return "short"
+	case 2:
+		return "int"
+	case 3:
+		return "float"
+	case 4:
+		return "string"
+	case 5:
+		return "slot"
+	case 6:
+		return "position"
+	case 7:
+		return "rotation"
+	default:
+		return "unknown"
+	}
+}
+
+// objectType and mobType name protocol 47's numeric entity types.
+//
+// Protocol 47 identifies an entity by a number whose meaning depends on which
+// spawn packet carried it, and the number space is not the registry 775 uses.
+// The world keeps the server's own identifier as a string, so the number is
+// rendered rather than mapped onto a vanilla name the server may not mean.
+func objectType(kind int8) string { return "java/1.8.9:object/" + itoa(int(kind)) }
+
+func mobType(kind uint8) string { return "java/1.8.9:mob/" + itoa(int(kind)) }
+
+// itoa keeps the type names above readable.
+func itoa(n int) string { return strconv.Itoa(n) }
