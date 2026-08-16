@@ -1389,7 +1389,7 @@ keeps saved player files reachable.
 **Interfaces:**
 - Produces: `Provider`, `Offline(name string) (Provider, error)`, `Identity`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package auth_test
@@ -1438,7 +1438,7 @@ func TestOfflineIsDeterministic(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 ```bash
 devbox run -- task test -- ./auth
@@ -1446,7 +1446,7 @@ devbox run -- task test -- ./auth
 
 Expected: FAIL, package `auth` does not exist.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `auth/auth.go`:
 
@@ -1511,7 +1511,7 @@ func (o offline) Authenticate(context.Context) (Identity, error) {
 }
 ```
 
-- [ ] **Step 4: Run and verify it passes**
+- [x] **Step 4: Run and verify it passes**
 
 ```bash
 devbox run -- task test -- ./auth
@@ -1523,12 +1523,26 @@ If `login.OfflineUUID` or `java.UUID.String()` do not match these names, read
 `../minecraft-protocol/login/acceptor.go:311` and adjust; do not invent a UUID
 derivation here, because the server looks player files up by it.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add auth/
 git commit -m "feat(auth): add the offline identity provider"
 ```
+
+**What executing this task found.**
+
+- **Username validation is more permissive than vanilla, deliberately.** The
+  shared `java.ParseUsername` rejects empty, over 16 bytes, invalid UTF-8, and
+  control characters, and accepts everything else — including spaces, which a
+  vanilla account cannot contain. That is the shared library's call and this
+  package does not second-guess it: an offline or modded server may accept
+  names vanilla would not, and a stricter rule here would reject a name the
+  server would have taken. A test asserted the vanilla rule first and was
+  wrong.
+- **Two tests were added:** that the identity carries a UUID at all, and that
+  `Authenticate` succeeds on a cancelled context, which is what proves the
+  offline provider reaches no network.
 
 ### Task 7: Subscriptions
 
