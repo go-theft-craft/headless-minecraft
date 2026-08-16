@@ -83,6 +83,7 @@ type World struct {
 
 	player   *Player
 	entities *Entities
+	chunks   *Chunks
 }
 
 // New returns an empty world with no reducers.
@@ -91,7 +92,7 @@ type World struct {
 // builds the reducers that fill them, because decoding is the only part of
 // observed state that differs between protocols.
 func New() *World {
-	return &World{player: newPlayer(), entities: newEntities()}
+	return &World{player: newPlayer(), entities: newEntities(), chunks: newChunks()}
 }
 
 // Player returns the local player's store, for a version adapter to write
@@ -102,6 +103,9 @@ func (w *World) Player() *Player { return w.player }
 // Entities returns the tracked-entity store, for a version adapter to write
 // through.
 func (w *World) Entities() *Entities { return w.entities }
+
+// Chunks returns the chunk store, for a version adapter to write through.
+func (w *World) Chunks() *Chunks { return w.chunks }
 
 // Register adds a reducer. It must be called before the first Apply, because
 // a reducer that missed earlier batches holds state nobody can reconstruct.

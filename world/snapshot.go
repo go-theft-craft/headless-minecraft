@@ -17,6 +17,8 @@ type Snapshot struct {
 	Player PlayerView
 	// Entities is every other entity the client is tracking.
 	Entities EntitiesView
+	// Chunks is the terrain the server has streamed.
+	Chunks ChunksView
 }
 
 // snapshot builds the snapshot. It runs under the world's lock, held by the
@@ -26,5 +28,6 @@ func (w *World) snapshot() Snapshot {
 		Revision: w.revision,
 		Player:   w.player.view(),
 		Entities: w.entities.view(),
+		Chunks:   w.chunks.view(),
 	}
 }

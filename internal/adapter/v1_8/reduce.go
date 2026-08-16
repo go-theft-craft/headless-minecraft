@@ -26,6 +26,7 @@ func Reducers(w *world.World) []world.Reducer {
 	return []world.Reducer{
 		playerReducer(w.Player()),
 		entityReducer(w.Entities()),
+		chunkReducer(w.Chunks()),
 	}
 }
 
@@ -305,3 +306,111 @@ func mobType(kind uint8) string { return "java/1.8.9:mob/" + itoa(int(kind)) }
 
 // itoa keeps the type names above readable.
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// Protocol 47 sends a chunk column as a bitmask and one packed blob: for each
+// set bit, 4096 blocks of two little-endian bytes holding the block ID in the
+// high twelve bits and the metadata in the low four, then the light arrays,
+// then the biomes. Only the block half is decoded; the rest is kept as bytes.
+const (
+	sectionBlockBytes47 = blocksPerSection47 * 2
+	blocksPerSection47  = 4096
+)
+
+// chunkReducer decodes the packets that describe terrain.
+func chunkReducer(chunks *world.Chunks) world.Func {
+	return func(_ *world.Context, batch version.Batch, c *event.Collector) error {
+		for _, packet := range batch.Packets {
+			reduceChunkPacket(chunks, packet, c)
+		}
+
+		return nil
+	}
+}
+
+func reduceChunkPacket(chunks *world.Chunks, packet protocol.Packet, c *event.Collector) {
+	switch value := packet.Value.(type) {
+	case *gen.PlayClientboundMapChunk:
+		sections, light := splitColumn47(value.BitMap, value.ChunkData)
+		if len(sections) == 0 && !value.GroundUp {
+			return
+		}
+		chunks.Loaded(c, world.ChunkPos{X: value.X, Z: value.Z}, sections, light)
+
+	case *gen.PlayClientboundBlockChange:
+		chunks.BlocksChanged(c, []world.BlockChange{{
+			Pos:   blockPos47(value.Location),
+			State: uint32(value.Type),
+		}})
+
+	case *gen.PlayClientboundMultiBlockChange:
+		// The same fact as a single change, so the same event: the world
+		// takes a set and a single change is a set of one.
+		changes := make([]world.BlockChange, 0, len(value.Records))
+		for _, record := range value.Records {
+			changes = append(changes, world.BlockChange{
+				Pos: world.BlockPos{
+					X: value.ChunkX*16 + int32(record.HorizontalPos>>4),
+					Y: int32(record.Y),
+					Z: value.ChunkZ*16 + int32(record.HorizontalPos&15),
+				},
+				State: uint32(record.BlockID),
+			})
+		}
+		chunks.BlocksChanged(c, changes)
+
+	case *gen.PlayClientboundTileEntityData:
+		chunks.BlockEntityChanged(c, blockPos47(value.Location), value.NBTData)
+	}
+}
+
+func blockPos47(p gen.Position) world.BlockPos {
+	return world.BlockPos{X: p.X, Y: int32(p.Y), Z: p.Z}
+}
+
+// splitColumn47 slices the packed blob into one immutable byte range per
+// present section, and keeps whatever follows as light and biome data.
+//
+// The blocks come first for every section, so the block half can be sliced
+// without knowing whether the dimension carries skylight — which the packet
+// does not say and this reducer does not track.
+func splitColumn47(bitmap uint16, data []byte) ([]world.SectionData, []byte) {
+	var sections []world.SectionData
+	offset := 0
+	for y := range 16 {
+		if bitmap&(1<<uint(y)) == 0 {
+			continue
+		}
+		if offset+sectionBlockBytes47 > len(data) {
+			// A truncated column is the server's business, not a reason to
+			// end the session. What arrived is kept.
+			break
+		}
+		sections = append(sections, world.SectionData{
+			Y:      y,
+			Raw:    data[offset : offset+sectionBlockBytes47],
+			Decode: decodeSection47,
+		})
+		offset += sectionBlockBytes47
+	}
+
+	return sections, data[min(offset, len(data)):]
+}
+
+// decodeSection47 turns one section's bytes into block states. It is pure, as
+// the world requires: two readers racing to decode the same bytes compute the
+// same answer.
+func decodeSection47(raw []byte) ([]uint32, error) {
+	if len(raw) < sectionBlockBytes47 {
+		return nil, world.ErrSectionNotDecodable
+	}
+
+	states := make([]uint32, blocksPerSection47)
+	for i := range states {
+		// Little-endian: the low byte first, and the value is the block ID
+		// shifted four bits with the metadata in the low nibble, which is
+		// exactly the state identifier this protocol uses.
+		states[i] = uint32(raw[i*2]) | uint32(raw[i*2+1])<<8
+	}
+
+	return states, nil
+}

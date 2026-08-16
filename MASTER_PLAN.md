@@ -741,7 +741,11 @@ something the approved documents asserted:
   session domain in configuration and play. The end-to-end lane covers
   protocol 47 only: serving 775 needs a server-side login, and the shared
   `login.Acceptor` is written against the v1_8 generated types.
-- [ ] Build immutable observed-world snapshots and wire-ordered reducers.
+- [~] Build immutable observed-world snapshots and wire-ordered reducers.
+  **M7 Tasks 1-5 are done:** the reducer spine with one revision per batch, the
+  client wiring, and the player, entity, and chunk domains, each on both
+  protocols. Tasks 6-11 — environment, containers, registry, raw preservation,
+  chat, and the gate — remain.
   M7's design review put two prerequisites back on M6.3. `Event` has to carry
   the snapshot revision, which M6.3's design promised and its plan dropped, and
   the client has to own the configuration phase rather than letting
@@ -749,6 +753,39 @@ something the approved documents asserted:
   flags, and the inbound resource-pack offer never reach a handler on the first
   pass, which breaks M7's registry domain and two of M6.3's own session events.
 - [ ] Preserve unknown metadata, namespaced values, and custom payloads.
+
+#### M7 — What observed world state has found so far
+
+- **The world holds state and events; the adapter holds decoding.** The design
+  left this open and it governs every domain: `world.Player` and
+  `world.Entities` expose mutators, and `internal/adapter/*/reduce.go`
+  type-switches its own generated packets and calls them. Two protocols then
+  share one snapshot shape and one event set, and each keeps its own quirks
+  where they belong — 47's fixed-point positions and flag byte, 775's doubles
+  and boolean struct, both becoming blocks and `world.Relative`.
+- **`version` cannot name that seam.** `world` imports `version` for `Batch`,
+  so a `Reducers` method on `version.Adapter` would make the two packages
+  import each other. The client asserts the adapter to its own interface
+  instead, and registers what it returns in `New`, after every option.
+- **Every taxonomy constant gained a `Name` prefix.** `event.PlayerSpawned` is
+  a struct and `event.NamePlayerSpawned` is its name. The session domain got
+  away with unprefixed constants as the only domain; `PlayerSpawned` and
+  `EntitySpawned` both want to be structs.
+- **Protocol 775 chunk sections are stored but not decoded, deliberately.**
+  775 sends each section as a paletted container whose encoding has changed
+  across recent versions. The shared protocol module treats `chunkData` as an
+  opaque byte array, nothing generates or validates the section format, and no
+  captured 26.1 chunk exists here to test against. A decoder written from
+  memory would return wrong blocks silently, and M8's collision and M9's
+  digging would be built on them. The bytes are kept and reachable, chunk load,
+  unload, block changes, block entities, and light all work, and block lookups
+  in a 775 section report `ErrSectionNotDecodable`. **What unblocks it is one
+  captured 26.1 chunk as a fixture**, which `mcproto capture` can record — the
+  same route M4 used to close its vanilla-client check.
+- **The chunk benchmarks say copy-on-read is still right.** A block lookup on
+  a decoded section is 39.5 ns, and a snapshot over 400 columns of two sections
+  each is 33.6 µs — a pointer copy per section, as design decision 4 intended.
+  Decision 9's escape route stays unused.
 
 #### M6.3 — What the headless connection found
 

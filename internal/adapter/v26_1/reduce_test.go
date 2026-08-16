@@ -362,3 +362,68 @@ func TestSnapshotEntitiesDoNotAliasTheStore(t *testing.T) {
 		t.Fatal("deleting from a snapshot reached the world")
 	}
 }
+
+func TestAChunkIsTrackedEvenThoughItsSectionsAreNotDecoded(t *testing.T) {
+	t.Parallel()
+
+	// This client cannot read a 775 section yet, and that must cost only
+	// block lookups: loading, unloading, and everything addressed by
+	// position still works, and the bytes stay reachable.
+	w, _ := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundMapChunk{X: 2, Z: 3, ChunkData: []byte{1, 2, 3, 4}}),
+	})
+
+	chunk, ok := w.Snapshot().Chunks.Get(world.ChunkPos{X: 2, Z: 3})
+	if !ok {
+		t.Fatal("the chunk was not tracked")
+	}
+	if got := len(chunk.Sections[0].Raw()); got != 4 {
+		t.Errorf("the section kept %d bytes, want the 4 that arrived", got)
+	}
+	if _, ok := w.Snapshot().Chunks.Block(32, 0, 48); ok {
+		t.Error("an undecoded 775 section reported a block")
+	}
+	if _, err := w.SnapshotErr(); err != nil {
+		t.Errorf("an undecodable section poisoned the world: %v", err)
+	}
+}
+
+func TestUnloadChunkReleasesIt(t *testing.T) {
+	t.Parallel()
+
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundMapChunk{X: 2, Z: 3, ChunkData: []byte{1}}),
+		},
+		[]protocol.Packet{play(&gen.PlayClientboundUnloadChunk{ChunkX: 2, ChunkZ: 3})},
+	)
+
+	if _, ok := w.Snapshot().Chunks.Get(world.ChunkPos{X: 2, Z: 3}); ok {
+		t.Error("an unloaded chunk is still tracked")
+	}
+}
+
+func TestABlockChangeIsRecordedEvenWhereBlocksCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	// The change lands in a section this client cannot decode, so it is
+	// counted rather than applied, and the session survives.
+	_, events := script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundMapChunk{X: 0, Z: 0, ChunkData: []byte{1}}),
+		},
+		[]protocol.Packet{
+			play(&gen.PlayClientboundBlockChange{Location: gen.Position{X: 1, Y: 4, Z: 1}, Type: 9}),
+		},
+	)
+
+	last := events[len(events)-1].(event.WorldBlocksChanged)
+	if last.Dropped != 1 {
+		t.Errorf("dropped count is %d, want the change counted", last.Dropped)
+	}
+}

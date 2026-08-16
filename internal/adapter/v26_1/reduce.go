@@ -22,6 +22,7 @@ func Reducers(w *world.World) []world.Reducer {
 	return []world.Reducer{
 		playerReducer(w.Player()),
 		entityReducer(w.Entities()),
+		chunkReducer(w.Chunks()),
 	}
 }
 
@@ -256,3 +257,60 @@ func metadata775(items []gen.PlayClientboundEntityMetadataMetadataItem) []world.
 // receives in configuration. Until a caller resolves it there, the world keeps
 // the server's own identifier rather than guessing a vanilla name.
 func entityType(kind int32) string { return "java/26.1:entity/" + strconv.Itoa(int(kind)) }
+
+// chunkReducer decodes the packets that describe terrain.
+//
+// **Sections are stored as received and not decoded.** Protocol 775 sends each
+// section as a paletted container, and the paletted container's encoding has
+// changed across recent versions in ways this repository cannot check: the
+// shared protocol module treats `chunkData` as an opaque byte array, nothing
+// here generates or validates the section format, and no captured 26.1 chunk
+// exists in this repository to test a decoder against. A decoder written from
+// memory would return wrong blocks silently, and M8's collision and M9's
+// digging would then be built on them.
+//
+// So the world keeps the bytes, reports block lookups in a 775 section as
+// undecodable, and everything that does not need block access — chunk load and
+// unload, block changes, block entities, light — works. Implementing the
+// decoder needs one captured 26.1 chunk as a fixture, which `mcproto capture`
+// can record.
+func chunkReducer(chunks *world.Chunks) world.Func {
+	return func(_ *world.Context, batch version.Batch, c *event.Collector) error {
+		for _, packet := range batch.Packets {
+			reduceChunkPacket(chunks, packet, c)
+		}
+
+		return nil
+	}
+}
+
+func reduceChunkPacket(chunks *world.Chunks, packet protocol.Packet, c *event.Collector) {
+	switch value := packet.Value.(type) {
+	case *gen.PlayClientboundMapChunk:
+		// One section entry carrying the whole column's bytes: the column is
+		// not split, because splitting it means parsing the format this
+		// client does not yet read.
+		chunks.Loaded(c, world.ChunkPos{X: value.X, Z: value.Z}, []world.SectionData{
+			{Y: 0, Raw: value.ChunkData},
+		}, nil)
+
+	case *gen.PlayClientboundUnloadChunk:
+		chunks.Unloaded(c, world.ChunkPos{X: value.ChunkX, Z: value.ChunkZ})
+
+	case *gen.PlayClientboundUpdateLight:
+		chunks.LightChanged(c, world.ChunkPos{X: value.ChunkX, Z: value.ChunkZ}, nil)
+
+	case *gen.PlayClientboundBlockChange:
+		chunks.BlocksChanged(c, []world.BlockChange{{
+			Pos:   blockPos775(value.Location),
+			State: uint32(value.Type),
+		}})
+
+	case *gen.PlayClientboundTileEntityData:
+		chunks.BlockEntityChanged(c, blockPos775(value.Location), value.NBTData)
+	}
+}
+
+func blockPos775(p gen.Position) world.BlockPos {
+	return world.BlockPos{X: p.X, Y: int32(p.Y), Z: p.Z}
+}

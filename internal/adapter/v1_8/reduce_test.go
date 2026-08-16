@@ -495,3 +495,101 @@ func TestCollectingAnItemReleasesIt(t *testing.T) {
 		t.Errorf("collection is %+v", last)
 	}
 }
+
+func TestAProtocol47ChunkDecodesToItsBlocks(t *testing.T) {
+	t.Parallel()
+
+	// Protocol 47 packs a section as 4096 little-endian shorts holding the
+	// block ID in the high twelve bits and the metadata in the low four.
+	blob := make([]byte, 8192)
+	// Block at section-local 1,0,0 is index 1: stone with metadata 0 is
+	// state 1<<4.
+	blob[2] = byte(1 << 4)
+	blob[3] = 0
+
+	w, _ := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundMapChunk{X: 0, Z: 0, GroundUp: true, BitMap: 0x0001, ChunkData: blob}),
+	})
+
+	state, ok := w.Snapshot().Chunks.Block(1, 0, 0)
+	if !ok {
+		t.Fatal("the block was not readable")
+	}
+	if state != 1<<4 {
+		t.Errorf("block state is %d, want stone", state)
+	}
+}
+
+func TestABlockChangeAppliesToALoadedChunk(t *testing.T) {
+	t.Parallel()
+
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			login(1),
+			play(&gen.PlayClientboundMapChunk{
+				X: 0, Z: 0, GroundUp: true, BitMap: 0x0001, ChunkData: make([]byte, 8192),
+			}),
+		},
+		[]protocol.Packet{
+			play(&gen.PlayClientboundBlockChange{
+				Location: gen.Position{X: 3, Y: 4, Z: 5}, Type: 42,
+			}),
+		},
+	)
+
+	state, ok := w.Snapshot().Chunks.Block(3, 4, 5)
+	if !ok || state != 42 {
+		t.Errorf("block is %d, %v, want 42", state, ok)
+	}
+}
+
+func TestAMultiBlockChangeAppliesEveryRecord(t *testing.T) {
+	t.Parallel()
+
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			login(1),
+			play(&gen.PlayClientboundMapChunk{
+				X: 0, Z: 0, GroundUp: true, BitMap: 0x0001, ChunkData: make([]byte, 8192),
+			}),
+		},
+		[]protocol.Packet{
+			play(&gen.PlayClientboundMultiBlockChange{
+				ChunkX: 0, ChunkZ: 0,
+				Records: []gen.PlayClientboundMultiBlockChangeRecordsItem{
+					{HorizontalPos: 0x12, Y: 4, BlockID: 7},
+					{HorizontalPos: 0x34, Y: 5, BlockID: 8},
+				},
+			}),
+		},
+	)
+
+	// HorizontalPos packs x in the high nibble and z in the low one.
+	if state, ok := w.Snapshot().Chunks.Block(1, 4, 2); !ok || state != 7 {
+		t.Errorf("first record gave %d, %v", state, ok)
+	}
+	if state, ok := w.Snapshot().Chunks.Block(3, 5, 4); !ok || state != 8 {
+		t.Errorf("second record gave %d, %v", state, ok)
+	}
+}
+
+func TestUnloadingIsDrivenByTheServer(t *testing.T) {
+	t.Parallel()
+
+	// Protocol 47 unloads a chunk by sending it with no sections.
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			login(1),
+			play(&gen.PlayClientboundMapChunk{
+				X: 0, Z: 0, GroundUp: true, BitMap: 0x0001, ChunkData: make([]byte, 8192),
+			}),
+		},
+	)
+	if _, ok := w.Snapshot().Chunks.Get(world.ChunkPos{}); !ok {
+		t.Fatal("the chunk was not loaded")
+	}
+}
