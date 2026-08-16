@@ -7,6 +7,8 @@ import (
 	"fmt"
 
 	protocol "github.com/go-theft-craft/minecraft-protocol"
+
+	"github.com/go-theft-craft/headless-minecraft/event"
 )
 
 // ErrInvalidProfile reports an incomplete or incompatible version profile.
@@ -22,6 +24,11 @@ type Handler interface {
 // Adapter translates one protocol's packets into client events.
 type Adapter interface {
 	ProtocolID() string
+	// Handshake builds the packet that opens a connection and asks for
+	// login. It is version-owned because nothing about it is shared: the
+	// packet type, its protocol number, and its field types all differ, and
+	// the client that sends it names no version.
+	Handshake(host string, port uint16) protocol.Packet
 	// Handlers are registered with the router by packet name. Each appends
 	// to the batch-scoped collector it was built with; none publishes
 	// directly, because a batch's events are published together or not at
@@ -38,6 +45,11 @@ type WireProfile struct {
 	Adapter   Adapter
 	Limits    protocol.Limits
 	Readiness ReadinessRule
+	// Collector is the batch-scoped collector the adapter's handlers append
+	// to. It belongs to the profile because the adapter is built around one:
+	// a loop that reset a different collector would publish nothing a
+	// handler produced.
+	Collector *event.Collector
 }
 
 // Validate checks the wire profile without performing network work.
@@ -64,6 +76,9 @@ func (p WireProfile) Validate() error {
 	}
 	if p.Readiness == nil {
 		return fmt.Errorf("%w: missing readiness rule", ErrInvalidProfile)
+	}
+	if p.Collector == nil {
+		return fmt.Errorf("%w: missing event collector", ErrInvalidProfile)
 	}
 
 	return nil

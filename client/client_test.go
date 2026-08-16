@@ -30,7 +30,9 @@ func (stubProtocol) NewSession(protocol.Role, protocol.Limits) (protocol.Session
 
 type stubAdapter struct{ id string }
 
-func (s stubAdapter) ProtocolID() string                 { return s.id }
+func (s stubAdapter) ProtocolID() string                     { return s.id }
+func (stubAdapter) Handshake(string, uint16) protocol.Packet { return protocol.Packet{} }
+
 func (stubAdapter) Handlers() map[string]version.Handler { return nil }
 
 type stubReadiness struct{}
@@ -53,6 +55,7 @@ func stubProfile(t *testing.T) version.WireProfile {
 		Adapter:   stubAdapter{id: "java/1.8.9"},
 		Limits:    limits,
 		Readiness: stubReadiness{},
+		Collector: new(event.Collector),
 	}
 }
 

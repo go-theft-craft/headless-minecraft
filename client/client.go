@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	protocol "github.com/go-theft-craft/minecraft-protocol"
+
 	"github.com/go-theft-craft/headless-minecraft/auth"
 	"github.com/go-theft-craft/headless-minecraft/event"
 	"github.com/go-theft-craft/headless-minecraft/safety"
@@ -38,11 +40,18 @@ type Client struct {
 
 	events fanout
 
-	mu       sync.Mutex
-	closed   bool
-	closeErr error
-	stop     func()
-	done     chan struct{}
+	mu         sync.Mutex
+	closed     bool
+	closeErr   error
+	connecting bool
+	stream     *protocol.Stream
+	loopError  error
+	stop       func()
+	// loop closes when the read loop stops; done closes when Close finishes.
+	// They are separate because a session can end without anyone calling
+	// Close, and Close must still be able to run afterwards.
+	loop chan struct{}
+	done chan struct{}
 }
 
 // WithAddress sets the server endpoint. There is no default: a client that
@@ -136,6 +145,7 @@ func New(options ...Option) (*Client, error) {
 		recovery:       safety.Strict(),
 		connectTimeout: defaultConnectTimeout,
 		bundleLimit:    defaultBundleLimit,
+		loop:           make(chan struct{}),
 		done:           make(chan struct{}),
 	}
 
@@ -178,37 +188,4 @@ func (c *Client) ConnectTimeout() time.Duration { return c.connectTimeout }
 // Subscribe returns a bounded subscription over the selected domains.
 func (c *Client) Subscribe(selector event.Domain, buffer int) (*Subscription, error) {
 	return c.events.subscribe(selector, buffer)
-}
-
-// Close ends the client and every subscription it handed out. It is
-// idempotent, and it is safe on a client that never connected.
-//
-// Closed is the last event a subscriber receives, and it is published exactly
-// once however many times Close is called.
-func (c *Client) Close() error {
-	c.mu.Lock()
-	if c.closed {
-		err := c.closeErr
-		c.mu.Unlock()
-
-		return err
-	}
-	c.closed = true
-	stop := c.stop
-	c.mu.Unlock()
-
-	if stop != nil {
-		stop()
-	}
-
-	var collector event.Collector
-	event.Emit(&collector, event.Closed{})
-	c.events.publish(collector.Events(0))
-	c.events.closeAll()
-	close(c.done)
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	return c.closeErr
 }

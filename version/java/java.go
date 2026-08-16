@@ -28,6 +28,7 @@ func Java1_8With(collector *event.Collector) version.WireProfile {
 		Adapter:   adapter1_8.New(collector),
 		Limits:    defaultLimits(),
 		Readiness: adapter1_8.Readiness(),
+		Collector: collector,
 	}
 }
 
@@ -42,6 +43,7 @@ func CurrentWith(collector *event.Collector) version.WireProfile {
 		Adapter:   adapter26_1.New(collector),
 		Limits:    defaultLimits(),
 		Readiness: adapter26_1.Readiness(),
+		Collector: collector,
 	}
 }
 

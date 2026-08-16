@@ -177,3 +177,27 @@ func TestHandlersAreEmptyUntilTheLoopNeedsThem(t *testing.T) {
 		t.Errorf("adapter registers %d handlers, want 0 for now", got)
 	}
 }
+
+func TestHandshakeAsksForLogin(t *testing.T) {
+	t.Parallel()
+
+	var c event.Collector
+	packet := adapter.New(&c).Handshake("example.test", 25565)
+
+	value, ok := packet.Value.(*gen.HandshakingServerboundSetProtocol)
+	if !ok {
+		t.Fatalf("handshake carries %T, want *HandshakingServerboundSetProtocol", packet.Value)
+	}
+	if value.NextState != 2 {
+		t.Errorf("next state is %d, want 2 for login", value.NextState)
+	}
+	if value.ProtocolVersion != 775 {
+		t.Errorf("protocol version is %d, want 775", value.ProtocolVersion)
+	}
+	if value.ServerHost != "example.test" || value.ServerPort != 25565 {
+		t.Errorf("handshake addresses %s:%d", value.ServerHost, value.ServerPort)
+	}
+	if packet.State != gen.StateHandshaking || packet.Direction != protocol.DirectionServerbound {
+		t.Errorf("handshake is addressed %q/%v", packet.State, packet.Direction)
+	}
+}

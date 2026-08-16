@@ -36,6 +36,25 @@ func New(collector *event.Collector) version.Adapter {
 
 func (adapter) ProtocolID() string { return ProtocolID }
 
+// Handshake asks for login: next state 2. Protocol 47 sends its own protocol
+// number, which the server compares against its own.
+func (adapter) Handshake(host string, port uint16) protocol.Packet {
+	value := &gen.HandshakingServerboundSetProtocol{
+		ProtocolVersion: 47,
+		ServerHost:      host,
+		ServerPort:      port,
+		NextState:       2,
+	}
+
+	return protocol.Packet{
+		State:     gen.StateHandshaking,
+		Direction: protocol.DirectionServerbound,
+		ID:        value.PacketID(),
+		Name:      "set_protocol",
+		Value:     value,
+	}
+}
+
 func (a adapter) Handlers() map[string]version.Handler {
 	return map[string]version.Handler{
 		"keep_alive":      handlerFunc(a.keepAlive),
@@ -127,7 +146,8 @@ func (r *readiness) Observe(batch version.Batch) (version.ReadyState, []protocol
 			}
 			if value.Flags != 0 {
 				return version.ReadyState{}, nil, fmt.Errorf(
-					"%w: position flags are 0x%02x", version.ErrRelativeSpawn, value.Flags)
+					"%w: position flags are 0x%02x", version.ErrRelativeSpawn, value.Flags,
+				)
 			}
 
 			reply = append(reply, protocol.Packet{

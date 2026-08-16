@@ -721,6 +721,15 @@ something the approved documents asserted:
   flags, and the inbound resource-pack offer never reach a handler on the first
   pass, which breaks M7's registry domain and two of M6.3's own session events.
 - [ ] Preserve unknown metadata, namespaced values, and custom payloads.
+- [ ] Carry damage attribution and death on the taxonomy. Found while designing
+  [`examples/orbit`](docs/superpowers/specs/2026-08-16-orbit-example-design.md):
+  the taxonomy has `PlayerHealthChanged` and `EntityDamaged` and neither is
+  specified to name who dealt the damage, so no consumer can pick a target to
+  retaliate against. Protocol 775's damage event carries the source and 47 does
+  not, which is a normalization decision M7 has to make rather than inherit.
+  Death is the same shape of gap: health reaching zero is an inference a
+  consumer draws, and `PlayerRespawned` reports the recovery from an event that
+  was never published.
 
 ### M8–M9 — Simulation and gameplay
 
@@ -821,6 +830,15 @@ affect later stages:
 - [ ] Add attack scenarios: target selection, reach validation, cooldown or
   version-specific timing, damage, knockback, death, respawn, and rejected
   attacks.
+- [ ] Add respawn to the interaction primitives. Task 6 of the world-state plan
+  lists chat, command, movement, look, stance, use, place, attack, interact,
+  dig, slot, click, drop, and close, and no way to answer a death. A client that
+  dies and cannot respawn is stuck, so this blocks M9.6's own respawn scenario
+  as well as [`examples/orbit`](docs/superpowers/specs/2026-08-16-orbit-example-design.md).
+- [ ] Export `movement.Strategy` so an application can implement one. Task 7
+  designs controller-owned strategy switching and ships bunnyhop; nothing yet
+  proves a strategy defined outside the library works, which `examples/orbit`
+  is the first caller to need.
 - [ ] Add inventory and crafting scenarios: window open/close, slot sync,
   transaction rejection, recipe selection, missing ingredients, shift-click,
   crafted output, and reconnect recovery.
@@ -953,6 +971,7 @@ of the code, that is worth a CI step by itself.
 | `headless-minecraft` | `connect` | M6.3 |
 | | `microsoft` | M6.4 |
 | | `observe` | M7 |
+| | `orbit` | M9.6 |
 | `server` | `minimal`, `flat`, `vanilla` | M11.1 |
 
 ## Update rule

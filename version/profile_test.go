@@ -6,6 +6,7 @@ import (
 
 	protocol "github.com/go-theft-craft/minecraft-protocol"
 
+	"github.com/go-theft-craft/headless-minecraft/event"
 	"github.com/go-theft-craft/headless-minecraft/version"
 )
 
@@ -23,7 +24,9 @@ func (fakeProtocol) NewSession(protocol.Role, protocol.Limits) (protocol.Session
 
 type stubAdapter struct{ id string }
 
-func (s stubAdapter) ProtocolID() string { return s.id }
+func (s stubAdapter) ProtocolID() string                     { return s.id }
+func (stubAdapter) Handshake(string, uint16) protocol.Packet { return protocol.Packet{} }
+
 func (stubAdapter) Handlers() map[string]version.Handler {
 	return map[string]version.Handler{}
 }
@@ -48,6 +51,7 @@ func completeProfile(t *testing.T) version.WireProfile {
 		Adapter:   stubAdapter{id: "java/1.8.9"},
 		Limits:    limits,
 		Readiness: stubReadiness{},
+		Collector: new(event.Collector),
 	}
 }
 
@@ -74,10 +78,11 @@ func TestValidateRejectsAnIncompleteProfile(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]func(*version.WireProfile){
-		"no ID":       func(p *version.WireProfile) { p.ID = "" },
-		"no protocol": func(p *version.WireProfile) { p.Protocol = nil },
-		"no adapter":  func(p *version.WireProfile) { p.Adapter = nil },
-		"no limits":   func(p *version.WireProfile) { p.Limits = protocol.Limits{} },
+		"no ID":        func(p *version.WireProfile) { p.ID = "" },
+		"no protocol":  func(p *version.WireProfile) { p.Protocol = nil },
+		"no adapter":   func(p *version.WireProfile) { p.Adapter = nil },
+		"no limits":    func(p *version.WireProfile) { p.Limits = protocol.Limits{} },
+		"no collector": func(p *version.WireProfile) { p.Collector = nil },
 		"mismatched adapter": func(p *version.WireProfile) {
 			p.Adapter = stubAdapter{id: "java/26.1.2"}
 		},

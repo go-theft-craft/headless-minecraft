@@ -41,6 +41,19 @@ func Emit[E Event, PE stampable[E]](c *Collector, e E) {
 	})
 }
 
+// One stamps a single event and returns it ready to publish.
+//
+// Lifecycle events — connecting, authenticated, a state change, closed — are
+// not produced by a packet handler, so they have no batch to join. They still
+// go through a collector, because that is the only thing that stamps an
+// event.
+func One[E Event, PE stampable[E]](e E, revision uint64) []Event {
+	var c Collector
+	Emit[E, PE](&c, e)
+
+	return c.Events(revision)
+}
+
 // Len reports how many events the collector holds.
 func (c *Collector) Len() int { return len(c.pending) }
 

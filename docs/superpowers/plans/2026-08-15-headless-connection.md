@@ -3283,7 +3283,7 @@ git commit -m "feat(client): batch, dispatch, and publish inbound packets"
 **Interfaces:**
 - Produces: `(*Client).Connect(ctx) error`, `(*Client).Close() error`, `(*Client).Wait() error`, `ErrConnectTimeout`, `fixture.Server`.
 
-- [ ] **Step 1: Write the fixture server**
+- [x] **Step 1: Write the fixture server**
 
 `client/internal/fixture/server.go` accepts one connection on a loopback
 listener and replays a scripted server side: read handshake, read login start,
@@ -3315,7 +3315,7 @@ func Start(t *testing.T, script Script) (addr string, stop func())
 The fixture defaults to protocol 47. Task 14 adds a `Profile` field to `Script`
 for the 775 lane.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```go
 package client_test
@@ -3590,13 +3590,13 @@ func TestTransportLossProducesDisconnectedWithTransportSource(t *testing.T) {
 Add `"strings"` to the imports. `fixture.Script` is the struct Step 1 defines:
 `ThroughReady bool`, `ThenKick string`, `ThenDropConn bool`.
 
-- [ ] **Step 3: Run and verify failure**
+- [x] **Step 3: Run and verify failure**
 
 ```bash
 devbox run -- task test -- ./client/...
 ```
 
-- [ ] **Step 4: Implement Connect**
+- [x] **Step 4: Implement Connect**
 
 `Connect` performs, in order: publish `Connecting`; call the auth provider and
 publish `Authenticated`; dial; build the session with
@@ -3611,7 +3611,7 @@ deadline.
 Publish `StateChanged` from the stream's transition observations rather than
 inferring them, so a play-to-configuration return in 775 is reported.
 
-- [ ] **Step 5: Implement Close**
+- [x] **Step 5: Implement Close**
 
 `Close` cancels the loop context, calls `Stream.Shutdown` with a reason, waits
 for the loop goroutine, publishes `Closed`, and closes every subscription. It
@@ -3622,7 +3622,7 @@ Classify the ending: a disconnect packet produces `Disconnected` with
 `DisconnectByServer` and the reason; a transport error with no disconnect
 packet produces `DisconnectByTransport`.
 
-- [ ] **Step 6: Run and verify it passes**
+- [x] **Step 6: Run and verify it passes**
 
 ```bash
 devbox run -- task test -- ./client/...
@@ -3630,12 +3630,47 @@ devbox run -- task test -- ./client/...
 
 Expected: PASS, all nine tests, under `-race`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add client/connect.go client/close.go client/connect_test.go client/internal/
 git commit -m "feat(client): connect to ready and close cleanly"
 ```
+
+**What executing this task changed, and why.**
+
+- **`version.Adapter` gained `Handshake(host, port)`.** The plan told Connect
+  to "write the handshake with `NextState` 2", which a version-neutral client
+  cannot do: the packet type, the protocol number it carries, and the
+  generated struct all differ per version. The handshake is a version-owned
+  wire fact, so it is the adapter's, next to the readiness rule.
+- **`version.WireProfile` gained `Collector`, and `Validate` requires it.**
+  The adapter is built around one collector and the loop resets another, so
+  the first wiring published nothing any handler produced — the kick test
+  caught it. The profile now carries the collector its adapter appends to, and
+  the loop uses that one.
+- **`event.One` stamps a lifecycle event.** Connecting, Authenticated,
+  StateChanged, Disconnected, and Closed belong to no batch, and nothing but a
+  collector can stamp an event. The alternative in the first draft was a type
+  switch over five event types inside the client, which would have needed a
+  new case for every event M7 adds.
+- **The client keeps two channels, `loop` and `done`.** A session can end
+  without anyone calling `Close` — a kick, a dropped transport — and `Close`
+  must still run afterwards. `Wait` waits on the first, `Close` closes the
+  second.
+- **`Wait` reports nil for an ended session.** EOF, a cancelled loop context,
+  and `ErrStreamClosed` all mean "this connection is over", which is not a
+  failure when it is what was asked for. A kick is the server's decision, not
+  this client's error.
+- **The fixture hangs up after it kicks.** Holding the connection open left
+  the client reading forever from a session that was over, which is not what
+  a real server does; the first version of the test hung on `Wait`.
+- **`Close` says goodbye before it stops the loop**, so the server sees a
+  disconnect rather than a connection that vanished, under its own two-second
+  deadline so a server that never drains it cannot block `Close`.
+- **Three tests were added:** `Connect` on a closed client, `Wait` returning
+  nil after a clean kick, and the state transitions reaching a session
+  subscriber.
 
 ### Task 13: The protocol 775 adapter handlers
 

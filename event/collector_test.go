@@ -102,3 +102,18 @@ func TestEmitCopiesTheEvent(t *testing.T) {
 		t.Errorf("collector held address %q, want the value emitted, %q", got, "first")
 	}
 }
+
+func TestOneStampsASingleEvent(t *testing.T) {
+	t.Parallel()
+
+	events := event.One(event.Closed{}, 5)
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	if events[0].Revision() != 5 {
+		t.Errorf("revision is %d, want 5", events[0].Revision())
+	}
+	if _, ok := events[0].(event.Closed); !ok {
+		t.Errorf("got %T, want event.Closed", events[0])
+	}
+}
