@@ -4,10 +4,8 @@
 // contract is version.Adapter, and a caller selects this one through
 // version/java.
 //
-// Its handler table is empty for now: the read loop is proved against
-// protocol 47 first, which needs no configuration state and no bundling.
-// What this package already owns is the part 775 cannot borrow from 47 —
-// the bundle delimiter and the teleport-confirming readiness rule.
+// It owns the two parts 775 cannot borrow from 47: the bundle delimiter and
+// the teleport-confirming readiness rule. Its handlers are in handlers.go.
 package v26_1
 
 import (
@@ -54,8 +52,13 @@ func (adapter) Handshake(host string, port uint16) protocol.Packet {
 	}
 }
 
-func (adapter) Handlers() map[string]version.Handler {
-	return map[string]version.Handler{}
+func (a adapter) Handlers() map[string]version.Handler {
+	handlers := make(map[string]version.Handler, len(a.handlers()))
+	for name, handler := range a.handlers() {
+		handlers[name] = handler
+	}
+
+	return handlers
 }
 
 // readiness implements version.ReadinessRule for protocol 775.

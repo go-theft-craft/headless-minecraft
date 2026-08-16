@@ -3680,7 +3680,7 @@ Fill in the adapter Task 10 stubbed. This is the task M4 gates.
 - Modify: `internal/adapter/v26_1/adapter.go`
 - Create: `internal/adapter/v26_1/adapter_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Copy Task 9's five tests and retarget them at the 775 generated types, then add
 these four:
@@ -3778,13 +3778,13 @@ holding the names the 775 descriptor registers. Read them rather than guessing:
 grep -n 'ConfigurationClientboundDisconnect\|ConfigurationClientboundRegistryData' \
   ../minecraft-protocol/generated/java/v26_1/protocol.go | head
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 ```bash
 devbox run -- task test -- ./internal/adapter/v26_1
 ```
 
-- [ ] **Step 3: Implement the session-domain handlers**
+- [x] **Step 3: Implement the session-domain handlers**
 
 Register handlers for the 775 packets that map to the fourteen session events:
 `keep_alive` and its configuration twin, `custom_payload` in both states,
@@ -3797,18 +3797,43 @@ Read each packet's real field names from
 `../minecraft-protocol/generated/java/v26_1/packets.go` before writing its
 handler.
 
-- [ ] **Step 4: Run and verify it passes**
+- [x] **Step 4: Run and verify it passes**
 
 ```bash
 devbox run -- task test -- ./internal/adapter/v26_1
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/adapter/v26_1/
 git commit -m "feat(adapter): translate protocol 775 session packets"
 ```
+
+**What executing this task changed, and why.**
+
+- **One handler per name, disambiguated by value type.** Protocol 775 uses the
+  same packet name in configuration and play — `keep_alive`,
+  `custom_payload`, `cookie_request`, `store_cookie`, `transfer`, and both
+  resource-pack packets — with a distinct generated type in each. The handler
+  table is keyed by name, so each handler switches on the value's type, which
+  is also what makes it safe against a packet that arrived undecoded.
+- **A 775 disconnect reports no reason text.** Both `kick_disconnect` and the
+  configuration `disconnect` state their reason as `java.NetworkNBT`, a
+  structured chat component. Rendering one to text is a presentation decision
+  this package does not make for a consumer — the same choice the shared login
+  exchange documents for its own disconnects. The event carries the source and
+  the state.
+- **A stored cookie reports its size, never its bytes.** A cookie is a
+  server-issued token, and an event carrying it would put it in every
+  subscriber's log.
+- **A transfer port outside the port range is reported as zero.** The wire
+  type is wider than a port; wrapping the number would name a real host on a
+  port nobody asked for.
+- **The three server-describing packets share `ServerMetadataChanged`**, keyed
+  by `Kind`, because that is the one event the taxonomy declares for them. The
+  MOTD and the icon do not fit a string map, so `server_data` reports whether
+  an icon arrived rather than inventing a rendering of either.
 
 ---
 

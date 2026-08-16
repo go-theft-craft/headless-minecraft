@@ -169,12 +169,25 @@ func TestGameModeNamesMapToTheirNumbers(t *testing.T) {
 	}
 }
 
-func TestHandlersAreEmptyUntilTheLoopNeedsThem(t *testing.T) {
+func TestEverySessionPacketHasAHandler(t *testing.T) {
 	t.Parallel()
 
+	// The names the descriptor registers for the packets that carry the
+	// session domain in protocol 775. A missing one is a packet that arrives
+	// and produces nothing.
+	want := []string{
+		"keep_alive", "custom_payload", "kick_disconnect", "disconnect",
+		"transfer", "add_resource_pack", "remove_resource_pack",
+		"cookie_request", "store_cookie", "server_data", "server_links",
+		"feature_flags", "custom_report_details", "low_disk_space_warning",
+	}
+
 	var c event.Collector
-	if got := len(adapter.New(&c).Handlers()); got != 0 {
-		t.Errorf("adapter registers %d handlers, want 0 for now", got)
+	handlers := adapter.New(&c).Handlers()
+	for _, name := range want {
+		if _, ok := handlers[name]; !ok {
+			t.Errorf("no handler registered for %q", name)
+		}
 	}
 }
 
