@@ -1180,7 +1180,7 @@ carrying a `TeleportID` and expects `PlayServerboundTeleportConfirm`. Protocol
 - Consumes: `Batch` from Task 4.
 - Produces: `ReadinessRule`, `ReadyState`, `Adapter` with `Handlers()`, `WireProfile.Readiness`, `ErrRelativeSpawn`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package version_test
@@ -1245,7 +1245,7 @@ returns its field, `Edition` returns `protocol.EditionJava`, `Version` returns
 `protocol.Version{Name: "1.8.9", Protocol: 47}`, and `NewSession` returns
 `nil, nil` because no test in this file starts a session.
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 ```bash
 devbox run -- task test -- ./version
@@ -1254,7 +1254,7 @@ devbox run -- task test -- ./version
 Expected: FAIL, `WireProfile` has no `Readiness` field and `Adapter` has no
 `Handlers`.
 
-- [ ] **Step 3: Implement the readiness contract**
+- [x] **Step 3: Implement the readiness contract**
 
 `version/readiness.go`:
 
@@ -1302,7 +1302,7 @@ type ReadinessRule interface {
 }
 ```
 
-- [ ] **Step 4: Extend the profile**
+- [x] **Step 4: Extend the profile**
 
 In `version/profile.go`, replace the `Adapter` interface and add the field.
 Keep the existing `Validate` checks and add one:
@@ -1347,7 +1347,7 @@ In `Validate`, after the limits check:
 
 Add `"context"` to the imports.
 
-- [ ] **Step 5: Run and verify it passes**
+- [x] **Step 5: Run and verify it passes**
 
 ```bash
 devbox run -- task test -- ./version
@@ -1355,12 +1355,23 @@ devbox run -- task test -- ./version
 
 Expected: PASS, including Task 4's batcher tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add version/
 git commit -m "feat(version): add the readiness rule and adapter handlers"
 ```
+
+**What executing this task changed, and why.**
+
+- **`Validate`'s existing checks gained tests.** The plan tested only the new
+  readiness check, leaving the ID, protocol, adapter, limits, and
+  protocol/adapter-mismatch branches uncovered. They are covered now, which is
+  what takes the package to 100%.
+- **A compile-time assertion pins `Handler`'s signature.** The interface is
+  deliberately identical to the router's `middleware.Handler` and is written
+  out by hand rather than imported, so nothing but a test notices if the two
+  drift.
 
 ---
 
