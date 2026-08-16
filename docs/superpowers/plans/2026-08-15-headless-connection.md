@@ -2622,7 +2622,7 @@ git commit -m "feat(adapter): translate protocol 47 packets and readiness"
 **Interfaces:**
 - Produces: `Java1_8() version.WireProfile`, `JavaCurrent() version.WireProfile`, `Java1_8With(*event.Collector) version.WireProfile`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package java_test
@@ -2663,7 +2663,7 @@ func TestEachCallReturnsAFreshReadinessRule(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 ```bash
 devbox run -- task test -- ./version/java
@@ -2672,7 +2672,7 @@ devbox run -- task test -- ./version/java
 Expected: FAIL, package does not exist. `JavaCurrent` stays failing until M4.4
 publishes a verified `v26_1`; leave that test in place rather than removing it.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `version/java/java.go`:
 
@@ -2749,7 +2749,7 @@ func BundleDelimiter(id string) string {
 }
 ```
 
-- [ ] **Step 4: Create the 775 adapter as a compiling stub**
+- [x] **Step 4: Create the 775 adapter as a compiling stub**
 
 `JavaCurrent` cannot be written without `internal/adapter/v26_1` existing.
 Create it now with the same structure as Task 9's, implementing
@@ -2767,12 +2767,12 @@ grep -n 'BundleDelimiter' ../minecraft-protocol/generated/java/v26_1/protocol.go
 Task 12 fills in its handlers. Its readiness rule is written here because
 Task 12's end-to-end test needs it and it is four lines different from 47's.
 
-- [ ] **Step 5: Drop the skips from Task 8**
+- [~] **Step 5: Drop the skips from Task 8**
 
 Remove every `t.Skip("needs version/java from Task 10")` in
 `client/client_test.go`.
 
-- [ ] **Step 6: Run and verify**
+- [x] **Step 6: Run and verify**
 
 ```bash
 devbox run -- task test -- ./version/... ./client ./internal/...
@@ -2780,12 +2780,32 @@ devbox run -- task test -- ./version/... ./client ./internal/...
 
 Expected: PASS, except `TestJavaCurrentIsAValidProfile` if M4.4 has not landed.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add version/java/ internal/adapter/v26_1/ client/client_test.go
 git commit -m "feat(version): assemble the built-in Java profiles"
 ```
+
+**What executing this task changed, and why.**
+
+- **`JavaCurrent` is `java.Current`, and `JavaCurrentWith` is
+  `java.CurrentWith`.** revive rejects the stutter in `java.JavaCurrent`.
+  `Java1_8` keeps its name: `java.1_8` is not an identifier.
+- **Step 5 had nothing to do.** Task 8 used a stub profile instead of skips.
+- **`Current` passes today.** The plan expected it to stay red until M4.4;
+  M4 is complete and the released module ships `generated/java/v26_1`, so the
+  775 profile validates and reports protocol 775.
+- **The 775 adapter carries no `handlerFunc` yet.** With an empty handler
+  table the type is unused, and `unused` fails the build. Task 13 adds it back
+  with the handlers that need it.
+- **26.1 game modes are names, not numbers.** `SpawnInfo.Gamemode` is a
+  string, so the rule maps `creative`, `adventure`, and `spectator` onto the
+  numbers protocol 47 sends and reports survival for anything else, rather
+  than failing on a name a mod invented.
+- **The relative-spawn check reads three booleans, not a bitfield.** 775's
+  position flags are a generated struct, so the rule tests `X`, `Y`, and `Z`
+  rather than comparing to zero.
 
 ### Task 11: The read loop
 
