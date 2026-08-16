@@ -1558,7 +1558,7 @@ have a wrong view of the world without being told.
 - Consumes: `event.Domain`, `event.Event`.
 - Produces: `Subscription`, `(*Subscription).C()`, `Err()`, `Close()`, `ErrOverflow`, and the internal `fanout` with `subscribe`, `publish`, `closeAll`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package client
@@ -1667,7 +1667,7 @@ func TestSubscribeRejectsANonPositiveBuffer(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 ```bash
 devbox run -- task test -- ./client
@@ -1675,7 +1675,7 @@ devbox run -- task test -- ./client
 
 Expected: FAIL, package `client` does not exist.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `client/subscription.go`:
 
@@ -1832,7 +1832,7 @@ func (f *fanout) closeAll() {
 }
 ```
 
-- [ ] **Step 4: Run and verify it passes**
+- [x] **Step 4: Run and verify it passes**
 
 ```bash
 devbox run -- task test -- ./client
@@ -1840,12 +1840,27 @@ devbox run -- task test -- ./client
 
 Expected: PASS, all six tests, under `-race`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/subscription.go client/subscription_test.go
 git commit -m "feat(client): add bounded event subscriptions"
 ```
+
+**What executing this task changed, and why.**
+
+- **The package comment moved to `client/doc.go`.** This task creates the
+  package, and revive requires a package comment, so the comment Task 8 put at
+  the top of `client.go` lands here instead. Task 8's file starts with a bare
+  `package client`.
+- **`publish` clears the tail of its subscription slice.** It filters in
+  place, which leaves pointers to dropped subscriptions in the slice's unused
+  tail, keeping their buffered events reachable for as long as the fanout
+  lives.
+- **Four tests were added:** a multi-domain selector, that an overflowed
+  subscription is actually removed from the fanout rather than merely closed
+  (delivering to it again would send on a closed channel and panic), that a
+  clean `Close` leaves `Err` nil, and that an empty batch publishes nothing.
 
 ### Task 8: The client, its options, and validation
 
