@@ -2250,7 +2250,7 @@ part of M4, so the whole loop can be proved before 775 exists.
 - Consumes: `version.Adapter`, `version.ReadinessRule`, `version.Batch`, `event.Collector`.
 - Produces: `New(*event.Collector) version.Adapter`, `Readiness() version.ReadinessRule`, `BundleDelimiter = ""`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package v1_8_test
@@ -2386,7 +2386,7 @@ func TestAdapterIdentifiesItsProtocol(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 ```bash
 devbox run -- task test -- ./internal/adapter/v1_8
@@ -2405,7 +2405,7 @@ grep -n 'StatePlay\|packetName' ../minecraft-protocol/generated/java/v1_8/protoc
 Use the descriptor's own packet names for the handler map keys. Do not guess
 `"keep_alive"`; read what the generated descriptor registers.
 
-- [ ] **Step 3: Implement the adapter**
+- [x] **Step 3: Implement the adapter**
 
 `internal/adapter/v1_8/adapter.go`:
 
@@ -2502,7 +2502,7 @@ Read the real field names from `packets.go` before writing each handler — the
 reason are the three to confirm. Delete the `time` blank reference once
 `KeepAlivePonged.Elapsed` is populated or drop that field's use here.
 
-- [ ] **Step 4: Implement the readiness rule**
+- [x] **Step 4: Implement the readiness rule**
 
 Append to `internal/adapter/v1_8/adapter.go`:
 
@@ -2578,7 +2578,7 @@ func dimensionName(id int8) string {
 
 Add `"fmt"` to the imports.
 
-- [ ] **Step 5: Run and verify it passes**
+- [x] **Step 5: Run and verify it passes**
 
 ```bash
 devbox run -- task test -- ./internal/adapter/v1_8
@@ -2586,12 +2586,32 @@ devbox run -- task test -- ./internal/adapter/v1_8
 
 Expected: PASS, all five tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/adapter/v1_8/
 git commit -m "feat(adapter): translate protocol 47 packets and readiness"
 ```
+
+**What executing this task changed, and why.**
+
+- **The generated names were all as the plan guessed**, which Step 2 was right
+  to make us check anyway: `keep_alive`, `custom_payload`, `kick_disconnect`,
+  `position`, `login`, `position_look`, and every field name the handlers and
+  the readiness rule touch.
+- **The echo carries its packet name.** The plan set `State`, `Direction`,
+  `ID`, and `Value` but no `Name`, and the loop writes what the rule returns.
+  A packet with no name is a packet no capture, log, or `PacketSent` event can
+  identify.
+- **The `time` blank reference is gone.** `KeepAlivePonged.Elapsed` stays zero
+  here: measuring it needs the send time of the answering keepalive, which the
+  loop owns and the adapter never sees. That is now a comment rather than an
+  unused import.
+- **Four tests were added:** that the custom-payload event copies rather than
+  aliases the packet's buffer, that every handler ignores a value it does not
+  recognize (an undecodable packet arrives as `UnknownPacket` under the same
+  name, and a bare type assertion would panic), that each dimension ID is
+  named, and that two rules do not share progress.
 
 ### Task 10: The profile constructors
 
