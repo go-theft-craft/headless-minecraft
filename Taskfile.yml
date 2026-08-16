@@ -60,6 +60,12 @@ tasks:
     cmds:
       - go test -race -covermode=atomic -coverprofile=coverage.out ./...
 
+  test:e2e:
+    desc: Run the end-to-end client tests against the in-process fixture server
+    deps: [deps]
+    cmds:
+      - go test -race -run 'TestEndToEnd' ./client/...
+
   vuln:
     desc: Check dependencies for known vulnerabilities
     deps: [deps]
@@ -78,6 +84,7 @@ tasks:
       - task: lint
       - task: secrets
       - task: test
+      - task: test:e2e
       - task: vuln
       - task: build
 

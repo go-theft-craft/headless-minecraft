@@ -176,14 +176,9 @@ func play(ctx context.Context, stream *protocol.Stream, conn net.Conn, script Sc
 		return conn.Close()
 	}
 
-	if err := write(ctx, stream, "kick_disconnect", &gen.PlayClientboundKickDisconnect{
-		Reason: script.ThenKick,
-	}); err != nil {
-		return err
-	}
-
-	// A real server hangs up after it kicks. Holding the connection open
-	// would leave the client reading forever from a session that is over.
+	// Shutdown sends the disconnect packet itself and then hangs up, which is
+	// what a real server does. Writing a kick first would send the reason
+	// twice and tell the client the session ended twice.
 	return stream.Shutdown(ctx, script.ThenKick)
 }
 

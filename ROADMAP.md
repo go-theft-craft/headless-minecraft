@@ -4,8 +4,8 @@ The roadmap records dependency order, not release dates. Completed work remains 
 
 ```mermaid
 flowchart LR
-    P0["P0: repository foundation<br/>in progress"]
-    P1["P1: lifecycle and auth"]
+    P0["P0: repository foundation<br/>complete"]
+    P1["P1: lifecycle and auth<br/>in progress"]
     P2["P2: observed world state"]
     P3["P3: constructed components"]
     P4["P4: containers, inventory,<br/>and crafting"]
@@ -34,9 +34,12 @@ flowchart LR
 
 ## P1: lifecycle and authentication
 
-- Add scoped client lifecycle and bounded stream ownership.
-- Add offline and Microsoft authentication providers.
-- Complete Java login, encryption, compression, configuration, and play transitions.
+- Add scoped client lifecycle and bounded stream ownership. **Done:** the
+  client connects, reaches play, publishes session events, and closes once.
+- Add offline and Microsoft authentication providers. Offline is done;
+  Microsoft device-code is next.
+- Complete Java login, encryption, compression, configuration, and play
+  transitions.
 
 ## P2: observed world state
 

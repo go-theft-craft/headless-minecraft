@@ -159,6 +159,29 @@ the check that has not been run. Its prepared record is
 [here](../server/docs/verification/2026-08-15-m6-1-client-check.md); M6.1 is not
 Complete until that session runs with its decode-error count recorded.
 
+**M6.3: the headless connection is complete.** All fourteen tasks landed and
+every automated gate is green: `task lint`, `task test` under `-race`, the new
+`task test:e2e`, and `task build`. The client dials, authenticates offline,
+logs in through the shared negotiator, reaches play, publishes session events
+through bounded subscriptions, and closes exactly once. Protocol 47 and
+protocol 775 both have adapters, a readiness rule, and a profile;
+`version/java` assembles both.
+
+The M7 design's two prerequisites were folded in where they belong. `Event`
+carries the revision, through an embedded `Stamp` that only the collector can
+write, so no handler or subscriber can set or forge one. The second — the
+client owning the configuration phase — is **not** done: it is a 775 concern
+and it needs the client to stop the negotiator at configuration and drive it
+itself. See the M6.3 section below.
+
+Executing it changed three contracts the plan did not anticipate.
+`version.Adapter` gained `Handshake`, because a version-neutral client cannot
+build a handshake packet. `version.WireProfile` gained `Collector`, because the
+adapter and the loop were holding different ones and every event a handler
+produced was being dropped — a test caught it, not review. And appending to a
+collector is the package function `event.Emit` rather than a method, because a
+value inside an interface cannot be stamped after the fact.
+
 **M8.1: physics ground-truth pipeline is complete.** It subdivided M8 and
 depended only on the released `minecraft-reference` tool and the completed M0
 game-data contracts, not on M1 through M7. The rest of M8 stays blocked on M4
@@ -710,9 +733,14 @@ something the approved documents asserted:
   green — but the vanilla-client play session has not been run. See the
   [prepared record](../server/docs/verification/2026-08-15-m6-1-client-check.md).
 - [ ] Migrate proxy wire imports while keeping the legacy protocol private to `proxy`.
-- [ ] Finish headless lifecycle, authentication, event subscriptions, and
-  bounded stream ownership.
-- [ ] Connect the headless client to the current Java profile.
+- [x] Finish headless lifecycle, authentication, event subscriptions, and
+  bounded stream ownership (M6.3). Offline authentication only; Microsoft
+  device-code is M6.4.
+- [x] Connect the headless client to the current Java profile (M6.3). Both
+  profiles are assembled and validated, and the 775 adapter translates the
+  session domain in configuration and play. The end-to-end lane covers
+  protocol 47 only: serving 775 needs a server-side login, and the shared
+  `login.Acceptor` is written against the v1_8 generated types.
 - [ ] Build immutable observed-world snapshots and wire-ordered reducers.
   M7's design review put two prerequisites back on M6.3. `Event` has to carry
   the snapshot revision, which M6.3's design promised and its plan dropped, and
@@ -721,6 +749,46 @@ something the approved documents asserted:
   flags, and the inbound resource-pack offer never reach a handler on the first
   pass, which breaks M7's registry domain and two of M6.3's own session events.
 - [ ] Preserve unknown metadata, namespaced values, and custom payloads.
+
+#### M6.3 — What the headless connection found
+
+- **The client does not own the configuration phase yet.** M7's design requires
+  it, and M6.3 did not do it: `login.Negotiate` still runs configuration to
+  completion, so registry data, feature flags, and the inbound resource-pack
+  offer pass through without reaching a handler. The 775 adapter has the
+  handlers for the last two already; what is missing is stopping the
+  negotiator at configuration with `login.WithTerminalState` and driving the
+  rest from the loop. **M7 Task 1 must do this before its registry domain can
+  work.**
+- **The bundle limit was never approached.** The default is 4096 packets per
+  bundle. Nothing in this milestone exercises a real bundle: the fixture
+  server speaks protocol 47, which has no delimiter, so every batch held one
+  packet. The limit is covered by the batcher's and the loop's own tests at a
+  limit of 2 and 3. M7, which will run against a real 775 server, is the first
+  chance to measure a real bundle's size.
+- **No frame measurements came from here.** This milestone never completed a
+  775 login: `login.Acceptor` is written against the v1_8 generated types, so
+  a 775 server cannot be stood up in this repository. M4.4's measurements —
+  12,564 bytes largest raw frame, 32,316 bytes largest decoded body, both
+  `configuration/tags` — remain the only real numbers, and both sit far under
+  the 2 MiB and 8 MiB defaults.
+- **Two contracts moved onto the adapter**, which is worth carrying into M7
+  and M9 because it sets where version-specific wire knowledge lives: the
+  handshake packet and the readiness rule are both adapter-owned. Anything
+  else that differs per version and is not a packet handler belongs there too,
+  rather than in the client behind a version switch.
+- **A profile now carries its collector**, and `Validate` requires it. The
+  first wiring gave the adapter one collector and the loop another, so every
+  event a handler produced was silently dropped. Nothing failed: the
+  connection worked, `Ready` arrived, and only the kick test noticed the
+  missing event. M7 adds reducers on the same boundary and would have hit the
+  identical fault.
+- **775 disconnect reasons are structured components and are reported without
+  text.** Both `kick_disconnect` and the configuration `disconnect` carry
+  `java.NetworkNBT`. Rendering a chat component is a presentation decision the
+  library does not make for a consumer, which matches what the shared login
+  exchange already does. A consumer that wants the text renders it from the
+  raw packet.
 - [ ] Carry damage attribution and death on the taxonomy. Found while designing
   [`examples/orbit`](docs/superpowers/specs/2026-08-16-orbit-example-design.md):
   the taxonomy has `PlayerHealthChanged` and `EntityDamaged` and neither is
@@ -934,8 +1002,8 @@ The three worth carrying furthest:
 - [M8.2 geometry and collision core](../minecraft-simulation/docs/superpowers/plans/2026-08-15-m8-2-geometry-collision-core.md) — planned, ready to execute
 - [Java 26.1 and protocol 775](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) — approved; starts after M3
 - [Routing, capture, replay, and CLI](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) — approved; amended 2026-08-15; Tasks 1–7 start now, 8–12 after M4
-- [Headless connection](docs/superpowers/plans/2026-08-15-headless-connection.md) — M6.3; approved, ready to execute. Two amendments pending from the M7 design
-- [Microsoft authentication](docs/superpowers/plans/2026-08-15-microsoft-authentication.md) — M6.4; planned, starts after M6.3
+- [Headless connection](docs/superpowers/plans/2026-08-15-headless-connection.md) — M6.3; complete. Each task records what executing it changed
+- [Microsoft authentication](docs/superpowers/plans/2026-08-15-microsoft-authentication.md) — M6.4; planned, ready to start: M6.3 is complete and the `auth.Provider` seam it plugs into is in place
 - [Observed world state](docs/superpowers/plans/2026-08-15-observed-world-state.md) — M7; planned. Six amendments pending from its design review before Task 1
 - [Headless client and authentication](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) — foundation complete; lifecycle and authentication pending
 - [Constructed components, world state, and operations](docs/superpowers/plans/2026-08-13-world-state-actions.md) — pending

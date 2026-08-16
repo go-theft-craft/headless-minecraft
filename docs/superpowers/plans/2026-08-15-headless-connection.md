@@ -3845,7 +3845,7 @@ git commit -m "feat(adapter): translate protocol 775 session packets"
 - Create: `client/e2e_test.go`
 - Modify: `Taskfile.yml`, `README.md`, `CHANGELOG.md`, `ROADMAP.md`, `MASTER_PLAN.md`
 
-- [ ] **Step 1: Add the end-to-end lane**
+- [x] **Step 1: Add the end-to-end lane**
 
 `client/e2e_test.go`, behind `testing.Short()` skipping, reaches ready against
 the fixture server on both profiles and asserts:
@@ -3867,7 +3867,7 @@ Add to `Taskfile.yml`:
       - go test -race -run 'TestEndToEnd' ./client/...
 ```
 
-- [ ] **Step 2: Document**
+- [x] **Step 2: Document**
 
 README gains a worked example: construct a client with an offline provider and
 `java.JavaCurrent()`, connect, subscribe to the session domain, print events,
@@ -3877,21 +3877,21 @@ state.
 
 CHANGELOG records the new packages. ROADMAP marks M6.3.
 
-- [ ] **Step 3: Update the milestone record**
+- [x] **Step 3: Update the milestone record**
 
 In `MASTER_PLAN.md`, mark M6.3's two checkboxes complete and record anything
 found while implementing that affects M6.4 or M7 — in particular, whether the
 bundle limit default of 4096 was ever approached, and whether any 775 login
 produced a frame larger than the default 2 MiB, which M4.4 also measures.
 
-- [ ] **Step 4: Run the release gate**
+- [x] **Step 4: Run the release gate**
 
 ```bash
 devbox run -- task verify
 devbox run -- task test:e2e
 ```
 
-- [ ] **Step 5: Inspect final scope**
+- [x] **Step 5: Inspect final scope**
 
 ```bash
 git status --short
@@ -3904,12 +3904,32 @@ Confirm: `client` imports no generated package directly; `internal/adapter/*`
 are the only packages that do, apart from `version/java`; no handler performs
 I/O; no fixture contains credentials.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add .
 git commit -m "docs: record the headless connection milestone"
 ```
+
+**What executing this task changed, and why.**
+
+- **The end-to-end lane covers protocol 47 only.** The plan asked for both
+  profiles. Serving 775 needs a server-side login, and the shared
+  `login.Acceptor` is written against the `v1_8` generated types, so no 775
+  server can be stood up in this repository. That is the same gap M4 recorded
+  when it served a real 26.1 client from a recording rather than from a
+  server. The 775 client half is covered by its adapter's own tests.
+- **The bundle assertion moved with it.** A 47 fixture cannot send a
+  delimiter, so the end-to-end lane asserts the opposite — that nothing is
+  marked bundled on a protocol with no bundles — and the loop's own test keeps
+  the bundled case, where a delimiter can be scripted.
+- **The fixture does not write its own kick.** `Stream.Shutdown` sends the
+  disconnect packet and then hangs up, so writing a kick first sent the reason
+  twice and told the client the session ended twice. The end-to-end lane
+  caught it.
+- **`client` imports no generated package**, as the plan required. The only
+  places that do are `internal/adapter/*`, `version/java`, and the test
+  fixture, which has to speak one concrete protocol to be a server at all.
 
 ---
 

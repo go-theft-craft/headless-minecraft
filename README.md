@@ -5,9 +5,9 @@ servers. It speaks the Minecraft protocol directly; it does not launch or wrap
 Mojang's Java client.
 
 > [!IMPORTANT]
-> This project is pre-alpha and cannot connect to a server yet. The current code
-> contains construction-time authorization, strict safety defaults, and the
-> first version-profile contracts. There is no published release.
+> This project is pre-alpha. The client connects, logs in, reaches play, and
+> publishes session events; it does not yet observe world state or act in the
+> world. There is no published release.
 
 ## Design goals
 
@@ -44,7 +44,7 @@ replace the component graph.
 | --- | --- |
 | Endpoint-scoped authorization and strict recovery profile | In progress |
 | Injectable wire-protocol profile | In progress |
-| Java Edition login, configuration, and play lifecycle | Planned |
+| Java Edition login and play lifecycle, with session events | In progress |
 | Immutable world, entity, player, registry, and container snapshots | Planned |
 | Generic slots plus semantic inventory and menu drivers | Planned |
 | Replaceable movement, crafting, digging, and building components | Planned |
@@ -54,10 +54,69 @@ replace the component graph.
 See the [roadmap](ROADMAP.md) for dependency order. Roadmap entries are not
 compatibility promises or release dates.
 
-## Current API
+## Connecting
 
-The current foundation requires applications to declare an endpoint and the
-automation scopes they intend to use:
+A client declares its endpoint and scopes, dials, and returns once the server
+will accept action packets:
+
+```go
+provider, err := auth.Offline("tester")
+if err != nil {
+	return err
+}
+authorization, err := safety.Authorize("localhost:25565", safety.ScopeObserve)
+if err != nil {
+	return err
+}
+
+bot, err := client.New(
+	client.WithAddress("localhost:25565"),
+	client.WithAuth(provider),
+	client.WithVersion(java.Current()),
+	client.WithAuthorization(authorization),
+)
+if err != nil {
+	return err
+}
+defer func() { _ = bot.Close() }()
+
+session, err := bot.Subscribe(event.DomainSession, 64)
+if err != nil {
+	return err
+}
+go func() {
+	for e := range session.C() {
+		fmt.Printf("%s at revision %d\n", e.Name(), e.Revision())
+	}
+	if err := session.Err(); err != nil {
+		fmt.Println("subscription ended:", err)
+	}
+}()
+
+if err := bot.Connect(ctx); err != nil {
+	return err
+}
+
+return bot.Wait()
+```
+
+`java.Java1_8()` selects protocol 47 instead. Three rules matter more than the
+API shape:
+
+- **The library never reconnects.** Reconnecting can repeat actions, so retry
+  policy belongs to the application, and a retry is a new client.
+- **A slow subscriber is dropped, not waited on.** Publishing never blocks the
+  read loop, so a consumer that stops draining its channel has the channel
+  closed and `Err` set to `client.ErrOverflow`, rather than stalling the
+  connection and its keepalives.
+- **Events describe what changed, not which packet arrived.** Observed world
+  state — chunks, entities, containers, the local player — is the next
+  milestone; today the session domain is populated and the rest of the taxonomy
+  is names.
+
+## Authorization
+
+Applications declare an endpoint and the automation scopes they intend to use:
 
 ```go
 authorization, err := safety.Authorize(

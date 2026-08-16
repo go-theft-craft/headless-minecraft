@@ -42,7 +42,7 @@ func (c *Client) loopFinished(err error) {
 // loop then ends on EOF. Reporting a transport loss as well would tell a
 // subscriber the connection died twice, so a clean end publishes nothing.
 func (c *Client) publishDisconnect(err error, stream *protocol.Stream) {
-	if err == nil {
+	if ignoreEnded(err) == nil {
 		return
 	}
 
