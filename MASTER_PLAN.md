@@ -71,7 +71,9 @@ swap changed behavior. It did not: the matcher and the migrated registry are
 both correct, and the defect was a pre-existing shift-click handler that
 crafted once instead of draining the grid. Settled and fixed ahead of M6.
 
-**M4 is complete.** All four stages landed and the live check has been run.
+**M4 is complete, including both client checks.** All four stages landed, the
+live check has been run against a real server, and a real Java 26.1 client has
+been driven against this code with no packet failing to decode.
 `minecraft-protocol` describes both pinned data trees with manifest v2,
 generates `generated/java/v26_1` — 256 framed packets across five states, typed
 game data for all 25 datasets, every dataset kept as the bytes upstream
@@ -93,15 +95,24 @@ until the answer arrives.
 With that fixed the check reaches play, and the default limits — 2 MiB per
 frame, 8 MiB decompressed — stand on traffic through login: the largest raw
 frame a real server sent was 12,564 bytes and the largest decoded body 32,316
-bytes, both `configuration/tags`. Neither limit moves. Play is still
-unmeasured, and the vanilla-client half of M4's last gate is not reachable from
-here; the M4 section says why.
+bytes, both `configuration/tags`.
+
+The vanilla-client half was then closed too, on 2026-08-16, by a route the
+plan had written off: a client cannot be pointed at a 775 server here, because
+`login.Acceptor` is still protocol 47 only — but it can be served from a
+recording of a real one. `mcproto serve` does that, and a real 26.1 client
+spawned in the recorded world and played until it disconnected. **3,612
+packets, none of which failed to decode.**
+
+Getting there needed ten seconds of real play recorded first, and that is what
+exposed the network NBT defect below. Play traffic is now measured as well:
+6,145 frames across 49 distinct play packet types, every one decoding.
 
 Protocol 47 is unchanged throughout, apart from one added file:
 `generated/java/v1_8/login_exchange.go`. Its generated output is otherwise
 byte-identical and its loopback interoperability suite still passes.
 
-The seven things M4 found are recorded in its milestone section below. The two
+The eight things M4 found are recorded in its milestone section below. The two
 worth carrying furthest: M4.2's report that the 775 codecs "parse as Go" was
 true and not enough — they did not compile, for two reasons a test now covers —
 and roles alone cannot drive a login, because two protocols agree about the
@@ -444,7 +455,7 @@ nothing here has measured it — M7 is where that check belongs.
 | M4.1 | `task data:fetch` twice produces no diff; `data:validate` passes for both versions; protocol 47 output is byte-identical after the manifest migration |
 | M4.2 | The 775 schema compiles with zero unsupported constructs, and `position` compiles from the 775 schema rather than inheriting 1.8's bit order |
 | M4.3 | Every 26.1 dataset decodes strictly with no unknown field, and every dataset name appears in `Raw` |
-| M4.4 | `v26_1.Protocol()` reports 775; the ProtoDef differential suite passes; the live check reaches play against Paper 26.1 and reports its largest frame — **met** |
+| M4.4 | `v26_1.Protocol()` reports 775; the ProtoDef differential suite passes; the live check reaches play against Paper 26.1 and reports its largest frame; a vanilla 26.1 client's traffic decodes — **met** |
 
 - [x] Pin the PrismarineJS source manifest and aliases.
 - [x] Implement configuration and play transitions for modern Java login,
@@ -455,13 +466,21 @@ nothing here has measured it — M7 is where that check belongs.
 - [x] Add byte fixtures and protocol 47 regression coverage.
 - [x] Verify status and login against a compatible Paper server. Done against
   Paper 26.1.2 build 74; `livecheck/README.md` records the numbers.
-- [ ] Verify against a vanilla Java 26.1 client. **Not done, and not reachable
-  from here.** It needs the game client, which is a windowed application with
-  an account behind it, and no third-party implementation available here
-  speaks 775 — the pinned `minecraft-protocol` npm package stops at 1.21.11,
-  so it cannot stand in. The half this would exercise is the acceptor, and a
-  real client also needs registry data in configuration, which this repository
-  does not produce. Its natural home is M6, against the server.
+- [x] Verify against a vanilla Java 26.1 client. Done on 2026-08-16:
+  **3,612 packets from a real client, none of which failed to decode.** The
+  record is in
+  [the client check](../minecraft-protocol/docs/verification/2026-08-16-vanilla-client-check.md).
+
+  It was reachable after all, by a route the earlier note missed. There is no
+  775 server here to point a client at, so the client was served from a
+  recording of a real one: `mcproto serve` decodes each recorded clientbound
+  frame, writes it to the live client through this repository's own encoder,
+  and waits wherever the recording shows the client speaking. Eight packets
+  were decoded that nothing here had ever decoded, `block_place` among them,
+  which carries a `Slot`.
+
+  What it still does not cover is the acceptor, which remains protocol 47 only.
+  That is M6 work and the note below stands.
 
 What M4 produced: `generated/java/v26_1` with 256 framed packets across five
 states, the typed game data for all 25 datasets, every dataset kept as the
@@ -471,7 +490,7 @@ and a 42-fixture differential suite against pinned Node ProtoDef. Protocol 47's
 generated output is unchanged apart from one added file, `login_exchange.go`,
 and its loopback interoperability suite still passes.
 
-Seven things M4 found that the plan did not predict, each recorded in full in the
+Eight things M4 found that the plan did not predict, each recorded in full in the
 [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md):
 
 - **"Parses as Go" was a weaker claim than it sounded.** M4.2 reported the 775
@@ -493,6 +512,16 @@ Seven things M4 found that the plan did not predict, each recorded in full in th
 - **Two dataset shapes read wrong at first glance**: a loot drop's stack size
   range has an open end written as a null bound, and one tint category keys by
   number where every other keys by biome name.
+- **Network NBT required a compound root, and real servers do not send one.**
+  The plain-text form of a text component is a bare `TAG_String`; Paper sends
+  its MOTD in `server_data` that way. The reader rejected it, and would have
+  rejected every chat message, kick reason, title, and playerlist header whose
+  component was plain text — a client built on this would have dropped its
+  connection the first time anybody spoke. Neither the test suite nor the live
+  check could see it: the live check read one play packet and stopped. It
+  surfaced the moment something tried to record ten seconds of play, which
+  stalled at eleven packets. This is the strongest argument in the plan for
+  measuring against real traffic rather than against a specification.
 - **A driver cannot pass through what a server is waiting for.** The
   negotiator treated `select_known_packs` as configuration content and skipped
   it, which is correct for everything else a server sends in configuration and
