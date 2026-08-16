@@ -889,7 +889,7 @@ holds one packet and the interface needs no version branch.
 **Interfaces:**
 - Produces: `Batch{Packets []protocol.Packet; Bundled bool}`, `Batcher`, `NewBatcher(delimiter string, limit int) (*Batcher, error)`, `(*Batcher).Accept(protocol.Packet) (Batch, bool, error)`, `(*Batcher).Open() bool`, `ErrBundleTooLarge`, `ErrBundleUnterminated`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package version_test
@@ -1025,7 +1025,7 @@ func TestNewBatcherRejectsANonPositiveLimit(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 ```bash
 devbox run -- task test -- ./version
@@ -1033,7 +1033,7 @@ devbox run -- task test -- ./version
 
 Expected: FAIL, undefined `version.NewBatcher`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `version/batch.go`:
 
@@ -1137,7 +1137,7 @@ func (b *Batcher) Finish() error {
 }
 ```
 
-- [ ] **Step 4: Run and verify it passes**
+- [x] **Step 4: Run and verify it passes**
 
 ```bash
 devbox run -- task test -- ./version
@@ -1145,12 +1145,23 @@ devbox run -- task test -- ./version
 
 Expected: PASS, all eight tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add version/batch.go version/batch_test.go
 git commit -m "feat(version): group inbound packets at bundle boundaries"
 ```
+
+**What executing this task changed, and why.**
+
+- **A non-positive limit no longer wraps `ErrBundleTooLarge`.** The plan
+  returned that sentinel from `NewBatcher`, which would have made a caller
+  passing a bad limit indistinguishable from a peer sending an oversize
+  bundle. The first is a bug here and the second is hostile traffic, and Task
+  11 has to tell them apart. `NewBatcher` returns a plain error.
+- **One test was added**, covering that a returned bundle does not alias the
+  batcher's reused pending slice. The implementation clones, and nothing in
+  the plan's eight tests would have failed if it stopped cloning.
 
 ### Task 5: The readiness rule and the extended profile
 
