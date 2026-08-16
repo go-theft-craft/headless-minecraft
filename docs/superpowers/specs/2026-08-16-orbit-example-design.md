@@ -1,10 +1,27 @@
 # Orbit example design
 
-- Status: Draft for review
+- Status: Decision core implemented; shell blocked on M7 and M9
 - Date: 2026-08-16
 - Repository: `headless-minecraft`
 - Example: `examples/orbit`
-- Earliest milestone: M9.6
+- Earliest complete milestone: M9.6
+
+## Implementation status
+
+The decision core is written and tested. `Bot.Advance` is a pure function from
+one `Tick` and a `World` to one `Action`, and it owns the geometry, the bypass
+search, retaliation, respawn, the trapped state, and every bound in this
+document. Its tests script a world rather than connecting to one, so the state
+machine is provable today: 32-waypoint deviation, wall bypass inside the band,
+sealed-band trapping, standing without sending, resuming when the wall opens,
+the trapped budget, retaliation and all three ways a fight ends, one respawn per
+death, and the breaker budget.
+
+What is not written is the binding. `World` and `Actuator` in `ports.go` are the
+whole seam, and both are `Pending{}` — every method reports the milestone that
+owes it. Running the program connects, reaches play, and stops with that list.
+When M7 and M9 land this example gains two adapters and the core does not
+change, which is the property the split was chosen for.
 
 ## Context
 

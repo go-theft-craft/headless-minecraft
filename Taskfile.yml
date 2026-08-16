@@ -66,6 +66,18 @@ tasks:
     cmds:
       - go test -race -run 'TestEndToEnd' ./client/...
 
+  examples:
+    desc: Lint and test the examples module
+    # examples/ is its own module, so `go test ./...` from the root does not
+    # descend into it. Without this task the examples rot silently, which is the
+    # one thing an example used as an integration surface must not do.
+    dir: examples
+    cmds:
+      - go mod tidy
+      - golangci-lint run ./...
+      - go test -race ./...
+      - go vet ./...
+
   vuln:
     desc: Check dependencies for known vulnerabilities
     deps: [deps]
@@ -85,6 +97,7 @@ tasks:
       - task: secrets
       - task: test
       - task: test:e2e
+      - task: examples
       - task: vuln
       - task: build
 
