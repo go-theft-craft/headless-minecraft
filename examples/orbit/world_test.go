@@ -69,10 +69,10 @@ type recording struct {
 	respawn int
 }
 
-func (r *recording) Step(_ context.Context, target Vec3, _ bool) error {
+func (r *recording) Step(_ context.Context, from, target Vec3, _ bool) (Vec3, error) {
 	r.steps = append(r.steps, target)
 
-	return nil
+	return from, nil
 }
 
 func (r *recording) Attack(_ context.Context, id int32) error {

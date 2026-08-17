@@ -30,6 +30,37 @@ func (v Vec3) HorizontalDistance(o Vec3) float64 {
 	return math.Hypot(v.X-o.X, v.Z-o.Z)
 }
 
+// Toward returns the position reached by moving at most limit blocks from v
+// toward o, horizontally. The height is v's: this program has no physics, so it
+// never chooses a Y, and a step that changed one would be claiming to fall or
+// fly rather than to walk.
+//
+// It stops exactly on o rather than overshooting, which is what makes arrival a
+// stable condition instead of a point the bot oscillates around.
+func (v Vec3) Toward(o Vec3, limit float64) Vec3 {
+	distance := v.HorizontalDistance(o)
+	if distance <= limit || distance == 0 {
+		return Vec3{X: o.X, Y: v.Y, Z: o.Z}
+	}
+
+	scale := limit / distance
+
+	return Vec3{
+		X: v.X + (o.X-v.X)*scale,
+		Y: v.Y,
+		Z: v.Z + (o.Z-v.Z)*scale,
+	}
+}
+
+// Yaw returns the heading from v to o in degrees, as the wire carries it.
+//
+// Minecraft measures yaw from south, which is +Z, and increases it toward west,
+// which is -X. That is neither the mathematical convention nor a compass
+// bearing, so the arguments to Atan2 are the way they are on purpose.
+func (v Vec3) Yaw(o Vec3) float32 {
+	return float32(math.Atan2(-(o.X-v.X), o.Z-v.Z) * 180 / math.Pi)
+}
+
 // Circle is the orbit: a centre, a radius, and the waypoints the bot walks
 // between.
 type Circle struct {

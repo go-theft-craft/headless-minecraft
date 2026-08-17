@@ -148,10 +148,15 @@ func profile(legacy bool) version.WireProfile {
 	return java.Current()
 }
 
-// observer supplies one snapshot. It is an interface so the tick loop can be
-// tested without a connection; *client.Client satisfies it.
-type observer interface {
+// connection is what the tick loop needs of a client: one snapshot to read and
+// one way to act. It is an interface so the loop can be tested without a
+// connection; *client.Client satisfies it.
+type connection interface {
 	World() world.Snapshot
+	// version.Action, not this package's Action: the example's Action is one
+	// decision by the core, and the library's is one intent on the wire. They
+	// are different things that meet in Sender.
+	Do(ctx context.Context, action version.Action) error
 }
 
 // drive runs the tick loop: fold events into a Tick, ask the core what to do,
@@ -159,16 +164,16 @@ type observer interface {
 func drive(
 	ctx context.Context,
 	logger *slog.Logger,
-	source observer,
+	source connection,
 	events *client.Subscription,
 ) (int, error) {
 	bounds := DefaultBounds()
 	core := NewBot(bounds)
 
-	// M9 still owes the actions, which is what turns the first thing the core
-	// asks to do into a clear error instead of silence. Observation is M7's and
-	// is read from the snapshot below.
-	var actuator Actuator = Pending{}
+	// Movement is real; attack and respawn are still Pending on Sender, which
+	// is what turns the first thing the core asks for that M9 owes into a clear
+	// error instead of silence.
+	var actuator Actuator = NewSender(source, bounds)
 
 	ticker := time.NewTicker(bounds.Tick)
 	defer ticker.Stop()
@@ -180,6 +185,20 @@ func drive(
 		// could be listening.
 		pending = Tick{Ready: true}
 		last    narration
+		// Where the bot believes it is. Observed state cannot answer this
+		// while the bot is walking: it holds what the server sent, and a
+		// server sends a position to place or to correct, never to
+		// acknowledge a move it accepted. Reading position back from the
+		// snapshot every tick means stepping from the same coordinate
+		// forever — one step, then silence, which is what the first live run
+		// with movement did for ninety seconds.
+		//
+		// So the bot carries its own, seeded from the server's placement and
+		// reset whenever the server disagrees. That is dead reckoning, and it
+		// is the crude half of client-side prediction; the other half is a
+		// body that knows about gravity and collision, which is M8's.
+		predicted Vec3
+		placed    bool
 	)
 	for {
 		select {
@@ -205,7 +224,14 @@ func drive(
 			// player would let the terrain move between the bot's feet and the
 			// position it decided to step to.
 			snapshot := source.World()
-			if self, placed := observeSelf(snapshot); placed {
+			if self, known := observeSelf(snapshot); known {
+				// The server's word wins on placement and on correction, and
+				// only then. pending.Corrected is read here rather than after
+				// Advance, which is where it is cleared.
+				if !placed || pending.Corrected {
+					predicted, placed = self.Position, true
+				}
+				self.Position = predicted
 				pending.Self = self
 			}
 			pending.Revision = snapshot.Revision
@@ -217,10 +243,11 @@ func drive(
 			// a death.
 			pending.Attacker, pending.Died, pending.Respawned, pending.Corrected = 0, false, false, false
 
-			code, done, err := apply(ctx, logger, actuator, core, action)
+			moved, code, done, err := apply(ctx, logger, actuator, core, predicted, action)
 			if done {
 				return code, err
 			}
+			predicted = moved
 		}
 	}
 }
@@ -301,15 +328,20 @@ func apply(
 	logger *slog.Logger,
 	actuator Actuator,
 	core *Bot,
+	from Vec3,
 	action Action,
-) (int, bool, error) {
+) (Vec3, int, bool, error) {
 	var err error
+
+	// Where the bot is after this action. Only a step moves it, and a step
+	// that failed to send does not.
+	moved := from
 
 	switch action.Kind {
 	case Stand:
-		return 0, false, nil
+		return moved, 0, false, nil
 	case StepTo:
-		err = actuator.Step(ctx, action.Target, action.Jump)
+		moved, err = actuator.Step(ctx, from, action.Target, action.Jump)
 	case Strike:
 		err = actuator.Attack(ctx, action.Entity)
 	case SendRespawn:
@@ -317,13 +349,13 @@ func apply(
 	case Exit:
 		// narrate already printed the reason; repeating it here would put the
 		// same sentence on two consecutive lines.
-		return action.Code, true, nil
+		return moved, action.Code, true, nil
 	default:
-		return 70, true, fmt.Errorf("unknown action %d", action.Kind)
+		return moved, 70, true, fmt.Errorf("unknown action %d", action.Kind)
 	}
 
 	if err == nil {
-		return 0, false, nil
+		return moved, 0, false, nil
 	}
 
 	// A pending port is the expected outcome today, and it is not a crash. Say
@@ -335,8 +367,8 @@ func apply(
 			slog.Any("error", err),
 		)
 
-		return 3, true, nil
+		return moved, 3, true, nil
 	}
 
-	return 1, true, err
+	return moved, 1, true, err
 }

@@ -27,7 +27,7 @@ func TestApplyDispatchesEveryActionKind(t *testing.T) {
 		{Kind: Strike, Entity: 42},
 		{Kind: SendRespawn},
 	} {
-		code, done, err := apply(t.Context(), quiet(), actuator, core, action)
+		_, code, done, err := apply(t.Context(), quiet(), actuator, core, Vec3{}, action)
 		if err != nil || done || code != 0 {
 			t.Fatalf("%v produced code=%d done=%v err=%v, want a clean continue", action.Kind, code, done, err)
 		}
@@ -47,7 +47,7 @@ func TestApplyDispatchesEveryActionKind(t *testing.T) {
 func TestApplyEndsTheLoopOnExit(t *testing.T) {
 	t.Parallel()
 
-	code, done, err := apply(t.Context(), quiet(), &recording{}, NewBot(DefaultBounds()), Action{
+	_, code, done, err := apply(t.Context(), quiet(), &recording{}, NewBot(DefaultBounds()), Vec3{}, Action{
 		Kind:   Exit,
 		Reason: "sealed in",
 		Code:   1,
@@ -58,13 +58,13 @@ func TestApplyEndsTheLoopOnExit(t *testing.T) {
 	}
 }
 
-// failing is an actuator whose every action is still owed by a milestone, which
-// is what Pending is today.
+// failing is an actuator whose every action fails, which is how the loop's
+// error paths are reached without a connection.
 type failing struct{ err error }
 
-func (f failing) Step(context.Context, Vec3, bool) error { return f.err }
-func (f failing) Attack(context.Context, int32) error    { return f.err }
-func (f failing) Respawn(context.Context) error          { return f.err }
+func (f failing) Step(_ context.Context, from, _ Vec3, _ bool) (Vec3, error) { return from, f.err }
+func (f failing) Attack(context.Context, int32) error                        { return f.err }
+func (f failing) Respawn(context.Context) error                              { return f.err }
 
 func TestAPendingPortStopsTheRunWithoutCrashing(t *testing.T) {
 	t.Parallel()
@@ -72,11 +72,12 @@ func TestAPendingPortStopsTheRunWithoutCrashing(t *testing.T) {
 	// The expected outcome today. It has to be a clean, distinguishable exit
 	// rather than a panic or a silent loop, because it is what every run of
 	// this program does until M9 lands.
-	code, done, err := apply(
+	_, code, done, err := apply(
 		t.Context(),
 		quiet(),
 		failing{err: ErrNotYet},
 		NewBot(DefaultBounds()),
+		Vec3{},
 		Action{Kind: StepTo},
 	)
 
@@ -96,11 +97,12 @@ func TestARealActuatorErrorIsNotSwallowed(t *testing.T) {
 
 	sentinel := errors.New("connection reset")
 
-	code, done, err := apply(
+	_, code, done, err := apply(
 		t.Context(),
 		quiet(),
 		failing{err: sentinel},
 		NewBot(DefaultBounds()),
+		Vec3{},
 		Action{Kind: Strike},
 	)
 
@@ -112,15 +114,16 @@ func TestARealActuatorErrorIsNotSwallowed(t *testing.T) {
 	}
 }
 
-func TestPendingReportsEveryMilestoneItOwes(t *testing.T) {
+func TestTheActuatorNamesWhatItStillOwes(t *testing.T) {
 	t.Parallel()
 
-	var actuator Actuator = Pending{}
+	// Step and respawn are real now, so neither is in this list. Attack is
+	// not, and it has to say which milestone owes it rather than failing
+	// blankly.
+	var actuator Actuator = NewSender(nil, DefaultBounds())
 
 	for name, err := range map[string]error{
-		"step":    actuator.Step(t.Context(), Vec3{}, true),
-		"attack":  actuator.Attack(t.Context(), 1),
-		"respawn": actuator.Respawn(t.Context()),
+		"attack": actuator.Attack(t.Context(), 1),
 	} {
 		if !errors.Is(err, ErrNotYet) {
 			t.Errorf("%s returned %v, want ErrNotYet", name, err)
@@ -128,7 +131,7 @@ func TestPendingReportsEveryMilestoneItOwes(t *testing.T) {
 	}
 
 	if len(Missing()) == 0 {
-		t.Error("Missing lists nothing while the actuator is Pending")
+		t.Error("Missing lists nothing while attack is owed")
 	}
 }
 

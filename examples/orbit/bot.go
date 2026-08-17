@@ -355,10 +355,24 @@ func (b *Bot) dead(t Tick) Action {
 		return Action{Kind: Stand, Reason: "awaiting respawn"}
 	}
 
-	b.state = Returning
 	b.offset = 0
 	b.skips = 0
 	b.progressAt = t.Now
+
+	// A bot can die before it ever has a circle. Death preempts every state,
+	// including Joining, so a client that connects to a server where it is
+	// already dead — which is what a client that died and could not respawn
+	// comes back as — goes straight to Dead without ever building one.
+	// Returning there walks toward a circle of zero waypoints and divides by
+	// it. Joining is what builds the circle, so that is where an unfinished
+	// join resumes.
+	if b.circle.Waypoints == 0 {
+		b.state = Joining
+
+		return Action{Kind: Stand, Reason: "respawned before joining"}
+	}
+
+	b.state = Returning
 
 	return Action{Kind: Stand, Reason: "respawned"}
 }

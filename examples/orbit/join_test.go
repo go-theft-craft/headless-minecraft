@@ -103,3 +103,33 @@ func (c countingWriter) Write(p []byte) (int, error) {
 
 	return len(p), nil
 }
+
+func TestDyingBeforeTheCircleExistsResumesTheJoin(t *testing.T) {
+	t.Parallel()
+
+	// A live run crashed here. Death preempts every state including Joining, so
+	// a client that connects to a server where it is already dead reaches Dead
+	// without ever building a circle; respawning into Returning then walked
+	// toward a circle of zero waypoints and divided by it.
+	c := newClock()
+	bot := NewBot(DefaultBounds())
+
+	if action := bot.Advance(Tick{Now: c.now, Ready: true, Died: true}, silent()); action.Kind != SendRespawn {
+		t.Fatalf("produced %v on dying, want SendRespawn", action.Kind)
+	}
+
+	bot.Advance(Tick{Now: c.advance(time.Second), Ready: true, Respawned: true}, silent())
+
+	if bot.State() != Joining {
+		t.Errorf("respawned into %v with no circle, want joining", bot.State())
+	}
+
+	// And the tick after must not panic on the circle it still does not have.
+	w := newScripted()
+	if action := bot.Advance(Tick{Now: c.advance(time.Second), Ready: true}, w); action.Kind == Exit {
+		t.Errorf("gave up after resuming the join: %s", action.Reason)
+	}
+	if bot.State() == Joining {
+		t.Error("stayed joining with a world that answered")
+	}
+}

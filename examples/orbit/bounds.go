@@ -43,6 +43,15 @@ type Bounds struct {
 	// WaypointRadius is how close counts as arrived. Smaller than this and the
 	// bot chases a point it overshoots every tick.
 	WaypointRadius float64
+	// WalkSpeed is how fast the bot claims to walk, in blocks per second.
+	//
+	// Under vanilla's own 4.317, deliberately. This example has no physics: it
+	// reports a position rather than simulating a body, so the only thing
+	// keeping its claim plausible is the speed it claims at. A server that
+	// disagrees corrects the position, which opens the breaker and stops the
+	// run — the honest outcome the design asks for, and not one worth
+	// provoking by walking at exactly the limit.
+	WalkSpeed float64
 }
 
 // DefaultBounds returns the shipped values.
@@ -61,5 +70,6 @@ func DefaultBounds() Bounds {
 		Tick:           50 * time.Millisecond,
 		JoinTimeout:    30 * time.Second,
 		WaypointRadius: 1,
+		WalkSpeed:      4,
 	}
 }
