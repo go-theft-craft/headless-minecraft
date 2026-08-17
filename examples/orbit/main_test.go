@@ -115,20 +115,7 @@ func TestARealActuatorErrorIsNotSwallowed(t *testing.T) {
 func TestPendingReportsEveryMilestoneItOwes(t *testing.T) {
 	t.Parallel()
 
-	var (
-		world    World    = Pending{}
-		actuator Actuator = Pending{}
-	)
-
-	if _, known := world.Spawn(); known {
-		t.Error("Pending claimed to know the spawn position")
-	}
-	if _, known := world.Block(BlockPos{}); known {
-		t.Error("Pending claimed to know a block")
-	}
-	if _, known := world.Entity(1); known {
-		t.Error("Pending claimed to know an entity")
-	}
+	var actuator Actuator = Pending{}
 
 	for name, err := range map[string]error{
 		"step":    actuator.Step(t.Context(), Vec3{}, true),
@@ -141,15 +128,13 @@ func TestPendingReportsEveryMilestoneItOwes(t *testing.T) {
 	}
 
 	if len(Missing()) == 0 {
-		t.Error("Missing lists nothing while every port is Pending")
+		t.Error("Missing lists nothing while the actuator is Pending")
 	}
 }
 
 func TestFoldMarksReadyOnTheSessionEvent(t *testing.T) {
 	t.Parallel()
 
-	// Only Ready is real today. When M7 lands, this is where its events attach,
-	// and this test is where the next fact gets one.
 	var tick Tick
 	if tick.Ready {
 		t.Fatal("a zero tick is ready")
@@ -158,5 +143,51 @@ func TestFoldMarksReadyOnTheSessionEvent(t *testing.T) {
 	fold(&tick, event.Ready{})
 	if !tick.Ready {
 		t.Error("session.ready did not mark the tick ready")
+	}
+}
+
+func TestFoldTakesAnAttackerOnlyFromAnAttributedDamage(t *testing.T) {
+	t.Parallel()
+
+	// Protocol 47 sends no damage packet and names nobody, so the alternative
+	// to an honest zero is a guess — nearest entity, last swing — presented as
+	// an observation. The bot keeps orbiting instead.
+	var unattributed Tick
+	fold(&unattributed, event.PlayerDamaged{Damage: event.Damage{CauseID: 7}})
+
+	if unattributed.Attacker != 0 {
+		t.Errorf("took attacker %d from damage that named nobody", unattributed.Attacker)
+	}
+
+	var attributed Tick
+	fold(&attributed, event.PlayerDamaged{
+		Damage: event.Damage{CauseID: 7, Attributed: true},
+	})
+
+	if attributed.Attacker != 7 {
+		t.Errorf("attacker is %d, want the attributed 7", attributed.Attacker)
+	}
+}
+
+func TestFoldCarriesTheEdgeTriggeredFacts(t *testing.T) {
+	t.Parallel()
+
+	// These four are the whole reason the loop reads a subscription at all:
+	// everything else it needs is in the snapshot, and what a snapshot cannot
+	// say is what happened between two of them.
+	for name, check := range map[string]struct {
+		e    event.Event
+		read func(Tick) bool
+	}{
+		"death":     {event.PlayerDied{}, func(t Tick) bool { return t.Died }},
+		"respawn":   {event.PlayerRespawned{}, func(t Tick) bool { return t.Respawned }},
+		"placement": {event.PlayerMoved{}, func(t Tick) bool { return t.Corrected }},
+	} {
+		var tick Tick
+		fold(&tick, check.e)
+
+		if !check.read(tick) {
+			t.Errorf("%s did not reach the tick", name)
+		}
 	}
 }

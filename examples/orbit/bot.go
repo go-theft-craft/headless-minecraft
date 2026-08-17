@@ -234,11 +234,11 @@ func (b *Bot) join(t Tick, w World) Action {
 	centre, known := w.Spawn()
 	if !known {
 		if t.Now.Sub(b.readyAt) >= b.bounds.JoinTimeout {
-			// This is the path every run takes until M7 lands, and it is the
-			// reason the timeout exists: standing in silence looks identical to
-			// working, and it is not.
+			// The world is observed now, so reaching this means the server
+			// really did not send a spawn position. The timeout exists because
+			// standing in silence looks identical to working, and it is not.
 			return b.exit("in play for "+b.bounds.JoinTimeout.String()+
-				" with no world spawn; observed world state is M7", 3)
+				" and the server sent no spawn position", 3)
 		}
 
 		return Action{Kind: Stand, Reason: "waiting for world spawn"}

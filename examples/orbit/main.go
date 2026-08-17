@@ -17,6 +17,7 @@ import (
 	"github.com/go-theft-craft/headless-minecraft/safety"
 	"github.com/go-theft-craft/headless-minecraft/version"
 	"github.com/go-theft-craft/headless-minecraft/version/java"
+	"github.com/go-theft-craft/headless-minecraft/world"
 )
 
 func main() {
@@ -60,10 +61,13 @@ func run(logger *slog.Logger, address, username string, legacy, dryRun bool) int
 	// through play and returns after it, so a subscription opened afterwards
 	// has already missed it — which is exactly what the first live run of this
 	// example did, and it looks like a bot that never joined.
-	events, err := bot.Subscribe(
-		event.DomainSession|event.DomainPlayer|event.DomainEntities,
-		eventBuffer,
-	)
+	// Two domains, not five. The subscription carries only what happened
+	// between snapshots — readiness, damage, death, respawn, and the server
+	// moving the player — and everything else the bot needs is read from the
+	// snapshot. Entity and world domains would deliver the first chunk burst to
+	// a subscriber that ignores it, and the client closes a subscriber that
+	// falls behind rather than dropping an event.
+	events, err := bot.Subscribe(event.DomainSession|event.DomainPlayer, eventBuffer)
 	if err != nil {
 		logger.Error("subscribe", slog.Any("error", err))
 
@@ -79,7 +83,7 @@ func run(logger *slog.Logger, address, username string, legacy, dryRun bool) int
 
 	logger.Info("connected", slog.String("address", address))
 
-	code, err := drive(ctx, logger, events)
+	code, err := drive(ctx, logger, bot, events)
 	if err != nil {
 		logger.Error("run", slog.Any("error", err))
 	}
@@ -116,11 +120,17 @@ func build(
 		return nil, fmt.Errorf("authorize: %w", err)
 	}
 
+	// A client with no world publishes events and keeps no state, which is what
+	// a consumer that only watches traffic wants and is useless to one that
+	// reads a snapshot every tick. Leaving this out is silent: World() keeps
+	// answering, with an empty snapshot, so the bot waits for a spawn the server
+	// already sent and then reports that the server never sent one.
 	bot, err := client.New(
 		client.WithAddress(address),
 		client.WithAuth(provider),
 		client.WithVersion(profile(legacy)),
 		client.WithAuthorization(authorization),
+		client.WithWorld(world.New()),
 		client.WithLogger(logger),
 	)
 	if err != nil {
@@ -138,18 +148,27 @@ func profile(legacy bool) version.WireProfile {
 	return java.Current()
 }
 
+// observer supplies one snapshot. It is an interface so the tick loop can be
+// tested without a connection; *client.Client satisfies it.
+type observer interface {
+	World() world.Snapshot
+}
+
 // drive runs the tick loop: fold events into a Tick, ask the core what to do,
 // and do it. This is the only goroutine that touches the bot.
-func drive(ctx context.Context, logger *slog.Logger, events *client.Subscription) (int, error) {
+func drive(
+	ctx context.Context,
+	logger *slog.Logger,
+	source observer,
+	events *client.Subscription,
+) (int, error) {
 	bounds := DefaultBounds()
 	core := NewBot(bounds)
 
-	// M7 and M9 owe these. Until then both are Pending, which is what turns the
-	// first action the core asks for into a clear error instead of silence.
-	var (
-		world    World    = Pending{}
-		actuator Actuator = Pending{}
-	)
+	// M9 still owes the actions, which is what turns the first thing the core
+	// asks to do into a clear error instead of silence. Observation is M7's and
+	// is read from the snapshot below.
+	var actuator Actuator = Pending{}
 
 	ticker := time.NewTicker(bounds.Tick)
 	defer ticker.Stop()
@@ -181,7 +200,17 @@ func drive(ctx context.Context, logger *slog.Logger, events *client.Subscription
 
 		case now := <-ticker.C:
 			pending.Now = now
-			action := core.Advance(pending, world)
+
+			// One snapshot for this whole tick. Taking a second one for the
+			// player would let the terrain move between the bot's feet and the
+			// position it decided to step to.
+			snapshot := source.World()
+			if self, placed := observeSelf(snapshot); placed {
+				pending.Self = self
+			}
+			pending.Revision = snapshot.Revision
+
+			action := core.Advance(pending, NewObserved(snapshot, PendingSolidity{}))
 			narrate(logger, core, action, &last)
 			// Edge-triggered facts are consumed by the tick that saw them.
 			// Leaving Died set would make the core respawn on every tick after
@@ -196,18 +225,44 @@ func drive(ctx context.Context, logger *slog.Logger, events *client.Subscription
 	}
 }
 
-// fold turns one event into tick state. It is where M7's events will attach;
-// today only the session domain has structs, so only Ready is real.
+// fold turns one event into tick state.
+//
+// Only the edge-triggered facts come from events. Position and health are read
+// from the snapshot instead, because an event says a thing changed and the
+// snapshot says what it is now, and a loop that rebuilt state from a stream of
+// changes would be keeping a second copy of the world the library already
+// keeps. What cannot be read from a snapshot is what happened between two of
+// them, and that is exactly this list.
 func fold(t *Tick, e event.Event) {
-	switch e.(type) {
+	switch value := e.(type) {
 	case event.Ready:
 		t.Ready = true
-	default:
-		// Every other fact the core needs — position, damage attribution,
-		// death, respawn, corrections — is owed by M7. Its events do not exist
-		// yet, so there is nothing to fold and nothing to pretend.
+
+	case event.PlayerDamaged:
+		// Only an attributed source is a target. Protocol 47 sends no damage
+		// packet at all and reports being hurt as an entity status with nothing
+		// behind it, so on 47 this is always unattributed and the bot keeps
+		// orbiting rather than swinging at a guess. Inferring an attacker from
+		// who is nearest is the kind of guess the library refuses to make, and
+		// it would be no more honest here.
+		if value.Damage.Attributed {
+			t.Attacker = value.Damage.CauseID
+		}
+
+	case event.PlayerDied:
+		t.Died = true
+
+	case event.PlayerRespawned:
+		t.Respawned = true
+
+	case event.PlayerMoved:
+		// The server placing the player is a correction, because nothing else
+		// in this program moves it: until M8.8 the bot sends no movement, so
+		// every position in the player domain arrived from the server. Once it
+		// does send movement, a position that agrees with what was sent is not
+		// a correction and this has to compare rather than assume.
+		t.Corrected = true
 	}
-	t.Revision = e.Revision()
 }
 
 // narration is the last thing reported, so the log carries changes rather than

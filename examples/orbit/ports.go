@@ -8,7 +8,11 @@ import (
 
 // This file is the whole seam between the decision core and the library. The
 // core reads World and the shell drives Actuator; neither imports the client.
-// When M7 and M9 land, two adapters implement these and nothing else moves.
+//
+// M7 landed and World is now real: Observed in observed.go implements it over
+// one world.Snapshot, and the core did not change to accept it, which is the
+// property the split was chosen for. Actuator is still Pending, because the
+// actions it names belong to M8.8 and M9.6.
 
 // Block is what the bot needs to know about one block to decide whether it can
 // stand there. It is not a block state: the example has no business modelling
@@ -34,11 +38,13 @@ type Entity struct {
 
 // World is observed state, read-only, as of one snapshot revision.
 //
-// Owed by M7.
+// Supplied by M7. See Observed.
 type World interface {
-	// Spawn reports the world spawn position, which is the orbit centre. It
-	// is not the respawn point: the two differ once a bed is used, and the
-	// circle is defined against the first.
+	// Spawn reports the spawn position the server sent, which is the orbit
+	// centre. It is the compass target and not a separate world landmark: a
+	// vanilla server sends the level's shared spawn on join and re-sends the
+	// same packet when the player's respawn point moves, so a bot that slept
+	// would find its circle recentred. This one never sleeps.
 	Spawn() (Vec3, bool)
 	// Block reports one block. The second result is false when the chunk is
 	// not loaded, which the bypass search must distinguish from air — strict
@@ -70,15 +76,12 @@ type Actuator interface {
 // ErrNotYet reports a capability that a milestone still owes.
 var ErrNotYet = errors.New("not available yet")
 
-// Pending stands in for both ports until M7 and M9 land. Every method fails
-// with the milestone that owes it, so running this program against a real
-// server produces the list of what is missing rather than a nil dereference or
-// a bot that silently does nothing.
+// Pending stands in for Actuator until M9 lands. Every method fails with the
+// milestone that owes it, so running this program against a real server
+// produces the list of what is missing rather than a nil dereference or a bot
+// that silently does nothing.
 type Pending struct{}
 
-func (Pending) Spawn() (Vec3, bool)          { return Vec3{}, false }
-func (Pending) Block(BlockPos) (Block, bool) { return Block{}, false }
-func (Pending) Entity(int32) (Entity, bool)  { return Entity{}, false }
 func (Pending) Step(context.Context, Vec3, bool) error {
 	return fmt.Errorf("%w: movement is M8.8 and M9.3", ErrNotYet)
 }
@@ -96,8 +99,9 @@ func (Pending) Respawn(context.Context) error {
 // before it tries.
 func Missing() []string {
 	return []string{
-		"M7:   observed world state — player position, blocks, entities, world spawn",
-		"M7:   damage attributed to a source entity, and a death event",
+		"none: a map from a block state to whether it is solid, which no " +
+			"milestone owns; without it every position reads unknown, so once " +
+			"movement lands the bot traps rather than orbits",
 		"M8.8: movement, so the bot can step and jump",
 		"M9.6: attack, with the version profile's cooldown",
 		"M9:   a respawn primitive, which Task 6's list does not contain",

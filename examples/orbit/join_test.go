@@ -4,26 +4,36 @@ import (
 	"log/slog"
 	"testing"
 	"time"
+
+	"github.com/go-theft-craft/headless-minecraft/world"
 )
+
+// silent is the real M7 adapter over a world that has applied nothing, which is
+// a server that reached play and sent no spawn position. It is the honest stand
+// in for a world that cannot answer, now that the adapter is real: a hand
+// written stub could not prove that an unsent spawn reads as unknown rather
+// than as the origin.
+func silent() Observed {
+	return NewObserved(world.New().Snapshot(), PendingSolidity{})
+}
 
 func TestTheBotGivesUpWhenTheWorldNeverSuppliesSpawn(t *testing.T) {
 	t.Parallel()
 
-	// Exactly what a live run does today: connect, reach play, and wait on a
-	// world port that cannot answer. Standing in silence forever looks like a
-	// working bot, so the wait is bounded and says which milestone it is on.
+	// Standing in silence forever looks like a working bot, so the wait is
+	// bounded and says what did not arrive.
 	c := newClock()
 	bot := NewBot(DefaultBounds())
-	world := Pending{}
+	w := silent()
 
-	if action := bot.Advance(Tick{Now: c.now, Ready: true}, world); action.Kind != Stand {
+	if action := bot.Advance(Tick{Now: c.now, Ready: true}, w); action.Kind != Stand {
 		t.Fatalf("produced %v on the first ready tick, want Stand", action.Kind)
 	}
 
 	action := bot.Advance(Tick{
 		Now:   c.advance(DefaultBounds().JoinTimeout + time.Second),
 		Ready: true,
-	}, world)
+	}, w)
 
 	if action.Kind != Exit {
 		t.Fatalf("produced %v past the join timeout, want Exit", action.Kind)
@@ -44,9 +54,9 @@ func TestTheJoinClockStartsAtPlayNotAtConstruction(t *testing.T) {
 	c := newClock()
 	bot := NewBot(DefaultBounds())
 
-	bot.Advance(Tick{Now: c.advance(5 * time.Minute), Ready: false}, Pending{})
+	bot.Advance(Tick{Now: c.advance(5 * time.Minute), Ready: false}, silent())
 
-	if action := bot.Advance(Tick{Now: c.advance(time.Second), Ready: true}, Pending{}); action.Kind != Stand {
+	if action := bot.Advance(Tick{Now: c.advance(time.Second), Ready: true}, silent()); action.Kind != Stand {
 		t.Errorf("produced %v on reaching play late, want Stand", action.Kind)
 	}
 }
