@@ -179,6 +179,16 @@ that first rather than reasoning from memory would have saved most of the hunt.
 The reference jars are the cheapest source of truth this project has for
 client-visible behaviour.
 
+**M6.2: the proxy has nothing to migrate, and is now independent.** The
+sub-project existed because M6 assumed the legacy proxy shared wire code with
+this work. It does not: it imports nothing from `minecraft-protocol` and owns no
+Java-wire code, because it speaks a different protocol family. Its only tie was
+a vendored copy of the package M3 deleted from `server`, and dropping the
+`require`, the `replace`, and the vendored tree left build, test, and lint
+matching the baseline captured before the change. **M6 is complete apart from
+M6.4**, Microsoft device-code authentication, which is planned and ready to
+start.
+
 **M6.3: the headless connection is complete.** All fourteen tasks landed and
 every automated gate is green: `task lint`, `task test` under `-race`, the new
 `task test:e2e`, and `task build`. The client dials, authenticates offline,
@@ -190,8 +200,8 @@ protocol 775 both have adapters, a readiness rule, and a profile;
 The M7 design's two prerequisites were folded in where they belong. `Event`
 carries the revision, through an embedded `Stamp` that only the collector can
 write, so no handler or subscriber can set or forge one. The second — the
-client owning the configuration phase — is **not** done: it is a 775 concern
-and it needs the client to stop the negotiator at configuration and drive it
+client owning the configuration phase — landed too: the client stops the
+negotiator at the adapter's terminal state and drives configuration into play
 itself. See the M6.3 section below.
 
 Executing it changed three contracts the plan did not anticipate.
@@ -254,9 +264,9 @@ flowchart LR
     M3["M3 Server status/login migration<br/>Complete"]
     M4["M4 Java 26.1 / protocol 775<br/>Complete"]
     M5["M5 Routing, capture/replay, mcproto<br/>Complete"]
-    M6["M6 Complete consumer migrations<br/>Next"]
-    M7["M7 Observed client world state"]
-    M8["M8 Deterministic simulation slice"]
+    M6["M6 Complete consumer migrations<br/>Complete (M6.4 open)"]
+    M7["M7 Observed client world state<br/>Complete"]
+    M8["M8 Deterministic simulation slice<br/>Next"]
     M9["M9 Movement, attack, inventory, craft"]
     M10["M10 Conformance and stable v1"]
     M11["M11 Server framework<br/>M11.1–M11.7"]
@@ -281,7 +291,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M3 | Migrate one real connection path: server handshake, status, ping, login, disconnect, compression, and online/offline mode | `server`, `minecraft-protocol` | Complete | M2.5 | [Design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md), [implementation plan](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) |
 | M4 | Generate Java 26.1 data and protocol 775 codecs, retaining unknown source datasets | `minecraft-protocol` | Complete | M3 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) |
 | M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | Complete | M4 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md) (amended 2026-08-15), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) (amended 2026-08-15) |
-| M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Planned | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
+| M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Complete (M6.1–M6.3); M6.4 Microsoft device-code planned | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
 | M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Complete | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
 | M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 player movement slice with canonical replay and server/client adapters; items and arrows moved to M9 | `minecraft-simulation` | Planned | M4, M7 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
 | M8.1 | Extract Java 1.8.9 physics constants from a verified Mojang server jar and publish them as a pinned, generated Go package | `minecraft-reference`, `minecraft-protocol` | Complete | — | [Physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) |
@@ -756,7 +766,11 @@ something the approved documents asserted:
   are green, and the vanilla-client play session ran on 2026-08-17 across all
   fourteen scenarios with zero decode errors. See the
   [record](../server/docs/verification/2026-08-15-m6-1-client-check.md).
-- [ ] Migrate proxy wire imports while keeping the legacy protocol private to `proxy`.
+- [x] Settle the legacy proxy's share of the migration (M6.2). There was none:
+  the proxy has no wire imports to migrate. Its only tie to this line of work
+  was a dead vendored dependency on the package M3 deleted from `server`, and
+  that is now dropped. **Do not expect a proxy migration; there is nothing to
+  migrate.** See the M6.2 section below.
 - [x] Finish headless lifecycle, authentication, event subscriptions, and
   bounded stream ownership (M6.3). Offline authentication only; Microsoft
   device-code is M6.4.
@@ -881,6 +895,34 @@ something the approved documents asserted:
   a statement about the fixture, not about a real 26.1 server. The 775 reducers
   are covered by packet scripts against real generated values, and the first
   real 775 traffic is still ahead.
+
+#### M6.2 — What the proxy check found
+
+- **There was no migration to do.** M6 was written expecting the legacy proxy to
+  move its wire imports to `minecraft-protocol` while keeping its own protocol
+  private. It imports nothing from `minecraft-protocol`, and it holds no VarInt
+  or Java-wire code at all — it speaks a different protocol family, so it shares
+  nothing with the shared module by construction. The whole sub-project was one
+  removal: drop the `require`, the `replace`, and the vendored tree.
+- **No Go file imported the dead package, but the build graph still reached
+  it.** `grep` over the proxy's own sources found nothing, and `go list -deps`
+  printed `server/pkg/protocol` anyway. The path ran through the *vendored* copy
+  of the private research module, which still carried the re-exports it used to
+  take from `server`. The current research module reimplements those primitives
+  itself, so re-vendoring dropped the node — no source change needed. A stale
+  vendor tree can keep a deleted dependency alive after the importer has already
+  stopped importing it, and `-deps` reports the vendor tree, not the upstream.
+- **The toolchain gap had to close first.** It was recorded as a separate,
+  deferrable gap on the grounds that nothing in the proxy needed it. Re-vendoring
+  needed it: the research module declares `go 1.26.6`, `go mod vendor` refuses on
+  anything older, and `GOSUMDB=off` blocks the toolchain download that would
+  otherwise paper over the mismatch. The proxy is now on the same
+  `openserbia/go-flake` pin as every other repository.
+- **The proxy does not commit its vendor tree**, unlike the assumption the M6.2
+  plan was written on. `vendor/` is gitignored there, so the change is `go.mod`
+  and the toolchain pin alone, and a fresh clone re-vendors from the `replace`
+  targets.
+- Build, test, and lint were captured before the change and matched after.
 
 #### M6.3 — What the headless connection found
 
@@ -1169,15 +1211,16 @@ The three worth carrying furthest:
 - [Routing, capture, replay, and CLI](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) — approved; amended 2026-08-15; Tasks 1–7 start now, 8–12 after M4
 - [Headless connection](docs/superpowers/plans/2026-08-15-headless-connection.md) — M6.3; complete. Each task records what executing it changed
 - [Microsoft authentication](docs/superpowers/plans/2026-08-15-microsoft-authentication.md) — M6.4; planned, ready to start: M6.3 is complete and the `auth.Provider` seam it plugs into is in place
-- [Observed world state](docs/superpowers/plans/2026-08-15-observed-world-state.md) — M7; planned. Six amendments pending from its design review before Task 1
-- [Headless client and authentication](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) — foundation complete; lifecycle and authentication pending
+- [Observed world state](docs/superpowers/plans/2026-08-15-observed-world-state.md) — M7; complete. All eleven tasks, both protocols, eight domains
+- Drop the server dependency — M6.2; complete. The plan lives in the legacy proxy repository, which is private. Two tasks, and three of its premises about that repository's build needed correcting on execution
+- [Headless client and authentication](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) — foundation, lifecycle, and offline authentication complete; Microsoft device-code is M6.4
 - [Constructed components, world state, and operations](docs/superpowers/plans/2026-08-13-world-state-actions.md) — pending
 - [Minecraft reference extraction](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md) — reference tool extracted and released; simulation research catalog pending
 - [Minecraft simulation foundation](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) — repository foundation complete; implementation pending
 
 ### Umbrella plans
 
-- [Shared protocol extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md) — Tasks 1–5 complete. Task 6 is superseded by the M3 migration plan, which splits it: game data moves in M3, packet structs in M6. Tasks 7 and 8 remain for M6.
+- [Shared protocol extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md) — Tasks 1–5 complete. Task 6 is superseded by the M3 migration plan, which splits it: game data moves in M3, packet structs in M6. Tasks 7 and 8 are settled and closed: Task 7 was written against a legacy-protocol package inside the proxy that does not exist, and M6.2 replaced it with a removal; Task 8's deletions all happened in M3 and M6.1. Nothing in this plan is outstanding.
 - [Current protocol and stream toolkit](docs/superpowers/plans/2026-08-13-current-protocol-stream-toolkit.md) — use only as an umbrella. M1 superseded its stream and compression portion, M2 its encryption and login portion, M4 its Tasks 1–5, and M5 its Tasks 8–10. Nothing in it is current guidance.
 
 ## Repository conventions

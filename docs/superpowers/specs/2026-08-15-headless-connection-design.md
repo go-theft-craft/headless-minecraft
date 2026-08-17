@@ -51,6 +51,11 @@ importers, held by `replace => ../server`, for a package M3 already deleted from
 different protocol. The task is to drop the require, the replace, and the
 vendored tree, and confirm the build stays green.
 
+**Done.** The build graph reached the dead package through a stale vendored copy
+of the private research module rather than through any proxy source file, and
+re-vendoring dropped it; that needed the toolchain pin moved to 1.26.6 first.
+`MASTER_PLAN.md`'s M6.2 section records the rest.
+
 ## Goals
 
 - A `client` package that connects to a Java server, completes login, enters
