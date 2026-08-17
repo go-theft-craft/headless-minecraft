@@ -22,6 +22,8 @@ type Snapshot struct {
 	// Environment is the world's scalars: clock, border, weather, difficulty,
 	// and simulation settings.
 	Environment EnvironmentView
+	// Containers is every menu the server has open.
+	Containers ContainersView
 }
 
 // snapshot builds the snapshot. It runs under the world's lock, held by the
@@ -33,5 +35,6 @@ func (w *World) snapshot() Snapshot {
 		Entities:    w.entities.view(),
 		Chunks:      w.chunks.view(),
 		Environment: w.environment.view(),
+		Containers:  w.containers.view(),
 	}
 }

@@ -85,6 +85,7 @@ type World struct {
 	entities    *Entities
 	chunks      *Chunks
 	environment *Environment
+	containers  *Containers
 }
 
 // New returns an empty world with no reducers.
@@ -96,6 +97,7 @@ func New() *World {
 	return &World{
 		player: newPlayer(), entities: newEntities(),
 		chunks: newChunks(), environment: newEnvironment(),
+		containers: newContainers(),
 	}
 }
 
@@ -114,6 +116,10 @@ func (w *World) Chunks() *Chunks { return w.chunks }
 // Environment returns the environment store, for a version adapter to write
 // through.
 func (w *World) Environment() *Environment { return w.environment }
+
+// Containers returns the open-menu store, for a version adapter to write
+// through.
+func (w *World) Containers() *Containers { return w.containers }
 
 // Register adds a reducer. It must be called before the first Apply, because
 // a reducer that missed earlier batches holds state nobody can reconstruct.

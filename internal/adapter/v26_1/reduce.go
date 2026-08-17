@@ -24,6 +24,7 @@ func Reducers(w *world.World) []world.Reducer {
 		entityReducer(w.Entities()),
 		chunkReducer(w.Chunks()),
 		environmentReducer(w.Environment()),
+		containerReducer(w.Containers()),
 	}
 }
 
@@ -517,3 +518,119 @@ func clocks775(updates []gen.PlayClientboundUpdateTimeClockUpdatesItem) []event.
 
 	return clocks
 }
+
+// containerReducer decodes the packets that describe open menus.
+//
+// This protocol carries three facts protocol 47 has no packet for: a recipe
+// book, a trade list, and the state ID that sequences every inventory change.
+func containerReducer(containers *world.Containers) world.Func {
+	return func(_ *world.Context, batch version.Batch, c *event.Collector) error {
+		for _, packet := range batch.Packets {
+			reduceContainerPacket(containers, packet, c)
+		}
+
+		return nil
+	}
+}
+
+// protocol 47 half for why it is not split.
+//
+//nolint:gocyclo // One switch over one protocol's container packets; see the
+func reduceContainerPacket(
+	containers *world.Containers,
+	packet protocol.Packet,
+	c *event.Collector,
+) {
+	switch value := packet.Value.(type) {
+	case *gen.PlayClientboundOpenWindow:
+		containers.Opened(c, event.ContainerOpened{
+			ContainerID: value.WindowID,
+			// A number here, a name on protocol 47. It indexes the session's
+			// menu registry, which the registry domain receives in
+			// configuration; until a caller resolves it there, the server's own
+			// identifier is what the world keeps.
+			MenuType: menuType(value.InventoryType),
+			// No title. 775 sends it as a chat component, and rendering one is
+			// a presentation decision this library does not make for a
+			// consumer -- the same call the disconnect reasons make. A caller
+			// that wants the text renders it from the raw packet.
+		})
+
+	case *gen.PlayClientboundOpenHorseWindow:
+		containers.Opened(c, event.ContainerOpened{
+			ContainerID: value.WindowID,
+			MenuType:    "java/26.1:menu/horse",
+			SlotCount:   value.NbSlots,
+			EntityID:    value.EntityID, EntityKnown: true,
+		})
+
+	case *gen.PlayClientboundCloseWindow:
+		containers.Closed(c, value.WindowID)
+
+	case *gen.PlayClientboundWindowItems:
+		items := make(map[int32]any, len(value.Items))
+		for slot, item := range value.Items {
+			items[int32(slot)] = item
+		}
+		containers.SlotsChanged(c, value.WindowID, items, value.StateID, true)
+		// The same packet carries the cursor, which belongs to no menu.
+		containers.CursorChanged(c, value.CarriedItem, value.CarriedItem != nil)
+
+	case *gen.PlayClientboundSetSlot:
+		// 775 has a dedicated cursor packet, and it still honours the legacy
+		// addressing protocol 47 uses.
+		if value.WindowID == cursorContainer && value.Slot == cursorSlot {
+			containers.CursorChanged(c, value.Item, value.Item != nil)
+
+			return
+		}
+		containers.SlotsChanged(c,
+			value.WindowID, map[int32]any{int32(value.Slot): value.Item}, value.StateID, true)
+
+	case *gen.PlayClientboundSetCursorItem:
+		containers.CursorChanged(c, value.Contents, value.Contents != nil)
+
+	case *gen.PlayClientboundSetPlayerInventory:
+		containers.PlayerSlotChanged(c, value.SlotID, value.Contents, value.Contents != nil)
+
+	case *gen.PlayClientboundCraftProgressBar:
+		containers.PropertyChanged(c, value.WindowID, int32(value.Property), int32(value.Value))
+
+	case *gen.PlayClientboundCraftRecipeResponse:
+		containers.CraftResponse(c, value.WindowID)
+
+	case *gen.PlayClientboundDeclareRecipes:
+		containers.RecipesDeclared(c, len(value.Recipes))
+
+	case *gen.PlayClientboundRecipeBookAdd:
+		// The display ID is the only stable identifier the entry carries, and
+		// it is what the removal packet names too.
+		added := make([]int32, 0, len(value.Entries))
+		for _, entry := range value.Entries {
+			added = append(added, entry.Recipe.DisplayID)
+		}
+		containers.RecipesChanged(c, added, nil, value.Replace)
+
+	case *gen.PlayClientboundRecipeBookRemove:
+		containers.RecipesChanged(c, nil, value.RecipeIds, false)
+
+	case *gen.PlayClientboundTradeList:
+		containers.TradesChanged(c, event.ContainerTradesChanged{
+			ContainerID: value.WindowID, Count: len(value.Trades),
+			VillagerLevel: value.VillagerLevel, Experience: value.Experience,
+			Regular: value.IsRegularVillager, CanRestock: value.CanRestock,
+		})
+	}
+}
+
+// The cursor's legacy address, which both protocols still use: slot -1 of
+// container -1.
+const (
+	cursorContainer int32 = -1
+	cursorSlot      int16 = -1
+)
+
+// menuType renders protocol 775's numeric menu type, on the same rule the
+// entity type follows: the number indexes a session registry, and the server's
+// own identifier is kept rather than a vanilla name guessed from it.
+func menuType(kind int32) string { return "java/26.1:menu/" + strconv.Itoa(int(kind)) }

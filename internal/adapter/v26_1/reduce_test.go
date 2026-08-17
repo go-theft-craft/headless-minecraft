@@ -744,3 +744,142 @@ func TestAnExplosionWithNoKnockbackSaysSo(t *testing.T) {
 		t.Errorf("an explosion with no knockback reported one: %+v", last)
 	}
 }
+
+func TestProtocol775CarriesAStateIDAnd47DoesNot(t *testing.T) {
+	t.Parallel()
+
+	// Zero is a valid state ID, so the snapshot exposes it as optional rather
+	// than defaulting. The protocol 47 half asserts the other side of this.
+	w, _ := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundOpenWindow{WindowID: 3, InventoryType: 2}),
+		play(&gen.PlayClientboundSetSlot{WindowID: 3, StateID: 0, Slot: 1}),
+	})
+
+	menu, ok := w.Snapshot().Containers.Get(3)
+	if !ok {
+		t.Fatal("the menu was not opened")
+	}
+	if !menu.StateKnown || menu.StateID != 0 {
+		t.Errorf("state is %d known %v, want 0 known", menu.StateID, menu.StateKnown)
+	}
+	// The menu type is a number here and a name on 47; both are kept as the
+	// server sent them rather than mapped to a vanilla name.
+	if menu.MenuType != "java/26.1:menu/2" {
+		t.Errorf("menu type is %q", menu.MenuType)
+	}
+	if menu.Title != "" {
+		t.Errorf("775 rendered a chat component into a title: %q", menu.Title)
+	}
+}
+
+func TestWindowItemsCarriesTheCursorOn775(t *testing.T) {
+	t.Parallel()
+
+	// One packet, two facts: the menu's slots and the stack on the cursor,
+	// which belongs to no menu.
+	w, _ := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundWindowItems{
+			WindowID: 1, StateID: 7,
+			Items:       []*gen.Slot{nil, {}},
+			CarriedItem: &gen.Slot{},
+		}),
+	})
+
+	containers := w.Snapshot().Containers
+	if !containers.CursorKnown || !containers.CursorHeld {
+		t.Errorf("cursor is %+v, want held", containers)
+	}
+	menu, _ := containers.Get(1)
+	if len(menu.Slots) != 2 || menu.StateID != 7 {
+		t.Errorf("menu is %+v", menu)
+	}
+}
+
+func TestTheDedicatedCursorPacketEmptiesTheCursor(t *testing.T) {
+	t.Parallel()
+
+	w, events := script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundSetCursorItem{Contents: &gen.Slot{}}),
+		},
+		[]protocol.Packet{play(&gen.PlayClientboundSetCursorItem{})},
+	)
+
+	last := events[len(events)-1].(event.ContainerCursorChanged)
+	if !last.Empty {
+		t.Errorf("an absent stack did not empty the cursor: %+v", last)
+	}
+	containers := w.Snapshot().Containers
+	if !containers.CursorKnown || containers.CursorHeld || containers.Cursor != nil {
+		t.Errorf("cursor is %+v, want known and empty", containers)
+	}
+}
+
+func TestThePlayerInventoryIsMenuZero(t *testing.T) {
+	t.Parallel()
+
+	// 775 addresses the player's own inventory directly, with no packet ever
+	// opening it, so menu 0 exists on first use rather than waiting for an
+	// OpenWindow that never comes.
+	w, _ := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundSetPlayerInventory{SlotID: 36, Contents: &gen.Slot{}}),
+	})
+
+	menu, ok := w.Snapshot().Containers.Get(0)
+	if !ok {
+		t.Fatal("the player inventory is not a menu")
+	}
+	if _, filled := menu.Slots[36]; !filled {
+		t.Errorf("slot 36 is unset: %+v", menu.Slots)
+	}
+}
+
+func TestTheRecipeBookIsKnownOnlyOn775(t *testing.T) {
+	t.Parallel()
+
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundRecipeBookAdd{
+				Entries: []gen.PlayClientboundRecipeBookAddEntriesItem{
+					{Recipe: gen.PlayClientboundRecipeBookAddEntriesItemRecipe{DisplayID: 4}},
+					{Recipe: gen.PlayClientboundRecipeBookAddEntriesItemRecipe{DisplayID: 9}},
+				},
+			}),
+		},
+		[]protocol.Packet{play(&gen.PlayClientboundRecipeBookRemove{RecipeIds: []int32{4}})},
+	)
+
+	containers := w.Snapshot().Containers
+	if !containers.RecipesKnown {
+		t.Fatal("775 sent a recipe book and the snapshot reports none")
+	}
+	if containers.Recipes[4] || !containers.Recipes[9] {
+		t.Errorf("recipes are %+v, want 9 only", containers.Recipes)
+	}
+}
+
+func TestTradesRecordTheirScalars(t *testing.T) {
+	t.Parallel()
+
+	// The trades themselves are wire structures M9 models. What the world
+	// records is that they arrived, how many, and the villager's own numbers.
+	_, events := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundTradeList{
+			WindowID: 2, VillagerLevel: 3, Experience: 40, CanRestock: true,
+			Trades: make([]gen.PlayClientboundTradeListTradesItem, 5),
+		}),
+	})
+
+	last := events[len(events)-1].(event.ContainerTradesChanged)
+	if last.ContainerID != 2 || last.Count != 5 || last.VillagerLevel != 3 || !last.CanRestock {
+		t.Errorf("trades are %+v", last)
+	}
+}

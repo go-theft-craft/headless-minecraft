@@ -28,6 +28,7 @@ func Reducers(w *world.World) []world.Reducer {
 		entityReducer(w.Entities()),
 		chunkReducer(w.Chunks()),
 		environmentReducer(w.Environment()),
+		containerReducer(w.Containers()),
 	}
 }
 
@@ -608,3 +609,77 @@ func difficultyName(difficulty int32) string {
 		return "unknown/" + itoa(int(difficulty))
 	}
 }
+
+// cursorContainer and cursorSlot are how protocol 47 addresses the cursor: a
+// set-slot for container -1, slot -1. It is not a slot in any menu, and
+// missing the special case silently corrupts an inventory model.
+const (
+	cursorContainer int8  = -1
+	cursorSlot      int16 = -1
+)
+
+// containerReducer decodes the packets that describe open menus.
+//
+// Protocol 47 has no recipe book, no trade packet, and no state ID, so three
+// of this domain's seven events never fire here and the snapshot says the
+// recipe set was never supplied rather than presenting it as empty.
+func containerReducer(containers *world.Containers) world.Func {
+	return func(_ *world.Context, batch version.Batch, c *event.Collector) error {
+		for _, packet := range batch.Packets {
+			reduceContainerPacket(containers, packet, c)
+		}
+
+		return nil
+	}
+}
+
+func reduceContainerPacket(
+	containers *world.Containers,
+	packet protocol.Packet,
+	c *event.Collector,
+) {
+	switch value := packet.Value.(type) {
+	case *gen.PlayClientboundOpenWindow:
+		opened := event.ContainerOpened{
+			ContainerID: int32(value.WindowID),
+			// 47 names the menu type on the wire; 775 numbers it. Both are
+			// kept as the server sent them.
+			MenuType:  value.InventoryType,
+			Title:     value.WindowTitle,
+			SlotCount: int32(value.SlotCount),
+		}
+		// A horse's menu, and only a horse's, carries the entity it belongs to.
+		if value.InventoryType == horseMenuType {
+			opened.EntityID, opened.EntityKnown = value.EntityID.EntityHorse, true
+		}
+		containers.Opened(c, opened)
+
+	case *gen.PlayClientboundCloseWindow:
+		containers.Closed(c, int32(value.WindowID))
+
+	case *gen.PlayClientboundWindowItems:
+		items := make(map[int32]any, len(value.Items))
+		for slot, item := range value.Items {
+			items[int32(slot)] = item
+		}
+		containers.SlotsChanged(c, int32(value.WindowID), items, 0, false)
+
+	case *gen.PlayClientboundSetSlot:
+		// Container -1, slot -1 is the cursor, not a slot.
+		if value.WindowID == cursorContainer && value.Slot == cursorSlot {
+			containers.CursorChanged(c, value.Item, value.Item.BlockID >= 0)
+
+			return
+		}
+		containers.SlotsChanged(c,
+			int32(value.WindowID), map[int32]any{int32(value.Slot): value.Item}, 0, false)
+
+	case *gen.PlayClientboundCraftProgressBar:
+		containers.PropertyChanged(c,
+			int32(value.WindowID), int32(value.Property), int32(value.Value))
+	}
+}
+
+// horseMenuType is the one protocol 47 menu whose open packet carries an
+// entity. The schema makes the entity field conditional on this exact string.
+const horseMenuType = "EntityHorse"

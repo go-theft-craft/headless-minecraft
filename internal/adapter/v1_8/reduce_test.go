@@ -883,3 +883,135 @@ func TestDifficultyIsNamedOnBothProtocols(t *testing.T) {
 		t.Error("protocol 47 reported a difficulty lock it does not send")
 	}
 }
+
+func TestTheContainerRecordsWhatTheServerOpened(t *testing.T) {
+	t.Parallel()
+
+	// The container is what the server said it opened, never a menu predicted
+	// from the block that was clicked.
+	w, events := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundOpenWindow{
+			WindowID: 3, InventoryType: "minecraft:chest",
+			WindowTitle: `{"text":"Chest"}`, SlotCount: 27,
+		}),
+	})
+
+	opened := events[len(events)-1].(event.ContainerOpened)
+	if opened.ContainerID != 3 || opened.MenuType != "minecraft:chest" || opened.SlotCount != 27 {
+		t.Errorf("opened %+v", opened)
+	}
+
+	menu, ok := w.Snapshot().Containers.Get(3)
+	if !ok || menu.MenuType != "minecraft:chest" || menu.Title != `{"text":"Chest"}` {
+		t.Errorf("menu is %+v", menu)
+	}
+	// Protocol 47 has no state ID, and zero is a valid one, so the snapshot
+	// must report it as absent rather than as zero.
+	if menu.StateKnown {
+		t.Error("protocol 47 reported a state ID it does not send")
+	}
+}
+
+func TestAnUnknownMenuTypeIsStillAUsableContainer(t *testing.T) {
+	t.Parallel()
+
+	// A modded server opens menus this client has never heard of. Raw slots
+	// are readable; no semantic layout is invented.
+	w, _ := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundOpenWindow{WindowID: 4, InventoryType: "modded:reactor"}),
+		play(&gen.PlayClientboundSetSlot{
+			WindowID: 4, Slot: 2, Item: gen.Slot{BlockID: 264},
+		}),
+	})
+
+	menu, ok := w.Snapshot().Containers.Get(4)
+	if !ok || menu.MenuType != "modded:reactor" {
+		t.Fatalf("menu is %+v", menu)
+	}
+	if _, filled := menu.Slots[2]; !filled {
+		t.Errorf("slot 2 of an unknown menu is unreadable: %+v", menu.Slots)
+	}
+}
+
+func TestSetSlotOnContainerMinusOneTargetsTheCursor(t *testing.T) {
+	t.Parallel()
+
+	// The special case that silently corrupts an inventory model when missed:
+	// container -1, slot -1 is the cursor, not a slot in any menu.
+	w, events := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundOpenWindow{WindowID: 1, InventoryType: "minecraft:chest"}),
+		play(&gen.PlayClientboundSetSlot{WindowID: -1, Slot: -1, Item: gen.Slot{BlockID: 1}}),
+	})
+
+	if _, ok := events[len(events)-1].(event.ContainerCursorChanged); !ok {
+		t.Fatalf("published %T, want event.ContainerCursorChanged", events[len(events)-1])
+	}
+	containers := w.Snapshot().Containers
+	if !containers.CursorKnown || !containers.CursorHeld {
+		t.Errorf("cursor is %+v, want held", containers)
+	}
+	if menu, _ := containers.Get(1); len(menu.Slots) != 0 {
+		t.Errorf("a cursor update landed in a menu: %+v", menu.Slots)
+	}
+}
+
+func TestClosingAMenuReleasesIt(t *testing.T) {
+	t.Parallel()
+
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			login(1),
+			play(&gen.PlayClientboundOpenWindow{WindowID: 5, InventoryType: "minecraft:chest"}),
+			play(&gen.PlayClientboundWindowItems{
+				WindowID: 5, Items: []gen.Slot{{BlockID: 1}, {BlockID: 2}},
+			}),
+		},
+		[]protocol.Packet{play(&gen.PlayClientboundCloseWindow{WindowID: 5})},
+	)
+
+	if _, ok := w.Snapshot().Containers.Get(5); ok {
+		t.Error("a closed menu is still open")
+	}
+}
+
+func TestReopeningAContainerIDDoesNotCarryTheOldMenu(t *testing.T) {
+	t.Parallel()
+
+	// A server reuses container IDs. Carrying the old menu's slots into the
+	// new one would report a chest's contents as a furnace's.
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			login(1),
+			play(&gen.PlayClientboundOpenWindow{WindowID: 6, InventoryType: "minecraft:chest"}),
+			play(&gen.PlayClientboundSetSlot{WindowID: 6, Slot: 0, Item: gen.Slot{BlockID: 1}}),
+		},
+		[]protocol.Packet{
+			play(&gen.PlayClientboundOpenWindow{WindowID: 6, InventoryType: "minecraft:furnace"}),
+		},
+	)
+
+	menu, _ := w.Snapshot().Containers.Get(6)
+	if menu.MenuType != "minecraft:furnace" {
+		t.Errorf("menu type is %q", menu.MenuType)
+	}
+	if len(menu.Slots) != 0 {
+		t.Errorf("the old menu's slots survived: %+v", menu.Slots)
+	}
+}
+
+func TestProtocol47HasNoRecipeBook(t *testing.T) {
+	t.Parallel()
+
+	// 1.8 has no recipe book and no trade packet. An empty recipe set must not
+	// read as "the server sent no recipes".
+	w, _ := script(t, []protocol.Packet{login(1)})
+
+	if w.Snapshot().Containers.RecipesKnown {
+		t.Error("protocol 47 reported a recipe book it has no packet for")
+	}
+}
