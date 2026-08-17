@@ -46,12 +46,16 @@ The module does not provide these features:
   conversion
 - Database or file persistence
 - Rendering, audio playback, or user interfaces
-- Pathfinding, goal selection, mob AI, fish AI, combat strategy, or automation
-  scheduling
+- Goal selection, mob AI, fish AI, combat strategy, or automation scheduling
 - Inventory user interfaces or crafting planners
 - A generic engine for games that resemble Minecraft
 - A public entity-component-system storage framework
 - A sandbox for untrusted Go extensions
+
+Pathfinding was a non-goal until 2026-08-17, when the navigation design moved
+it here. The route search is a deterministic function of terrain and a body's
+capability, which is the same kind of rule as collision; what stays excluded is
+deciding where to go.
 
 An AI controller can submit an entity intent. The simulation decides the
 deterministic consequences of that intent.

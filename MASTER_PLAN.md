@@ -502,7 +502,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M8.8 | One kernel driven by client prediction and server authority, gated on zero corrections from vanilla | `minecraft-simulation`, `headless-minecraft`, `server` | Planned, plan written | M8.4, M6, M7 | [M8.8 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) |
 | M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic, each verified against both 1.8.9 and 26.1.2 | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.1b planned; M9.3–M9.8 plans drafted ahead of their prerequisites, each with a reconcile-first task; M9.2 unblocked by M8.4 and awaiting M8.8 | M9.1 on M5 and `relay` v0.2.0; M9.1b on M9.1 and M4; M9.2–M9.8 on M8.8, M9.1, and M9.1b | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite), [M9.1b–M10 cross-version plan](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps, [M10 plan](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) |
-| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | M11.1 through M11.4 complete; M11.5–M11.7 designed and planned, unimplemented | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), six sub-milestone designs, and a plan for each, [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) |
+| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | M11.1 through M11.4 complete; M11.5 partly implemented; M11.6–M11.7 designed and planned, unimplemented | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), six sub-milestone designs, and a plan for each, [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) |
 
 ## What is complete
 
@@ -1746,8 +1746,48 @@ The three worth carrying furthest:
   - The `HeightAt`/`Generate` disagreement at a cave mouth is still there. It
     is documented on the method now rather than only in the design, and it
     belongs to whoever owns where a dropped item lands.
-- [ ] M11.5 Provenance: item and block identity, the ID index, the audit log and
-  its queries, reconciliation on load. [Design](../server/docs/superpowers/specs/2026-08-17-m11-5-provenance-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-5-provenance.md), 2026-08-17.
+- [~] M11.5 Provenance: item and block identity, the ID index, the audit log and
+  its queries, reconciliation on load. **Partly done on 2026-08-17.**
+  [Design](../server/docs/superpowers/specs/2026-08-17-m11-5-provenance-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-5-provenance.md), 2026-08-17.
+  - **Landed:** item IDs from a persisted epoch (Task 1), identity on the stack
+    with split and merge that keep the invariant (Task 2), the index and its
+    duplication detector (Task 3 Steps 1–2 and 4), records and the recorder
+    (Task 4), the rotating file store and its three queries (Task 5), and the
+    off-by-default proof and the example flag (Tasks 8–9). The exit criterion
+    the design named is met: `TestTheChainSurvivesARestart` places a block,
+    closes the store, reopens it, breaks the block, and gets the whole chain
+    from one query.
+  - **Not landed, and this is the milestone's unfinished half:** Task 3 Step 3
+    — routing the inventory click paths through the index — together with
+    Task 3 Step 5's property test over click sequences, Task 6 (sparse block
+    identity in the sidecar) and Task 7 (reconciliation at load). Until the
+    click paths route through it, an item's IDs go stale the moment a player
+    moves a stack, and a later move would report a *false* duplication. That is
+    why the feature stays off and why partial routing would be worse than none:
+    a half-converted path produces false positives, not gaps.
+  - **The detector is proved against a known failure shape, not against an open
+    bug.** Both M3 duplications were fixed before this milestone was designed
+    (`e67ec09`), so `TestThePartialDepositBugIsDetected` reconstructs the
+    tryAddToSection shape — part of a stack deposited, the source left intact —
+    and asserts the instrument catches it, with a correct deposit of the same
+    shape reporting nothing so the detector is not simply always firing. It has
+    never fired on real code, because no real code routes through it yet.
+  - **The measured cost of being off is one nil check:** 5.9 ns per call and
+    zero allocations, against 100 ns with a file store behind it. The
+    allocation figure is a test rather than a benchmark, so CI fails on a
+    regression instead of printing a number nobody reads.
+  - **Two types became one.** `player.Slot` is now an alias for
+    `world.ItemStack`, because attaching identity to two types would have
+    guaranteed they diverge. The merge surfaced a real disagreement: the two
+    `IsEmpty` definitions differed — one tested `BlockID == -1`, the other
+    `BlockID <= 0 || ItemCount <= 0` — and the stricter one won. And an
+    ItemStack stopped being comparable with `==` the moment it carried a slice,
+    which is why `Equal` exists and why about thirty comparisons moved to it.
+  - **The index's memory cost on a populated world is still unmeasured**, which
+    the framework design flags as the risk no test reveals early. It cannot be
+    measured until the click paths route through it: today the index only ever
+    holds what a test puts in it. `ItemIndex.Len()` exists for exactly that
+    measurement when the time comes.
 - [ ] M11.6 Observability: one `Observer` interface, per-player, per-feature,
   and per-chunk attribution. [Design](../server/docs/superpowers/specs/2026-08-17-m11-6-observability-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-6-observability.md), 2026-08-17.
 - [ ] M11.7 Commands: `Command`, `Set`, `vanilla.Stubs()`, brigadier rendering
