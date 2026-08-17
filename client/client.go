@@ -42,13 +42,23 @@ type Client struct {
 	events fanout
 	world  *world.World
 
+	// writeMu serializes outbound writes. The read loop's replies and every Do
+	// take it, so an action never interleaves with a keepalive answer.
+	writeMu sync.Mutex
+
 	mu         sync.Mutex
 	closed     bool
 	closeErr   error
 	connecting bool
 	stream     *protocol.Stream
-	loopError  error
-	stop       func()
+	// writer is the outbound half of the connection, recorded so Do can write
+	// without reaching through the stream the loop owns.
+	writer sender
+	// inPlay records that the server placed the player. Before that, an action
+	// packet is a protocol error rather than a move.
+	inPlay    bool
+	loopError error
+	stop      func()
 	// loop closes when the read loop stops; done closes when Close finishes.
 	// They are separate because a session can end without anyone calling
 	// Close, and Close must still be able to run afterwards.

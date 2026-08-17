@@ -169,6 +169,7 @@ func (c *Client) startLoop(
 
 	c.mu.Lock()
 	c.stream = stream
+	c.writer = streamSender{stream: stream}
 	c.stop = stop
 	c.connecting = false
 	c.mu.Unlock()

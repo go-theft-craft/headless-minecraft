@@ -149,6 +149,9 @@ func (c *Client) runLoop(
 
 		if state.Ready && !readySent {
 			readySent = true
+			// Before the announcement, so a subscriber that acts on Ready and a
+			// caller that returns from Connect both find the client willing.
+			c.enterPlay()
 			c.publishReady(state)
 
 			select {
@@ -160,12 +163,23 @@ func (c *Client) runLoop(
 }
 
 // send writes one batch's answers and reports each as a sent packet.
+//
+// It takes the client's write lock, which Do takes as well: a batch's answers go
+// out together, and an action from another goroutine lands either before them or
+// after them but never between them.
 func (c *Client) send(
 	ctx context.Context,
 	w sender,
 	collector *event.Collector,
 	packets []protocol.Packet,
 ) error {
+	if len(packets) == 0 {
+		return nil
+	}
+
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
 	for _, p := range packets {
 		if err := w.Write(ctx, p); err != nil {
 			return fmt.Errorf("write %s: %w", p.Name, err)

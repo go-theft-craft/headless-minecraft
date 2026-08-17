@@ -35,6 +35,10 @@ func (s stubAdapter) ProtocolID() string                     { return s.id }
 func (stubAdapter) LoginTerminalState() protocol.State       { return "" }
 func (stubAdapter) Handshake(string, uint16) protocol.Packet { return protocol.Packet{} }
 
+func (stubAdapter) EncodeAction(version.Action) (protocol.Packet, error) {
+	return protocol.Packet{}, nil
+}
+
 func (stubAdapter) Handlers() map[string]version.Handler { return nil }
 
 type stubReadiness struct{}

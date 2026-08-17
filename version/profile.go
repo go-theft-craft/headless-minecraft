@@ -39,6 +39,11 @@ type Adapter interface {
 	// packet type, its protocol number, and its field types all differ, and
 	// the client that sends it names no version.
 	Handshake(host string, port uint16) protocol.Packet
+	// EncodeAction turns one outbound intent into the packet this protocol
+	// carries it in. It reports ErrUnsupportedAction for an intent the protocol
+	// has no packet for, rather than sending an approximation: a server reads a
+	// movement packet as a claim, and the wrong claim is a disagreement.
+	EncodeAction(action Action) (protocol.Packet, error)
 	// Handlers are registered with the router by packet name. Each appends
 	// to the batch-scoped collector it was built with; none publishes
 	// directly, because a batch's events are published together or not at
