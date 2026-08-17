@@ -8,6 +8,13 @@
 
 **Tech Stack:** Go 1.26.6 via `openserbia/go-flake`, Devbox, Task, standard library only. No OAuth library.
 
+**Status: postponed, not blocked.** Every prerequisite is met — M6.3 is complete
+and the `auth.Provider` seam is in place — and nothing in `MASTER_PLAN.md`
+depends on this milestone, so it was deliberately deferred rather than started
+after M6.2 closed M6. Nothing in the plan below needs revisiting first; pick it
+up when an online-mode server is what needs testing. Until then every check runs
+against offline mode.
+
 ## Global Constraints
 
 - Work in `/home/ocharnyshevich/pet.projects/go-theft-craft/headless-minecraft`.

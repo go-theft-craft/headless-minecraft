@@ -185,9 +185,16 @@ this work. It does not: it imports nothing from `minecraft-protocol` and owns no
 Java-wire code, because it speaks a different protocol family. Its only tie was
 a vendored copy of the package M3 deleted from `server`, and dropping the
 `require`, the `replace`, and the vendored tree left build, test, and lint
-matching the baseline captured before the change. **M6 is complete apart from
-M6.4**, Microsoft device-code authentication, which is planned and ready to
-start.
+matching the baseline captured before the change.
+
+**M6 is closed. M6.4 is postponed, deliberately.** Microsoft device-code
+authentication is written and ready to start, and it is not being started:
+nothing in the plan waits on it. It is independent of M4, M5, and M7, no later
+milestone depends on it, and the `auth.Provider` seam it plugs into is already in
+place, so picking it up later costs nothing that starting it now would save. What
+postponing it costs is access to online-mode servers — every check from here runs
+against offline mode, including M8's and M9's vanilla lanes. Take it up when a
+real online-mode server is the thing being tested, not before.
 
 **M6.3: the headless connection is complete.** All fourteen tasks landed and
 every automated gate is green: `task lint`, `task test` under `-race`, the new
@@ -264,7 +271,7 @@ flowchart LR
     M3["M3 Server status/login migration<br/>Complete"]
     M4["M4 Java 26.1 / protocol 775<br/>Complete"]
     M5["M5 Routing, capture/replay, mcproto<br/>Complete"]
-    M6["M6 Complete consumer migrations<br/>Complete (M6.4 open)"]
+    M6["M6 Complete consumer migrations<br/>Complete (M6.4 postponed)"]
     M7["M7 Observed client world state<br/>Complete"]
     M8["M8 Deterministic simulation slice<br/>Next"]
     M9["M9 Movement, attack, inventory, craft"]
@@ -291,7 +298,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M3 | Migrate one real connection path: server handshake, status, ping, login, disconnect, compression, and online/offline mode | `server`, `minecraft-protocol` | Complete | M2.5 | [Design](../server/docs/superpowers/specs/2026-08-15-shared-protocol-migration-design.md), [implementation plan](../server/docs/superpowers/plans/2026-08-15-shared-protocol-migration.md) |
 | M4 | Generate Java 26.1 data and protocol 775 codecs, retaining unknown source datasets | `minecraft-protocol` | Complete | M3 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) |
 | M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | Complete | M4 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md) (amended 2026-08-15), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) (amended 2026-08-15) |
-| M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Complete (M6.1–M6.3); M6.4 Microsoft device-code planned | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
+| M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Complete; M6.4 Microsoft device-code postponed, nothing depends on it | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
 | M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Complete | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
 | M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 player movement slice with canonical replay and server/client adapters; items and arrows moved to M9 | `minecraft-simulation` | Planned | M4, M7 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
 | M8.1 | Extract Java 1.8.9 physics constants from a verified Mojang server jar and publish them as a pinned, generated Go package | `minecraft-reference`, `minecraft-protocol` | Complete | — | [Physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) |
@@ -1210,7 +1217,7 @@ The three worth carrying furthest:
 - [Java 26.1 and protocol 775](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) — approved; starts after M3
 - [Routing, capture, replay, and CLI](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) — approved; amended 2026-08-15; Tasks 1–7 start now, 8–12 after M4
 - [Headless connection](docs/superpowers/plans/2026-08-15-headless-connection.md) — M6.3; complete. Each task records what executing it changed
-- [Microsoft authentication](docs/superpowers/plans/2026-08-15-microsoft-authentication.md) — M6.4; planned, ready to start: M6.3 is complete and the `auth.Provider` seam it plugs into is in place
+- [Microsoft authentication](docs/superpowers/plans/2026-08-15-microsoft-authentication.md) — M6.4; written and ready, **postponed**. Its prerequisites are met and nothing depends on it; start it when an online-mode server is what needs testing
 - [Observed world state](docs/superpowers/plans/2026-08-15-observed-world-state.md) — M7; complete. All eleven tasks, both protocols, eight domains
 - Drop the server dependency — M6.2; complete. The plan lives in the legacy proxy repository, which is private. Two tasks, and three of its premises about that repository's build needed correcting on execution
 - [Headless client and authentication](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) — foundation, lifecycle, and offline authentication complete; Microsoft device-code is M6.4
