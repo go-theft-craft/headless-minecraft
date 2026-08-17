@@ -554,6 +554,12 @@ func reduceEnvironmentPacket(
 	case *gen.PlayClientboundWorldEvent:
 		environment.WorldEvent(c, value.EffectID, blockPos47(value.Location), value.Data, value.Global)
 
+	case *gen.PlayClientboundSpawnPosition:
+		// 47 sends coordinates and nothing else: no dimension, no angle. The
+		// world records that rather than filling either in from the player's,
+		// which would report a guess as an observation.
+		environment.SpawnChanged(c, blockPos47(value.Location), "", 0, 0, false)
+
 	case *gen.PlayClientboundGameStateChange:
 		// The other half of the packet the player reducer reads. Each ignores
 		// the reasons that are not its own.

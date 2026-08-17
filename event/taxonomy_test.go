@@ -51,7 +51,7 @@ func TestTaxonomyCoversEveryDeclaredDomain(t *testing.T) {
 	want := map[event.Domain]int{
 		event.DomainSession:    14,
 		event.DomainPlayer:     12,
-		event.DomainWorld:      12,
+		event.DomainWorld:      13,
 		event.DomainEntities:   13,
 		event.DomainContainers: 7,
 		event.DomainRegistry:   4,

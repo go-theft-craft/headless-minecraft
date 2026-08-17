@@ -459,6 +459,17 @@ func reduceEnvironmentPacket(
 		// Already a name here; protocol 47 sends the number this maps from.
 		environment.DifficultyChanged(c, value.Difficulty, value.DifficultyLocked)
 
+	case *gen.PlayClientboundSpawnPosition:
+		// 775 wraps the position in a global one, which names the dimension it
+		// belongs to, and adds the angle to face on arriving. Protocol 47 sends
+		// neither.
+		environment.SpawnChanged(
+			c,
+			blockPos775(value.GlobalPos.Location),
+			value.GlobalPos.DimensionName,
+			value.Yaw, value.Pitch, true,
+		)
+
 	case *gen.PlayClientboundExplosion:
 		explosion := event.WorldExplosionOccurred{
 			X: value.Center.X, Y: value.Center.Y, Z: value.Center.Z,

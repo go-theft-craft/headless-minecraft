@@ -53,6 +53,13 @@ type Environment struct {
 	frozen             bool
 	simulationKnown    bool
 
+	spawn          BlockPos
+	spawnDimension string
+	spawnYaw       float32
+	spawnPitch     float32
+	spawnAngled    bool
+	spawnKnown     bool
+
 	gameRules        map[string]string
 	droppedGameRules int
 }
@@ -96,6 +103,20 @@ type EnvironmentView struct {
 	// sends none of the five fields above.
 	SimulationKnown bool
 
+	// Spawn is the compass target the server last sent, and SpawnKnown reports
+	// whether it sent one. It is the level's shared spawn on join and the
+	// player's own respawn point after a bed — see event.WorldSpawnChanged for
+	// why the two cannot be told apart here.
+	Spawn      BlockPos
+	SpawnKnown bool
+	// SpawnDimension is empty on protocol 47, which sends no dimension with
+	// the position.
+	SpawnDimension string
+	// SpawnYaw and SpawnPitch are the direction to face on respawning, and
+	// SpawnAngled reports whether a protocol sent them. Protocol 47 does not.
+	SpawnYaw, SpawnPitch float32
+	SpawnAngled          bool
+
 	GameRules        map[string]string
 	DroppedGameRules int
 }
@@ -117,6 +138,8 @@ func (e *Environment) view() EnvironmentView {
 		ViewDistance: e.viewDistance, SimulationDistance: e.simulationDistance,
 		ViewChunkX: e.viewChunkX, ViewChunkZ: e.viewChunkZ,
 		TickRate: e.tickRate, Frozen: e.frozen, SimulationKnown: e.simulationKnown,
+		Spawn: e.spawn, SpawnKnown: e.spawnKnown, SpawnDimension: e.spawnDimension,
+		SpawnYaw: e.spawnYaw, SpawnPitch: e.spawnPitch, SpawnAngled: e.spawnAngled,
 		GameRules: maps.Clone(e.gameRules), DroppedGameRules: e.droppedGameRules,
 	}
 }
@@ -252,6 +275,30 @@ func (e *Environment) DifficultyChanged(c *event.Collector, difficulty string, l
 	e.difficulty, e.locked, e.difficultyKnown = difficulty, locked, true
 
 	event.Emit(c, event.WorldDifficultyChanged{Difficulty: difficulty, Locked: locked})
+}
+
+// SpawnChanged records the compass target. Both protocols send it, and the
+// adapter passes what its protocol carries: 775 supplies a dimension and an
+// angle, 47 supplies neither and passes angled false.
+//
+// Every send replaces the last. A server re-sends this packet when the player's
+// respawn point moves, so keeping the first would report a landmark the server
+// has since abandoned.
+func (e *Environment) SpawnChanged(
+	c *event.Collector,
+	pos BlockPos,
+	dimension string,
+	yaw, pitch float32,
+	angled bool,
+) {
+	e.spawn, e.spawnDimension, e.spawnKnown = pos, dimension, true
+	e.spawnYaw, e.spawnPitch, e.spawnAngled = yaw, pitch, angled
+
+	event.Emit(c, event.WorldSpawnChanged{
+		Position:  event.BlockPosition{X: pos.X, Y: pos.Y, Z: pos.Z},
+		Dimension: dimension,
+		Yaw:       yaw, Pitch: pitch, Angled: angled,
+	})
 }
 
 // Explosion records an explosion. It changes no stored state: the blocks an

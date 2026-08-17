@@ -64,6 +64,7 @@ const (
 	NameWorldExplosionOccurred         Name = "world.explosion_occurred"
 	NameWorldEventOccurred             Name = "world.event_occurred"
 	NameWorldSimulationSettingsChanged Name = "world.simulation_settings_changed"
+	NameWorldSpawnChanged              Name = "world.spawn_changed"
 )
 
 // Entity events.
@@ -146,6 +147,7 @@ var domains = map[Name]Domain{
 	NameWorldBorderChanged: DomainWorld, NameWorldWeatherChanged: DomainWorld,
 	NameWorldDifficultyChanged: DomainWorld, NameWorldExplosionOccurred: DomainWorld,
 	NameWorldEventOccurred: DomainWorld, NameWorldSimulationSettingsChanged: DomainWorld,
+	NameWorldSpawnChanged: DomainWorld,
 
 	NameEntitySpawned: DomainEntities, NameEntityRemoved: DomainEntities,
 	NameEntityMoved: DomainEntities, NameEntityMetadataChanged: DomainEntities,

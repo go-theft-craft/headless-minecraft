@@ -234,3 +234,31 @@ type WorldSimulationSettingsChanged struct {
 
 func (WorldSimulationSettingsChanged) Name() Name     { return NameWorldSimulationSettingsChanged }
 func (WorldSimulationSettingsChanged) Domain() Domain { return DomainWorld }
+
+// WorldSpawnChanged reports the spawn position the server sent.
+//
+// This is the compass target, and calling it "the world spawn" is only true
+// until the player sleeps: a vanilla server sends the level's shared spawn on
+// join and re-sends this packet whenever the player's own respawn point moves,
+// so a caller that treats it as a fixed landmark is right until the first bed
+// and wrong afterwards. Nothing here distinguishes the two, because the packet
+// does not: it carries a position and no reason for it.
+//
+// Both protocols send it. Protocol 775 adds the dimension it is in and the
+// angle to face on arrival; protocol 47 sends coordinates alone, and Angled is
+// false for the whole of such a session.
+type WorldSpawnChanged struct {
+	Stamp
+
+	Position BlockPosition
+	// Dimension names the world the position is in. Protocol 47 does not send
+	// one, so it is empty there rather than guessed from the player's.
+	Dimension string
+	// Yaw and Pitch are the direction to face on respawning. Angled reports
+	// whether a protocol sent them.
+	Yaw, Pitch float32
+	Angled     bool
+}
+
+func (WorldSpawnChanged) Name() Name     { return NameWorldSpawnChanged }
+func (WorldSpawnChanged) Domain() Domain { return DomainWorld }

@@ -1200,3 +1200,31 @@ func TestTheTitlePacketsActionsReachOneEvent(t *testing.T) {
 		t.Error("a title reset left the timings behind")
 	}
 }
+
+func TestTheSpawnPositionIsReducedWithoutADimensionOrAnAngle(t *testing.T) {
+	t.Parallel()
+
+	// Protocol 47 sends coordinates alone. The world records that rather than
+	// borrowing the player's dimension, which would be a guess reported as an
+	// observation.
+	w, _ := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundSpawnPosition{
+			Location: gen.Position{X: 120, Y: 70, Z: -40},
+		}),
+	})
+
+	environment := w.Snapshot().Environment
+	if !environment.SpawnKnown {
+		t.Fatal("the spawn position packet did not reach the world")
+	}
+	if want := (world.BlockPos{X: 120, Y: 70, Z: -40}); environment.Spawn != want {
+		t.Errorf("spawn is %+v, want %+v", environment.Spawn, want)
+	}
+	if environment.SpawnDimension != "" {
+		t.Errorf("dimension is %q, want empty on a protocol that sends none", environment.SpawnDimension)
+	}
+	if environment.SpawnAngled {
+		t.Error("protocol 47 reported a spawn angle it does not send")
+	}
+}

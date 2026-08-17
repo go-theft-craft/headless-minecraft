@@ -19,3 +19,4 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
 - `client`: `WithWorld` installs the observed state a connection maintains, and `World()` returns the current snapshot.
 - `examples/observe`: connects, maintains a world, and prints every state event with its revision.
 - `client`: connect, close, wait, and bounded event subscriptions. A client dials, logs in, and returns once the server will accept action packets; a subscriber that falls behind is closed rather than blocked.
+- `event`, `world`: the spawn position. `world.spawn_changed` and `EnvironmentView.Spawn` report the compass target both protocols send, with the dimension and facing angle protocol 775 adds and protocol 47 does not. It is the level's shared spawn on join and the player's own respawn point after a bed, because the packet carries one value for both and no reason for it; `SpawnKnown` separates a server that said nothing from one that named the origin.

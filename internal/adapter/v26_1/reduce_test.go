@@ -1275,3 +1275,35 @@ func TestScoresLiveUnderTheirObjective(t *testing.T) {
 }
 
 func ptr[T any](value T) *T { return &value }
+
+func TestTheSpawnPositionCarriesItsDimensionAndAngle(t *testing.T) {
+	t.Parallel()
+
+	// 775 wraps the position in a global one, which names the dimension, and
+	// adds the angle to face on arriving. Protocol 47 sends neither, so this is
+	// the half of the fact only this protocol supplies.
+	w, _ := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundSpawnPosition{
+			GlobalPos: gen.GlobalPos{
+				DimensionName: "minecraft:overworld",
+				Location:      gen.Position{X: 120, Y: 70, Z: -40},
+			},
+			Yaw: 90, Pitch: 0,
+		}),
+	})
+
+	environment := w.Snapshot().Environment
+	if !environment.SpawnKnown {
+		t.Fatal("the spawn position packet did not reach the world")
+	}
+	if want := (world.BlockPos{X: 120, Y: 70, Z: -40}); environment.Spawn != want {
+		t.Errorf("spawn is %+v, want %+v", environment.Spawn, want)
+	}
+	if environment.SpawnDimension != "minecraft:overworld" {
+		t.Errorf("dimension is %q, want minecraft:overworld", environment.SpawnDimension)
+	}
+	if !environment.SpawnAngled || environment.SpawnYaw != 90 {
+		t.Errorf("angle is %v at yaw %v, want an angled 90", environment.SpawnAngled, environment.SpawnYaw)
+	}
+}
