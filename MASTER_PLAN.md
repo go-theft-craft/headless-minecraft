@@ -247,6 +247,40 @@ Three findings are worth carrying into M8.2 and later:
   so the 26.1 tree still generates. M8.7 adds a second dumper for 26.1.2;
   `Dump` already rejects every version but 1.8.9 with an explicit error.
 
+**M8.2: geometry and collision are complete, and checked against the game.**
+`geom`, `world`, and `collision` deliver swept axis-aligned movement over a
+block view that distinguishes known air from an unknown region. All nine tasks
+landed, `task verify` is green, and the three exit properties hold: swept motion
+never tunnels, a step-up never exceeds its bound, and zero motion is a fixed
+point.
+
+The milestone also gained an oracle the plan did not ask for. `internal/oracle`
+compiles a harness against the locally prepared, deobfuscated 1.8.9 server jar
+and runs the game's own `AxisAlignedBB` methods and its own `Entity.moveEntity`,
+its broad phase and both step-up attempts included, then requires a
+bit-identical box and matching collision flags. 17,000 primitive cases and 2,872
+whole moves agree exactly. No game source or jar is committed, and the tests skip
+without a prepared workspace or a JDK, the same way `generate:check` skips
+without a JDK.
+
+Building it was worth it, because reading the plan had missed two things:
+
+- A step-up records the **settle** as its Y motion, not the climb plus the
+  settle. Vanilla resets the value to the negated rise before the settle clamp
+  and keeps only that, so the vertical collision flag after a step describes the
+  descent onto the surface. `onGround` follows from that flag and the tick's
+  original downward motion, which means stepping does not by itself put an
+  entity on the ground — a walking entity reads as grounded only because gravity
+  makes its Y motion negative.
+- `stepHeight` is a `float` widened where it is applied, so a player steps with
+  `float64(float32(0.6))`, not `0.6`. This is the same widening M8.1 recorded for
+  the motion constants, and it is now known to reach further than that list.
+  M8.4 should assume any 1.8.9 quantity may be a widened `float` until checked.
+
+The lesson generalizes: the fixture-only gates M8.4 and M8.7 rely on are weaker
+than this, and the harness is reusable. Point it at `movement` when M8.4 lands
+rather than waiting for M8.8's live server.
+
 **M11: server framework is newly planned.** The eight items in
 `server/docs/todo.md` fit no existing plan, because every server plan is
 protocol migration, and this file had no milestone for `server` becoming
@@ -273,7 +307,7 @@ flowchart LR
     M5["M5 Routing, capture/replay, mcproto<br/>Complete"]
     M6["M6 Complete consumer migrations<br/>Complete (M6.4 postponed)"]
     M7["M7 Observed client world state<br/>Complete"]
-    M8["M8 Deterministic simulation slice<br/>Next"]
+    M8["M8 Deterministic simulation slice<br/>M8.1–M8.2 complete"]
     M9["M9 Movement, attack, inventory, craft"]
     M10["M10 Conformance and stable v1"]
     M11["M11 Server framework<br/>M11.1–M11.7"]
@@ -302,6 +336,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Complete | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
 | M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 player movement slice with canonical replay and server/client adapters; items and arrows moved to M9 | `minecraft-simulation` | Planned | M4, M7 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
 | M8.1 | Extract Java 1.8.9 physics constants from a verified Mojang server jar and publish them as a pinned, generated Go package | `minecraft-reference`, `minecraft-protocol` | Complete | — | [Physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) |
+| M8.2 | `geom`, `world`, and `collision`: swept axis-aligned collision reproducing Java Edition 1.8.9 axis order and step-up, over a tri-state block view, verified against a real server jar | `minecraft-simulation` | Complete | — | [M8.2 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-15-m8-2-geometry-collision-core.md) |
 | M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.2–M9.8 planned | M9.1 on M5 and `relay` v0.2.0; M9.2–M9.8 on M8.8 and M9.1 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite) |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps, [M10 plan](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) |
 | M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | Planned | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) (M11.1 written; M11.2–M11.7 await their own design) |
@@ -1053,7 +1088,7 @@ Three changes to the original plan, all recorded in the sequencing design:
 | Stage | Depends on | Exit criterion |
 | --- | --- | --- |
 | M8.1 | — | `v1_8.Physics()` returns slipperiness, the trigonometry table, and motion constants; `generate:check` passes with no JDK |
-| M8.2 | — | Property tests prove no tunneling, bounded step-up, and that zero motion is a fixed point |
+| M8.2 | — | Complete. Property tests prove no tunneling, bounded step-up, and that zero motion is a fixed point, and a differential harness proves the whole movement path bit-identical to a real 1.8.9 server |
 | M8.3 | M8.2 | An empty tick produces a stable digest and a change set that a stale store rejects |
 | M8.4 | M8.3 | Fixture conformance for walk, sprint, jump, sneak, fall, and collide |
 | M8.6 | M8.3 for encoding; M8.4 for the matrix | Identical digest on Linux, macOS, and Windows, on amd64 and arm64 |
@@ -1095,8 +1130,11 @@ affect later stages:
   `minecraft-reference` tool instead of `main`.
 - [ ] Complete reviewed vanilla behavior catalogs and independent fixtures for
   Java 1.8.9 and 26.1.2.
+- [x] Complete M8.2: `geom`, `world`, and `collision`, with the three exit
+  properties and a differential harness that agrees with a real 1.8.9 server
+  bit for bit across 2,872 whole moves.
 - [ ] Implement the deterministic kernel, strict unknown-state handling,
-  collision, movement, canonical result digest, and replay.
+  movement, canonical result digest, and replay (M8.3, M8.4, M8.6).
 - [ ] Prove the same simulation through server and headless adapters, gated on
   zero corrections from a live vanilla 1.8.9 server (M8.8).
 - [x] Build the protocol 47 capture consumer on `relay`: recording sink, trace
