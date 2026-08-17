@@ -95,6 +95,37 @@ cannot take: `movement is M8.8 and M9.3`. That is the whole observation half
 working end to end against a real server, stopping at the first thing a
 milestone owes rather than at anything this example got wrong.
 
+### Standing on open ground — 2026-08-17
+
+The bot walked to its circle and then reported itself sealed in, on a flat world
+with nothing on it. Two causes, found in that order, and only the second was the
+one that mattered.
+
+**Block solidity, now answered from the game.** `Chunk47Solidity` reads a table
+extracted from the jar by `mcreference blocks`. The field is the material's
+`blocksMovement`, because that is the whole of what the game asks: `isPassable`
+in 1.8.9 is `!blockMaterial.blocksMovement()`, and the ground navigator that
+decides where a mob may walk calls that same predicate. Neither consults a
+bounding box nor whether the block fills its cell, so neither does this. The
+third-party block dataset the protocol repository already ships cannot answer it
+— it carries a bounding box and a material *name*, and its material registry is
+tool speeds — which is why the extraction is the source rather than a
+convenience.
+
+**The world had no terrain in it at all.** Wiring solidity changed nothing,
+because the lookup never got as far as asking. The protocol 47 adapter reduces
+`map_chunk` and a vanilla server sends the join-time world as `map_chunk_bulk`,
+which nothing reduces; a capture of the session holds two bulk packets and no
+single-column one. So every block read "not loaded", every position read
+`Unknown`, and the bypass search correctly refused open air.
+
+That is the third silent success in one day, after a client with no world
+installed and a bot reading its own position back from server-sent state. Each
+one worked, reported nothing, and was caught by somebody watching a bot stand
+still. The pattern is worth stating plainly: this example's value is not that it
+exercises the API, it is that it is *run*, and every defect it found was
+invisible to a test suite that passes.
+
 Position, health, and entities come from the snapshot rather than from folded
 events, and the subscription carries only what a snapshot cannot say: readiness,
 attributed damage, death, respawn, and the server placing the player. Rebuilding

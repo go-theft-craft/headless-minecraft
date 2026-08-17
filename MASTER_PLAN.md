@@ -891,6 +891,16 @@ something the approved documents asserted:
 
 #### M7 — What observed world state found
 
+- **M7 was closed against a stub, and two of its packets were never on the
+  wire.** Recorded 2026-08-17, after running a consumer against a real vanilla
+  1.8.9 server. The milestone's own tests pass and its design holds; what they
+  could not show is which packets a real server actually sends. The spawn
+  position was never reduced at all, and `map_chunk_bulk` — the packet that
+  carries the entire join-time world on 47 — is still not, so a session against
+  vanilla observed no terrain whatsoever and said nothing about it. Both are
+  listed as open items below. The lesson is not that the milestone was wrong but
+  that "every test passes" and "a real server was understood" are different
+  claims, and only the second one matters to a consumer.
 - **The world holds state and events; the adapter holds decoding.** The design
   left this open and it governs every domain: `world.Player` and
   `world.Entities` expose mutators, and `internal/adapter/*/reduce.go`
@@ -1086,6 +1096,23 @@ something the approved documents asserted:
   carries the shared `event.Damage` instead of a bare source type. Orbit's
   required-surface items 4 and 5 are satisfied; item 6, respawn as a sendable
   action, stays open against M9.
+- [ ] Reduce `map_chunk_bulk` on protocol 47. Found on 2026-08-17 by running
+  [`examples/orbit`](docs/superpowers/specs/2026-08-16-orbit-example-design.md)
+  against a real vanilla 1.8.9 server: the adapter reduces `map_chunk` and
+  nothing else, and a 1.8.9 server sends the whole join-time world as
+  `map_chunk_bulk`. A capture of the session holds two bulk packets and not one
+  single-column one, so no chunk ever reached the world, every block lookup
+  answered "not loaded", and the bot reported itself sealed in while standing on
+  open flat ground. Nothing failed: the connection worked, terrain events simply
+  never fired, and `examples/observe` looked healthy because it prints the events
+  that did. The unpacking is not the single-column one — bulk concatenates every
+  column's blocks and light into one blob, so `SkyLightSent` decides the stride
+  and getting it wrong misaligns every column after the first.
+- [ ] Guard the class of failure this belongs to. Three defects in one day were
+  silent successes: a client with no world installed, a bot reading its own
+  position back from server-sent state, and this. Each reported nothing, and each
+  was found by a person watching a bot stand still. A session that reaches play
+  and loads no chunk is not a working session, and something should say so.
 - [x] Observe the spawn position. Found on 2026-08-17 while binding
   [`examples/orbit`](docs/superpowers/specs/2026-08-16-orbit-example-design.md)
   to the world M7 delivered: no reducer touched the spawn-position packet, so the
