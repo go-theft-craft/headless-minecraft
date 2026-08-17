@@ -40,10 +40,20 @@ func (adapter) EncodeAction(action version.Action) (protocol.Packet, error) {
 			Flags: flags775(value.OnGround, value.HorizontalCollision),
 		}), nil
 
+	case version.ActionRespawn:
+		// 775 names its client commands where 47 numbers them, so the action
+		// is the string the protocol declares rather than a zero.
+		return play775("client_command", &gen.PlayServerboundClientCommand{
+			ActionID: respawnCommand775,
+		}), nil
+
 	default:
 		return protocol.Packet{}, version.UnsupportedAction(ProtocolID, action)
 	}
 }
+
+// respawnCommand775 is the client-command action that asks to respawn.
+const respawnCommand775 = "perform_respawn"
 
 // flags775 builds the movement flags this protocol carries.
 func flags775(onGround, horizontalCollision bool) gen.MovementFlags {

@@ -29,6 +29,8 @@ type (
 	ActionMoveLook = version.ActionMoveLook
 	// ActionGround reports the standing state alone.
 	ActionGround = version.ActionGround
+	// ActionRespawn asks the server to respawn a dead player.
+	ActionRespawn = version.ActionRespawn
 )
 
 // Do sends one outbound intent.

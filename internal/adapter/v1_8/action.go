@@ -35,10 +35,20 @@ func (adapter) EncodeAction(action version.Action) (protocol.Packet, error) {
 	case version.ActionGround:
 		return play47("flying", &gen.PlayServerboundFlying{OnGround: value.OnGround}), nil
 
+	case version.ActionRespawn:
+		// Protocol 47 numbers the client commands and respawn is zero. The
+		// same packet asks for statistics at one, which nothing here sends.
+		return play47("client_command", &gen.PlayServerboundClientCommand{
+			Payload: respawnCommand47,
+		}), nil
+
 	default:
 		return protocol.Packet{}, version.UnsupportedAction(ProtocolID, action)
 	}
 }
+
+// respawnCommand47 is the client-command action that asks to respawn.
+const respawnCommand47 int32 = 0
 
 // packetValue is what every generated packet type provides. It is declared here
 // so play47 can name one bound rather than one type per packet.

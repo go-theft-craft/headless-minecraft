@@ -63,6 +63,12 @@ func TestEachActionEncodesToItsProtocol47Packet(t *testing.T) {
 			packet: "flying",
 			want:   &gen1_8.PlayServerboundFlying{OnGround: true},
 		},
+		// This protocol numbers its client commands; respawn is zero.
+		"respawn": {
+			action: ActionRespawn{},
+			packet: "client_command",
+			want:   &gen1_8.PlayServerboundClientCommand{Payload: 0},
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -118,6 +124,12 @@ func TestEachActionEncodesToItsProtocol775Packet(t *testing.T) {
 			action: ActionGround{OnGround: true, HorizontalCollision: true},
 			packet: "flying",
 			want:   &gen26_1.PlayServerboundFlying{Flags: flags},
+		},
+		// This protocol names its client commands where 47 numbers them.
+		"respawn": {
+			action: ActionRespawn{},
+			packet: "client_command",
+			want:   &gen26_1.PlayServerboundClientCommand{ActionID: "perform_respawn"},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

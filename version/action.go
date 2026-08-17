@@ -103,6 +103,20 @@ type ActionGround struct {
 // ActionKind implements Action.
 func (ActionGround) ActionKind() string { return "ground" }
 
+// ActionRespawn asks the server to respawn the player after a death.
+//
+// It carries nothing. Where the player comes back is the server's to decide —
+// its bed, its world spawn, or wherever a plugin says — and a client that named
+// a position would be asking for something no protocol lets it ask for.
+//
+// It is the one action a dead client must be able to send. Everything else it
+// might do is refused until it is alive, so a client that cannot send this
+// cannot recover from its own death and is stuck for the rest of the session.
+type ActionRespawn struct{}
+
+// ActionKind implements Action.
+func (ActionRespawn) ActionKind() string { return "respawn" }
+
 // UnsupportedAction returns the error an adapter reports for an intent it cannot
 // encode. Adapters share it so that two protocols refuse the same way.
 func UnsupportedAction(protocolID string, action Action) error {
