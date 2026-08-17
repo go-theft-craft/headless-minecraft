@@ -116,8 +116,10 @@ The table lived in this example for one day. It is now
 blocks` into an extracted dataset beside the physics constants and generated
 into the version package, where the state encoding is decoded by the version
 that already knows it. What remains here is `MeasuredSolidity`: a port
-implemented against that registry, and a startup warning for the version nobody
-has measured.
+implemented against that registry, and a startup warning for a version nobody
+has measured. Both versions are measured now — 26.1.2 followed on 2026-08-17 —
+so the warning has nothing to report and the bot classifies blocks on either
+protocol.
 
 **The world had no terrain in it at all.** Wiring solidity changed nothing,
 because the lookup never got as far as asking. The protocol 47 adapter reduces
@@ -337,12 +339,13 @@ the code.
 | 8 | Attack primitive with profile-supplied cooldown | `interaction` | M9.6 | Designed |
 | 9 | Entity position and health for target tracking | `world` | M7 | Position present. Health is not: a server sends another entity's health as an attribute or a metadata field and the world stores both as sent without interpreting either. `EntityView.Dead` answers the only question the bot asks of it, so the example reads that instead |
 | 10 | Breaker acknowledgement after a movement correction | `safety` | M9 | Designed — must be explicit in the example, with a budget |
-| 11 | A map from a block state to whether it is solid | `minecraft-protocol` | none yet | Present for protocol 47. Assigned to `minecraft-protocol` on 2026-08-17 and implemented there the same day: `data.BlockMovementRegistry`, measured from the 1.8.9 server jar and generated into `generated/java/v1_8`. `world` still refuses block semantics, which is right, and `MeasuredSolidity` is the one type that changed here — which is what the port was split out for. Protocol 775 is unmeasured, so its registry is nil and its bot classifies nothing and says so |
+| 11 | A map from a block state to whether it is solid | `minecraft-protocol` | none yet | Present for protocol 47. Assigned to `minecraft-protocol` on 2026-08-17 and implemented there the same day: `data.BlockMovementRegistry`, measured from the 1.8.9 server jar and generated into `generated/java/v1_8`. `world` still refuses block semantics, which is right, and `MeasuredSolidity` is the one type that changed here — which is what the port was split out for. Protocol 775 followed on 2026-08-17, measured from the 26.1.2 jar and keyed by state range rather than by block, because that version computes the answer per state |
 
 Items 4, 5, 11, and the spawn half of item 2 are settled. Item 6 is still owed
-by M9. Item 11 closed on 2026-08-17 for protocol 47, where the bot now walks
-against the game's own answer; on protocol 775 it is the measurement, not the
-design, that is missing.
+by M9. Item 11 closed on 2026-08-17 for both protocols, where the bot now walks
+against the game's own answer. Protocol 775 closed later the same day, once its
+jar was measured; what stood between them was the measurement, never the
+design.
 
 Item 3 was present the whole time and still observed nothing against a real
 server: a vanilla 1.8.9 server sends the join-time world as `map_chunk_bulk`,

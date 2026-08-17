@@ -301,13 +301,26 @@ numerics would make the gate decoration; the plan requires specific ones.
 
 **M8.7 cannot start with code.** `mcreference dump` rejects every version but
 1.8.9 by explicit check, and its Java dumper names 1.8.9 identifiers throughout,
-so a second version is a second dumper. More importantly, the reference workspace
-holds no deobfuscated 26.1.2 server jar — only the original and executable jars
-and decompiled sources — so whether that version can have a jar-backed oracle at
-all is unknown. The plan's first task answers that and states both branches: with
-an oracle it follows M8.4, and without one its gate is explicitly weaker than
-M8.4's and M8.8's live check becomes the first real verification of its
-constants.
+so a second version is a second dumper.
+
+This paragraph also used to say the reference workspace holds no deobfuscated
+26.1.2 server jar, and that whether the version can have a jar-backed oracle at
+all is unknown. **Both halves are wrong, answered 2026-08-17 by the block
+measurement.** Mojang ships 26.1.2 under its own names: the workspace records
+the version as `identity`-named and its `executable.jar` carries real class and
+method names, so the analysis jar needs no remapping and nothing had to be
+prepared that was not already there. A jar-backed oracle is available, which
+means M8.7 takes the branch that follows M8.4 rather than the weaker one, and
+M8.8's live check is a second verification of its constants rather than the
+first.
+
+Two details are worth taking into M8.7 from having done it once. The jar to
+compile against is read from the workspace's own compatibility report rather
+than assumed, because it is `named.jar` for a remapped version and
+`executable.jar` for this one. And the 26.1.2 dumper is typed rather than
+reflective — everything it needs is public there, unlike 1.8.9's private block
+registry — so `javac` checks it against the jar it will run on, and a renamed
+method fails to compile instead of failing halfway through a dump.
 
 **M8.8 has two prerequisites nobody had written down.** The headless client's
 send path is unexported, because M7's scope was observation, so there is no way
@@ -1301,11 +1314,62 @@ something the approved documents asserted:
   blocks, 149 of them solid. The generated registry decodes the state encoding,
   which is where that knowledge belongs: 1.8.9 packs a state two ways and a
   table keyed the wrong way answers every lookup about the wrong block. Absence
-  is modelled rather than flattened, so protocol 775 publishes nil until someone
-  measures that jar, and `examples/orbit` reports at startup that it will see
-  the world and refuse to move. What is left here is `MeasuredSolidity`, a port
-  implemented against the registry, which is the whole of what splitting the
-  port out was supposed to cost.
+  is modelled rather than flattened, so a version nobody has measured publishes
+  nil rather than an empty registry. What is left here is `MeasuredSolidity`, a
+  port implemented against the registry, which is the whole of what splitting
+  the port out was supposed to cost.
+- [x] Measure the 26.1.2 jar, so protocol 775 answers too. **Done 2026-08-17.**
+  It had published nil since the decision above, which meant `examples/orbit`
+  warned at startup that it would see the world and refuse to move. It now
+  publishes 1168 blocks over 29,873 states, 25,323 of them blocking.
+  Three things this found are worth carrying:
+  - **The 26.1.2 executable jar already carries Mojang's names**, so no
+    deobfuscated jar was needed and the M8.7 note above is wrong about it. The
+    workspace records the version as `identity`-named, and the dumper reads
+    which jar to compile against from that record rather than guessing.
+  - **The answer is per state in this version, not per block**, so the document
+    and the registry are keyed by state ranges. `blocksMotion` resolves to
+    `legacySolid`, computed once per state from that state's own collision
+    shape, where 1.8.9 hangs `blocksMovement` off the block's material and every
+    state of a block answers together. Exactly one block proves it matters:
+    every wall in the game is registered `forceSolidOn`, which settles all its
+    states at once, except `resin_brick_wall`, which is not, so its two
+    unconnected states have no collision shape and do not stop movement. A
+    table keyed by block would state the wrong answer for those two and nothing
+    downstream could tell. `ByID` reports unknown for that block rather than
+    rounding to what most of its states say.
+  - **Measuring is checkable, so it was checked.** The committed document
+    reproduces every one of the 29,873 per-state answers from a direct
+    measurement with no mismatch, covers states 0 through 29,872 with no gap,
+    and two runs of the extractor produce identical bytes. The 1.8.9 path still
+    reproduces its committed dataset byte for byte.
+- [x] Point the bot at a real 26.1.2 server, which is what the measurement was
+  for. **Done 2026-08-17, and it found two defects nothing else had.** Both
+  were silent successes of the kind this plan keeps meeting: the connection
+  worked, no error was printed, and the bot simply never got anywhere.
+  - **Protocol 775 owes a teleport confirmation for every server-initiated
+    position, not just the placing one.** The server places and corrects the
+    player with the same packet, each carrying a teleport ID, and discards
+    everything the client says about where it is until that ID comes back.
+    The confirmation lived in the readiness rule, which answers a question that
+    is settled once and then stops looking, so every correction went
+    unconfirmed: the server ignored the bot's movement, the bot kept walking in
+    its own reckoning, and the gap widened until the server reported it moving
+    impossibly fast. Confirming is a handler now, for the same reason
+    keepalives are — it is owed for the life of the connection. The bot went
+    from six corrections without covering a step to reaching its circle.
+  - **A schema switch with no default was decoded as malformed input.**
+    Protocol 775 names 117 particle types and gives 19 of them a data case, so
+    a flame, a smoke puff, or an explosion dropped the connection; a creeper
+    was enough to end a run. The behaviour to match was not a judgement call:
+    ProtoDef ships two implementations that disagree, the interpreter throwing
+    and the compiler emitting a void default, and the compiler is what
+    node-minecraft-protocol runs and what the differential runner compiles
+    with. Following the interpreter meant rejecting traffic every real client
+    accepts. 62 switches across both versions changed, and two differential
+    fixtures pin the agreement with Node.
+  - What the bot stops on now is `attack`, which is M9.6 and declared missing
+    at startup. That is the honest end of the road rather than a defect.
 
 ### M8–M9 — Simulation and gameplay
 
