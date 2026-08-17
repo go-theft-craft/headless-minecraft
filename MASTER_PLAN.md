@@ -281,6 +281,54 @@ The lesson generalizes: the fixture-only gates M8.4 and M8.7 rely on are weaker
 than this, and the harness is reusable. Point it at `movement` when M8.4 lands
 rather than waiting for M8.8's live server.
 
+**Every remaining M8 stage now has an implementation plan.** M8.3, M8.4, M8.6,
+M8.7, and M8.8 are written and linked in the tracker. Writing them settled three
+things the sequencing design had left as risks, and each answer changes what the
+stage costs.
+
+**M8.6's runner risk is resolved, and the obstacle was not the runners.**
+GitHub-hosted runners cover all six targets the gate names. What does not work is
+`devbox` on Windows, because it provisions through Nix, and every check in every
+one of these repositories currently assumes it. The plan therefore splits the
+determinism job away from verification: one Ubuntu job keeps running
+`task verify`, and a separate six-target job uses `actions/setup-go` with the Go
+version pinned to the one `devbox.json` names, plus a test that fails if the two
+ever disagree. The matrix also turns out to test M8.4's `float32` arithmetic far
+more than it tests the encoder, which means recordings that do not exercise the
+numerics would make the gate decoration; the plan requires specific ones.
+
+**M8.7 cannot start with code.** `mcreference dump` rejects every version but
+1.8.9 by explicit check, and its Java dumper names 1.8.9 identifiers throughout,
+so a second version is a second dumper. More importantly, the reference workspace
+holds no deobfuscated 26.1.2 server jar — only the original and executable jars
+and decompiled sources — so whether that version can have a jar-backed oracle at
+all is unknown. The plan's first task answers that and states both branches: with
+an oracle it follows M8.4, and without one its gate is explicitly weaker than
+M8.4's and M8.8's live check becomes the first real verification of its
+constants.
+
+**M8.8 has two prerequisites nobody had written down.** The headless client's
+send path is unexported, because M7's scope was observation, so there is no way
+to tell a server where the player went; an outbound version-neutral action seam
+is that plan's first task and a real API addition. And with M6.4 postponed, the
+gate runs in offline mode only — fine for a local vanilla server, but the result
+says nothing about online mode and the plan requires it to say so. The plan also
+defines a correction before counting one, since a vanilla server sends every
+player a position-and-look during login, and counts the server's "moved wrongly"
+log lines alongside teleports, because a server can tolerate our drift for a
+while before it acts.
+
+**M8.4 inverts the verification order the sequencing design assumed.** That
+design gates M8.4 on recorded fixtures and moves the live check to M8.8, noting
+that if M8.4 passes fixtures but M8.8 draws corrections, "the fault is likelier
+in the fixtures than in the kernel." M8.2 turned that into a measurement: two of
+its eight careful prose statements about vanilla were wrong, and no fixture
+written from the same prose would have caught either. So M8.4's fixtures are
+generated from the game through `internal/oracle`, and its gate is a differential
+test against the game's own movement tick. Fixtures still ship, because M8.7 and
+CI need a suite that runs without a JDK — they just record the game's answer
+rather than ours.
+
 **M11: server framework is newly planned.** The eight items in
 `server/docs/todo.md` fit no existing plan, because every server plan is
 protocol migration, and this file had no milestone for `server` becoming
@@ -337,6 +385,11 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 player movement slice with canonical replay and server/client adapters; items and arrows moved to M9 | `minecraft-simulation` | Planned | M4, M7 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
 | M8.1 | Extract Java 1.8.9 physics constants from a verified Mojang server jar and publish them as a pinned, generated Go package | `minecraft-reference`, `minecraft-protocol` | Complete | — | [Physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) |
 | M8.2 | `geom`, `world`, and `collision`: swept axis-aligned collision reproducing Java Edition 1.8.9 axis order and step-up, over a tri-state block view, verified against a real server jar | `minecraft-simulation` | Complete | — | [M8.2 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-15-m8-2-geometry-collision-core.md) |
+| M8.3 | `sim`, `entity`, `runtime`, block handles in `world`, and an in-memory store: the tick contract, canonical result digest, and revision-checked change sets | `minecraft-simulation` | Planned, plan written | M8.2 | [M8.3 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-3-kernel-contracts.md) |
+| M8.4 | `movement` and `profile/java/v1_8` for the player, gated on a differential test against the game's own movement tick | `minecraft-simulation` | Planned, plan written | M8.3 | [M8.4 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-4-v1-8-player-movement.md) |
+| M8.6 | Canonical recording and replay, and a six-target determinism matrix | `minecraft-simulation` | Planned, plan written; runner obstacle identified | M8.3 for encoding, M8.4 for the matrix | [M8.6 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-6-replay-and-determinism.md) |
+| M8.7 | `profile/java/v26_1` for the player, plus a 26.1.2 physics dumper and dataset | `minecraft-reference`, `minecraft-protocol`, `minecraft-simulation` | Planned, plan written; starts with an oracle feasibility task | M8.4, M4 | [M8.7 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-7-v26-1-player-movement.md) |
+| M8.8 | One kernel driven by client prediction and server authority, gated on zero corrections from vanilla | `minecraft-simulation`, `headless-minecraft`, `server` | Planned, plan written | M8.4, M6, M7 | [M8.8 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) |
 | M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.2–M9.8 planned | M9.1 on M5 and `relay` v0.2.0; M9.2–M9.8 on M8.8 and M9.1 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite) |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps, [M10 plan](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) |
 | M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | Planned | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) (M11.1 written; M11.2–M11.7 await their own design) |
@@ -1133,6 +1186,8 @@ affect later stages:
 - [x] Complete M8.2: `geom`, `world`, and `collision`, with the three exit
   properties and a differential harness that agrees with a real 1.8.9 server
   bit for bit across 2,872 whole moves.
+- [x] Write implementation plans for every remaining M8 stage: M8.3, M8.4,
+  M8.6, M8.7, and M8.8.
 - [ ] Implement the deterministic kernel, strict unknown-state handling,
   movement, canonical result digest, and replay (M8.3, M8.4, M8.6).
 - [ ] Prove the same simulation through server and headless adapters, gated on
