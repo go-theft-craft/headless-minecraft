@@ -1123,3 +1123,155 @@ func TestEveryUnknownValueSurvivesOneSession(t *testing.T) {
 		}
 	}
 }
+
+func TestChatCarriesAKindRatherThanThreeEvents(t *testing.T) {
+	t.Parallel()
+
+	// 775 splits into three packets what protocol 47 sent as one, and one
+	// event with a kind reports all three.
+	w, events := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundPlayerChat{
+			GlobalIndex: 3, PlainMessage: "hello", Signature: &[]byte{1, 2},
+		}),
+		play(&gen.PlayClientboundSystemChat{IsActionBar: true}),
+		play(&gen.PlayClientboundProfilelessChat{}),
+	})
+
+	var kinds []event.ChatKind
+	for _, published := range events {
+		if received, ok := published.(event.ChatReceived); ok {
+			kinds = append(kinds, received.Kind)
+		}
+	}
+	want := []event.ChatKind{event.ChatKindPlayer, event.ChatKindSystem, event.ChatKindProfileless}
+	if !slices.Equal(kinds, want) {
+		t.Errorf("kinds are %v, want %v", kinds, want)
+	}
+
+	log := w.Snapshot().Chat.Log
+	if len(log) != 3 {
+		t.Fatalf("log holds %d messages, want 3", len(log))
+	}
+	// Player chat is the one message either protocol sends as plain text.
+	if log[0].Text != "hello" || !log[0].Signed || !log[0].IndexKnown {
+		t.Errorf("player message is %+v", log[0])
+	}
+	// Signed says a signature arrived, not that it is valid, and nothing here
+	// claims to have checked one.
+	if log[1].Signed || log[1].Text != "" {
+		t.Errorf("a system message claimed a signature or text: %+v", log[1])
+	}
+}
+
+func TestARemovedMessageLeavesTheLog(t *testing.T) {
+	t.Parallel()
+
+	// Removed, not marked: a caller reading the log must not see a message the
+	// server withdrew.
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundPlayerChat{GlobalIndex: 1, PlainMessage: "first"}),
+			play(&gen.PlayClientboundPlayerChat{GlobalIndex: 2, PlainMessage: "second"}),
+		},
+		[]protocol.Packet{play(&gen.PlayClientboundHideMessage{ID: 1})},
+	)
+
+	log := w.Snapshot().Chat.Log
+	if len(log) != 1 || log[0].Text != "second" {
+		t.Errorf("log is %+v, want only the second message", log)
+	}
+}
+
+func TestTheChatLogIsBounded(t *testing.T) {
+	t.Parallel()
+
+	// A busy public server sends several messages a second, and a week-long
+	// session must not keep them all.
+	packets := []protocol.Packet{playLogin(1)}
+	for i := range 400 {
+		packets = append(packets, play(&gen.PlayClientboundPlayerChat{GlobalIndex: int32(i)}))
+	}
+	w, _ := script(t, packets)
+
+	chat := w.Snapshot().Chat
+	if len(chat.Log) != 256 {
+		t.Errorf("log holds %d messages, want the bound of 256", len(chat.Log))
+	}
+	if chat.DroppedMessages == 0 {
+		t.Error("the log dropped messages without counting them")
+	}
+	// The oldest go first, so the newest survive.
+	if chat.Log[len(chat.Log)-1].Index != 399 {
+		t.Errorf("the newest message is %+v", chat.Log[len(chat.Log)-1])
+	}
+}
+
+func TestABossBarIsAddedAndRemoved(t *testing.T) {
+	t.Parallel()
+
+	// Protocol 47 has no boss-bar packet at all: a 1.8 boss bar is a wither
+	// entity, which arrives through the entity domain instead.
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundBossBar{
+				Action: 0,
+				Health: gen.PlayClientboundBossBarHealthSwitch{Case0: 0.5},
+			}),
+		},
+	)
+	bars := w.Snapshot().Chat.BossBars
+	if len(bars) != 1 {
+		t.Fatalf("boss bars are %+v, want one", bars)
+	}
+	for _, bar := range bars {
+		if !bar.HealthKnown || bar.Health != 0.5 {
+			t.Errorf("bar is %+v", bar)
+		}
+	}
+
+	w, _ = script(
+		t,
+		[]protocol.Packet{playLogin(1), play(&gen.PlayClientboundBossBar{Action: 0})},
+		[]protocol.Packet{play(&gen.PlayClientboundBossBar{Action: 1})},
+	)
+	if bars := w.Snapshot().Chat.BossBars; len(bars) != 0 {
+		t.Errorf("a removed bar is still tracked: %+v", bars)
+	}
+}
+
+func TestScoresLiveUnderTheirObjective(t *testing.T) {
+	t.Parallel()
+
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundScoreboardObjective{Name: "kills"}),
+			play(&gen.PlayClientboundScoreboardScore{
+				ScoreName: "kills", ItemName: "someone", Value: 7,
+			}),
+		},
+		[]protocol.Packet{
+			// 775 removes a score through its own packet where 47 uses an
+			// action on the score packet.
+			play(&gen.PlayClientboundResetScore{
+				EntityName: "someone", ObjectiveName: ptr("kills"),
+			}),
+		},
+	)
+
+	objective, ok := w.Snapshot().Chat.Objectives["kills"]
+	if !ok {
+		t.Fatal("the objective was released with its score")
+	}
+	if len(objective.Scores) != 0 {
+		t.Errorf("scores are %+v, want empty", objective.Scores)
+	}
+}
+
+func ptr[T any](value T) *T { return &value }

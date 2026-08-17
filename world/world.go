@@ -88,6 +88,7 @@ type World struct {
 	containers  *Containers
 	registries  *Registries
 	payloads    *Payloads
+	chat        *Chat
 }
 
 // New returns an empty world with no reducers.
@@ -100,7 +101,7 @@ func New() *World {
 		player: newPlayer(), entities: newEntities(),
 		chunks: newChunks(), environment: newEnvironment(),
 		containers: newContainers(), registries: newRegistries(),
-		payloads: newPayloads(),
+		payloads: newPayloads(), chat: newChat(),
 	}
 }
 
@@ -131,6 +132,10 @@ func (w *World) Registries() *Registries { return w.registries }
 // Payloads returns the plugin-channel store, for a version adapter to write
 // through.
 func (w *World) Payloads() *Payloads { return w.payloads }
+
+// Chat returns the message log and UI store, for a version adapter to write
+// through.
+func (w *World) Chat() *Chat { return w.chat }
 
 // Register adds a reducer. It must be called before the first Apply, because
 // a reducer that missed earlier batches holds state nobody can reconstruct.

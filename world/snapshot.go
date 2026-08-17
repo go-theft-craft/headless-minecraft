@@ -28,6 +28,8 @@ type Snapshot struct {
 	Registries RegistriesView
 	// Payloads is the last plugin message per channel, kept as bytes.
 	Payloads PayloadsView
+	// Chat is the message log and the presentational UI around it.
+	Chat ChatView
 }
 
 // snapshot builds the snapshot. It runs under the world's lock, held by the
@@ -42,5 +44,6 @@ func (w *World) snapshot() Snapshot {
 		Containers:  w.containers.view(),
 		Registries:  w.registries.view(),
 		Payloads:    w.payloads.view(),
+		Chat:        w.chat.view(),
 	}
 }

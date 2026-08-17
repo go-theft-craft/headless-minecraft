@@ -1104,3 +1104,89 @@ func TestAProtocol47LatencyUpdateKeepsTheName(t *testing.T) {
 		}
 	}
 }
+
+func TestProtocol47SendsEveryMessageThroughOnePacket(t *testing.T) {
+	t.Parallel()
+
+	// 47 has one chat packet with a position byte, where 775 has three. Both
+	// produce ChatReceived with a kind, and 47 has no way to withdraw a
+	// message, no signature, and no message index.
+	w, events := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundChat{Message: `{"text":"hello"}`}),
+		play(&gen.PlayClientboundChat{Message: `{"text":"bar"}`, Position: 2}),
+	})
+
+	var received []event.ChatReceived
+	for _, published := range events {
+		if message, ok := published.(event.ChatReceived); ok {
+			received = append(received, message)
+		}
+	}
+	if len(received) != 2 {
+		t.Fatalf("published %d messages, want 2", len(received))
+	}
+	if received[0].Kind != event.ChatKindSystem || received[0].ActionBar {
+		t.Errorf("first message is %+v", received[0])
+	}
+	if !received[1].ActionBar {
+		t.Errorf("position 2 is the action bar: %+v", received[1])
+	}
+	for _, message := range received {
+		if message.Signed || message.IndexKnown {
+			t.Errorf("protocol 47 claimed a signature or an index: %+v", message)
+		}
+	}
+
+	if got := len(w.Snapshot().Chat.Log); got != 2 {
+		t.Errorf("log holds %d messages, want 2", got)
+	}
+}
+
+func TestProtocol47HasNoBossBarOrDialog(t *testing.T) {
+	t.Parallel()
+
+	// A 1.8 boss bar is a wither entity and 1.8 has no dialog at all. Four of
+	// this domain's twelve events never fire here, and the snapshot must not
+	// invent them.
+	w, _ := script(t, []protocol.Packet{login(1)})
+
+	chat := w.Snapshot().Chat
+	if len(chat.BossBars) != 0 || chat.DialogOpen {
+		t.Errorf("protocol 47 reported UI it has no packet for: %+v", chat)
+	}
+}
+
+func TestTheTitlePacketsActionsReachOneEvent(t *testing.T) {
+	t.Parallel()
+
+	// 47 packs five title actions into one packet where 775 sends five
+	// packets, and both produce ChatTitleChanged.
+	w, events := script(
+		t,
+		[]protocol.Packet{
+			login(1),
+			play(&gen.PlayClientboundTitle{
+				Action:  2,
+				FadeIn:  gen.PlayClientboundTitleFadeInSwitch{Case2: 10},
+				Stay:    gen.PlayClientboundTitleStaySwitch{Case2: 70},
+				FadeOut: gen.PlayClientboundTitleFadeOutSwitch{Case2: 20},
+			}),
+		},
+		[]protocol.Packet{play(&gen.PlayClientboundTitle{Action: 4})},
+	)
+
+	changes := 0
+	for _, published := range events {
+		if _, ok := published.(event.ChatTitleChanged); ok {
+			changes++
+		}
+	}
+	if changes != 2 {
+		t.Errorf("published %d title changes, want 2", changes)
+	}
+	// The reset action clears the timings it had learned.
+	if w.Snapshot().Chat.TitleTimesKnown {
+		t.Error("a title reset left the timings behind")
+	}
+}

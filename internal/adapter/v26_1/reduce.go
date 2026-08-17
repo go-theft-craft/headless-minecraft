@@ -1,6 +1,7 @@
 package v26_1
 
 import (
+	"slices"
 	"strconv"
 
 	protocol "github.com/go-theft-craft/minecraft-protocol"
@@ -27,6 +28,7 @@ func Reducers(w *world.World) []world.Reducer {
 		containerReducer(w.Containers()),
 		registryReducer(w.Registries()),
 		payloadReducer(w.Payloads()),
+		chatReducer(w.Chat()),
 	}
 }
 
@@ -751,4 +753,178 @@ func payloadReducer(payloads *world.Payloads) world.Func {
 
 		return nil
 	}
+}
+
+// Protocol 775's boss-bar and scoreboard actions. The boss bar numbers its
+// actions where the team packet names its modes.
+const (
+	bossBarAdd        int32 = 0
+	bossBarRemove     int32 = 1
+	bossBarUpdateHP   int32 = 2
+	objectiveRemove   int8  = 1
+	teamModeRemove          = "remove"
+	teamModeAdd             = "add"
+	teamModeJoin            = "join"
+	teamModeLeaveName       = "leave"
+)
+
+// chatReducer decodes the packets that describe chat and the UI around it.
+//
+// 775 splits into three packets what protocol 47 sent as one chat packet —
+// player, system, and profileless — and one ChatReceived carrying a kind
+// reports all three, rather than three events for one fact.
+func chatReducer(chat *world.Chat) world.Func {
+	return func(_ *world.Context, batch version.Batch, c *event.Collector) error {
+		for _, packet := range batch.Packets {
+			reduceChatPacket(chat, packet, c)
+		}
+
+		return nil
+	}
+}
+
+// protocol's chat packets, and splitting it would hide which packet feeds what.
+//
+//nolint:gocyclo // One switch over one
+func reduceChatPacket(chat *world.Chat, packet protocol.Packet, c *event.Collector) {
+	switch value := packet.Value.(type) {
+	case *gen.PlayClientboundPlayerChat:
+		// The one message either protocol sends as plain text as well as a
+		// component. Signed says a signature arrived; nothing validates it,
+		// and claiming otherwise would be worse than not doing it.
+		chat.Received(c, world.Message{
+			Kind: event.ChatKindPlayer, Text: value.PlainMessage,
+			Sender: value.SenderUUID.String(),
+			Index:  value.GlobalIndex, IndexKnown: true,
+			Signed: value.Signature != nil,
+		}, false)
+
+	case *gen.PlayClientboundSystemChat:
+		chat.Received(c, world.Message{Kind: event.ChatKindSystem}, value.IsActionBar)
+
+	case *gen.PlayClientboundProfilelessChat:
+		// A sender name with no player profile behind it, which protocol 47
+		// has no equivalent for.
+		chat.Received(c, world.Message{Kind: event.ChatKindProfileless}, false)
+
+	case *gen.PlayClientboundHideMessage:
+		chat.Removed(c, value.ID)
+
+	case *gen.PlayClientboundSetTitleText, *gen.PlayClientboundSetTitleSubtitle:
+		chat.TitleChanged(c, event.ChatTitleChanged{})
+
+	case *gen.PlayClientboundSetTitleTime:
+		chat.TitleChanged(c, event.ChatTitleChanged{
+			FadeIn: value.FadeIn, Stay: value.Stay, FadeOut: value.FadeOut, TimesKnown: true,
+		})
+
+	case *gen.PlayClientboundClearTitles:
+		chat.TitleChanged(c, event.ChatTitleChanged{Cleared: true, Reset: value.Reset})
+
+	case *gen.PlayClientboundActionBar:
+		chat.ActionBarChanged(c)
+
+	case *gen.PlayClientboundBossBar:
+		bar := event.ChatBossBarChanged{UUID: value.EntityUUID.String()}
+		switch value.Action {
+		case bossBarRemove:
+			bar.Removed = true
+		case bossBarAdd:
+			bar.Health, bar.HealthKnown = value.Health.Case0, true
+		case bossBarUpdateHP:
+			bar.Health, bar.HealthKnown = value.Health.Case2, true
+		}
+		chat.BossBarChanged(c, bar)
+
+	case *gen.PlayClientboundScoreboardObjective:
+		chat.ObjectiveChanged(c, value.Name, value.Action == objectiveRemove)
+
+	case *gen.PlayClientboundScoreboardScore:
+		chat.ScoreChanged(c, value.ScoreName, value.ItemName, value.Value, false)
+
+	case *gen.PlayClientboundResetScore:
+		// 775 removes a score through its own packet. With no objective named
+		// it resets the entry everywhere, which the world models as removing
+		// it from the objective it names — nothing, when none is named.
+		objective := ""
+		if value.ObjectiveName != nil {
+			objective = *value.ObjectiveName
+		}
+		chat.ScoreChanged(c, objective, value.EntityName, 0, true)
+
+	case *gen.PlayClientboundScoreboardDisplayObjective:
+		chat.ObjectiveDisplayed(c, value.Name, value.Position)
+
+	case *gen.PlayClientboundTeams:
+		reduceTeam775(chat, value, c)
+
+	case *gen.PlayClientboundAdvancements:
+		chat.AdvancementsChanged(c, event.ChatAdvancementsChanged{
+			Added:   len(value.AdvancementMapping),
+			Removed: len(value.Identifiers),
+			Reset:   value.Reset,
+		})
+
+	case *gen.PlayClientboundSoundEffect:
+		chat.SoundPlayed(c, event.ChatSoundPlayed{
+			Sound: soundName(value.Sound),
+			X:     float64(value.X) / 8, Y: float64(value.Y) / 8, Z: float64(value.Z) / 8,
+			Positioned: true, Volume: value.Volume, Pitch: value.Pitch,
+		})
+
+	case *gen.PlayClientboundEntitySoundEffect:
+		chat.SoundPlayed(c, event.ChatSoundPlayed{
+			Sound:    soundName(value.Sound),
+			EntityID: value.EntityID, EntityKnown: true,
+			Volume: value.Volume, Pitch: value.Pitch,
+		})
+
+	case *gen.PlayClientboundStopSound:
+		chat.SoundPlayed(c, event.ChatSoundPlayed{Stopped: true})
+
+	case *gen.PlayClientboundStatistics:
+		chat.StatisticsReceived(c, len(value.Entries))
+
+	case *gen.PlayClientboundShowDialog:
+		chat.DialogShown(c, false)
+
+	case *gen.PlayClientboundClearDialog:
+		chat.DialogShown(c, true)
+
+	case *gen.PlayClientboundTabComplete:
+		matches := make([]string, 0, len(value.Matches))
+		for _, match := range value.Matches {
+			matches = append(matches, match.Match)
+		}
+		chat.TabCompleted(c, event.ChatTabCompleted{
+			Matches: matches, TransactionID: value.TransactionID, TransactionKnown: true,
+		})
+	}
+}
+
+func reduceTeam775(chat *world.Chat, value *gen.PlayClientboundTeams, c *event.Collector) {
+	changed := event.ChatTeamsChanged{Team: value.Team, Mode: value.Mode}
+	switch value.Mode {
+	case teamModeRemove:
+		changed.Removed = true
+	case teamModeAdd:
+		changed.Players = slices.Clone(value.Players.Add)
+	case teamModeJoin:
+		changed.Players = slices.Clone(value.Players.Join)
+	case teamModeLeaveName:
+		changed.Players = nil
+	}
+
+	chat.TeamChanged(c, changed)
+}
+
+// soundName reads a sound's name out of the registry reference 775 sends. A
+// reference by ID carries no name, and inventing one from the generated
+// registry would name a sound a modded server may not mean.
+func soundName(sound gen.ItemSoundHolder) string {
+	if sound.Inline == nil {
+		return ""
+	}
+
+	return sound.Inline.SoundName
 }

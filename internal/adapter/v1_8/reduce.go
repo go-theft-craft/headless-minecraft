@@ -1,6 +1,7 @@
 package v1_8
 
 import (
+	"slices"
 	"strconv"
 
 	protocol "github.com/go-theft-craft/minecraft-protocol"
@@ -31,6 +32,7 @@ func Reducers(w *world.World) []world.Reducer {
 		containerReducer(w.Containers()),
 		registryReducer(w.Registries()),
 		payloadReducer(w.Payloads()),
+		chatReducer(w.Chat()),
 	}
 }
 
@@ -782,4 +784,125 @@ func payloadReducer(payloads *world.Payloads) world.Func {
 
 		return nil
 	}
+}
+
+// Protocol 47's title packet packs five actions into one, and its scoreboard
+// packets number their actions too. The schema names none of them.
+const (
+	titleSetText  int32 = 0
+	titleSetTimes int32 = 2
+	titleClear    int32 = 3
+	titleReset    int32 = 4
+
+	objectiveRemove int8 = 1
+
+	scoreRemove int32 = 1
+
+	teamCreate       int8 = 0
+	teamRemove       int8 = 1
+	teamAddPlayers   int8 = 3
+	teamRemovePlayer int8 = 4
+)
+
+// chatReducer decodes the packets that describe chat and the UI around it.
+//
+// Protocol 47 has no boss-bar packet, no advancements, no dialog, and no way
+// to withdraw a message: a 1.8 boss bar is a wither entity, its achievements
+// arrive as statistics, and a message once sent stays sent. Four of this
+// domain's twelve events therefore never fire here.
+func chatReducer(chat *world.Chat) world.Func {
+	return func(_ *world.Context, batch version.Batch, c *event.Collector) error {
+		for _, packet := range batch.Packets {
+			reduceChatPacket(chat, packet, c)
+		}
+
+		return nil
+	}
+}
+
+// protocol's chat packets, and splitting it would hide which packet feeds what.
+//
+//nolint:gocyclo // One switch over one
+func reduceChatPacket(chat *world.Chat, packet protocol.Packet, c *event.Collector) {
+	switch value := packet.Value.(type) {
+	case *gen.PlayClientboundChat:
+		// 47 sends one packet for every kind of message and a position byte
+		// saying where to show it. The message itself is a JSON component the
+		// library does not render, so the log records that it arrived.
+		chat.Received(c, world.Message{Kind: event.ChatKindSystem}, value.Position == chatActionBar)
+
+	case *gen.PlayClientboundTitle:
+		reduceTitle47(chat, value, c)
+
+	case *gen.PlayClientboundScoreboardObjective:
+		chat.ObjectiveChanged(c, value.Name, value.Action == objectiveRemove)
+
+	case *gen.PlayClientboundScoreboardScore:
+		chat.ScoreChanged(c,
+			value.ScoreName, value.ItemName, value.Value.Default, value.Action == scoreRemove)
+
+	case *gen.PlayClientboundScoreboardDisplayObjective:
+		chat.ObjectiveDisplayed(c, value.Name, int32(value.Position))
+
+	case *gen.PlayClientboundScoreboardTeam:
+		reduceTeam47(chat, value, c)
+
+	case *gen.PlayClientboundNamedSoundEffect:
+		// 47 sends the position in eighths of a block.
+		chat.SoundPlayed(c, event.ChatSoundPlayed{
+			Sound: value.SoundName,
+			X:     float64(value.X) / 8, Y: float64(value.Y) / 8, Z: float64(value.Z) / 8,
+			Positioned: true,
+			Volume:     value.Volume,
+			Pitch:      float32(value.Pitch),
+		})
+
+	case *gen.PlayClientboundStatistics:
+		chat.StatisticsReceived(c, len(value.Entries))
+
+	case *gen.PlayClientboundTabComplete:
+		chat.TabCompleted(c, event.ChatTabCompleted{Matches: slices.Clone(value.Matches)})
+	}
+}
+
+// chatActionBar is protocol 47's chat position for the action bar.
+const chatActionBar int8 = 2
+
+func reduceTitle47(chat *world.Chat, value *gen.PlayClientboundTitle, c *event.Collector) {
+	switch value.Action {
+	case titleSetText, titleSetText + 1:
+		// Title and subtitle both set text, and the text is a component.
+		chat.TitleChanged(c, event.ChatTitleChanged{})
+
+	case titleSetTimes:
+		chat.TitleChanged(c, event.ChatTitleChanged{
+			FadeIn: value.FadeIn.Case2, Stay: value.Stay.Case2, FadeOut: value.FadeOut.Case2,
+			TimesKnown: true,
+		})
+
+	case titleClear:
+		chat.TitleChanged(c, event.ChatTitleChanged{Cleared: true})
+
+	case titleReset:
+		chat.TitleChanged(c, event.ChatTitleChanged{Cleared: true, Reset: true})
+	}
+}
+
+func reduceTeam47(chat *world.Chat, value *gen.PlayClientboundScoreboardTeam, c *event.Collector) {
+	changed := event.ChatTeamsChanged{Team: value.Team, Mode: itoa(int(value.Mode))}
+	switch value.Mode {
+	case teamRemove:
+		changed.Removed = true
+	case teamCreate:
+		changed.Players = slices.Clone(value.Players.Case0)
+	case teamAddPlayers:
+		changed.Players = slices.Clone(value.Players.Case3)
+	case teamRemovePlayer:
+		// The world does not model removing individual members; the packet is
+		// reported and the membership it names is left alone rather than
+		// guessed at.
+		changed.Players = nil
+	}
+
+	chat.TeamChanged(c, changed)
 }
