@@ -1,7 +1,8 @@
 # Orbit example design
 
-- Status: Decision core implemented; shell blocked on M7 and M9
-- Date: 2026-08-16
+- Status: Decision core and observation implemented; actions blocked on M8.8 and
+  M9, and the bypass search blocked on block solidity, which no milestone owns
+- Date: 2026-08-16, observation bound 2026-08-17
 - Repository: `headless-minecraft`
 - Example: `examples/orbit`
 - Earliest complete milestone: M9.6
@@ -18,7 +19,9 @@ the trapped budget, retaliation and all three ways a fight ends, one respawn per
 death, and the breaker budget.
 
 Running it against a live server found two things no unit test would have. Both
-are fixed and both are covered now.
+are fixed and both are covered now. A third arrived when observation was bound —
+see below — which is three for three: every live run of this example so far has
+found something its tests could not.
 
 **A subscription opened after `Connect` has already missed `session.ready`.**
 `Connect` publishes the event on its way through play and returns after it, so
@@ -30,15 +33,73 @@ to find it: the fix is trivial once seen and invisible until then.
 **A bot that stands still has to say why.** The first live run connected and
 printed nothing for twenty-five seconds, which reads exactly like a working
 orbit. The shell now logs state and reason on change, and the wait for a spawn
-position is bounded by `JoinTimeout`, after which the bot exits 3 naming M7. A
-run today ends `in play for 30s with no world spawn; observed world state is M7`
-rather than in silence.
+position is bounded by `JoinTimeout`, after which the bot exits 3 saying what
+did not arrive rather than standing in silence. The message named M7 while the
+spawn was unobservable; now that it is observed, reaching that timeout means the
+server really sent no spawn position, and it says so.
 
-What is not written is the binding. `World` and `Actuator` in `ports.go` are the
-whole seam, and both are `Pending{}` — every method reports the milestone that
-owes it. Running the program connects, reaches play, and stops with that list.
-When M7 and M9 land this example gains two adapters and the core does not
-change, which is the property the split was chosen for.
+### Observation is bound — 2026-08-17
+
+M7 landed, and `Observed` in `observed.go` implements `World` over one
+`world.Snapshot`. The core did not change to accept it, which is the property
+the split was chosen for. `Actuator` is still `Pending{}`, because the actions
+it names are M8.8 and M9.6.
+
+Binding it found four things.
+
+**The world spawn was never observed at all.** Item 2 below said "Designed" and
+it was not: no reducer in `world/` touched the spawn-position packet, so the
+value the orbit is centred on did not exist anywhere in the library. Both
+protocols send it — `PlayClientboundSpawnPosition`, `0x05` on 47 carrying bare
+coordinates, `0x61` on 775 carrying a `GlobalPos` plus an angle — and
+`minecraft-protocol` already decoded both. Closed by adding
+`Environment.SpawnChanged`, `event.WorldSpawnChanged`, and a case in each
+adapter. This is the second time a "Designed" row in this table turned out to be
+a hole, after items 4 and 5, and both times writing the example is what found
+it.
+
+**This document had the spawn backwards.** It said the spawn "is not the respawn
+point: the two differ once a bed is used". For the packet that actually carries
+it, that is inverted: a vanilla server sends the level's shared spawn on join
+and re-sends the same packet whenever the player's own respawn point moves, so
+there is one value and the bed overwrites it. Nothing in the protocol reports a
+separate immovable landmark. The bot never sleeps, so its circle never moves,
+but a consumer that assumed otherwise would be wrong and the library cannot warn
+it.
+
+**Nothing maps a block state to whether it is solid**, and the bypass search is
+the only thing in the example that needs it. `ChunksView.Block` returns the
+state ID the server sent and the `world` package deliberately models no block
+semantics, so the search reads `Unknown` at every position, accepts no offset,
+and will report the bot trapped as soon as it can move at all. This is the one
+gap with no milestone behind it — see *Decided* — and it is why the example
+still cannot complete a revolution even though it can now see the world.
+
+**A client with no world keeps no state, and says nothing about it.** Found by
+running the bound example against a live server, which is the third time a live
+run has caught something the tests could not. `client.WithWorld` was missing
+from the example's construction, so every batch was published as events and
+applied to nothing. `World()` kept answering — with an empty snapshot, forever —
+and the bot waited out its full join timeout and then reported that the server
+had sent no spawn position, while the server's own source plainly sent one and
+`examples/observe` showed `world.spawn_changed` arriving on the same connection.
+The failure accuses the wrong party, which is the worst kind: every message was
+true about what the bot saw and wrong about why. The option is documented and
+the omission is a consumer error rather than a library defect, but a snapshot
+accessor that cannot distinguish "nothing has happened yet" from "you never
+installed a world" will catch the next consumer the same way.
+
+With that fixed, a run against a pinned offline 1.8.9 server connects, reads the
+spawn, builds the circle, enters `Returning`, and exits 3 at the first step it
+cannot take: `movement is M8.8 and M9.3`. That is the whole observation half
+working end to end against a real server, stopping at the first thing a
+milestone owes rather than at anything this example got wrong.
+
+Position, health, and entities come from the snapshot rather than from folded
+events, and the subscription carries only what a snapshot cannot say: readiness,
+attributed damage, death, respawn, and the server placing the player. Rebuilding
+state from a stream of changes would keep a second copy of the world the library
+already keeps.
 
 ## Context
 
@@ -229,18 +290,20 @@ the code.
 | # | Needs | Package | Milestone | Status |
 | --- | --- | --- | --- | --- |
 | 1 | `client.New`, `Connect`, `Subscribe`, `Close` | `client` | M6.3 | Present in the working tree as of 2026-08-16 |
-| 2 | Player position, health, and world spawn on the snapshot | `world` | M7 | Designed |
-| 3 | Block lookup at a position, and "is this chunk loaded" as a distinct answer from "this block is air" | `world` | M7 | Designed — Task 4 |
-| 4 | Damage attributed to a source entity | `world`, `event` | M7 | **Gap.** The taxonomy has `PlayerHealthChanged` and `EntityDamaged`; neither is specified to carry who dealt the damage. Protocol 775's damage event carries the source, and 47 does not. Without attribution the bot cannot pick a target and the whole `Engaging` state is unimplementable |
-| 5 | Death distinguishable from a health drop | `event` | M7 | **Gap.** `PlayerHealthChanged` reaching zero is inference, not observation. `PlayerRespawned` exists as a name; there is no death event |
+| 2 | Player position, health, and world spawn on the snapshot | `world` | M7 | Present. Position and health were there; the spawn was not observed at all and was added 2026-08-17 as `Environment.SpawnChanged` and `event.WorldSpawnChanged` on both protocols |
+| 3 | Block lookup at a position, and "is this chunk loaded" as a distinct answer from "this block is air" | `world` | M7 | Present. `ChunksView.Block` returns a state ID and reports loadedness separately — but see item 11, because a state ID alone does not answer the question the search asks |
+| 4 | Damage attributed to a source entity | `world`, `event` | M7 | Present. Closed by design Decision 11 as `event.Damage` on `PlayerDamaged`. Protocol 47 still names nobody, so the bot keeps orbiting there rather than swinging at an inference |
+| 5 | Death distinguishable from a health drop | `event` | M7 | Present. `PlayerDied` fires once per death, and `PlayerView.Dead` holds it until a respawn |
 | 6 | Respawn as a sendable action | `interaction` | M9 | **Gap.** Task 6's primitive list — chat, command, movement, look, stance, use, place, attack, interact, dig, slot, click, drop, close — has no respawn. A client that cannot respawn cannot recover from its own death |
 | 7 | `movement.Strategy` implementable outside the library | `movement` | M8.8 | Designed — Task 7. Needs the interface exported, not just consumed |
 | 8 | Attack primitive with profile-supplied cooldown | `interaction` | M9.6 | Designed |
-| 9 | Entity position and health for target tracking | `world` | M7 | Designed — Task 4 |
+| 9 | Entity position and health for target tracking | `world` | M7 | Position present. Health is not: a server sends another entity's health as an attribute or a metadata field and the world stores both as sent without interpreting either. `EntityView.Dead` answers the only question the bot asks of it, so the example reads that instead |
 | 10 | Breaker acknowledgement after a movement correction | `safety` | M9 | Designed — must be explicit in the example, with a budget |
+| 11 | A map from a block state to whether it is solid | none | **none** | **Gap, and the only one with no milestone behind it.** The bypass search needs `Solid bool` and the library exposes state IDs. `world` refuses block semantics by design and nothing else supplies them, so every position reads `Unknown` and the bot traps instead of orbiting. Isolated behind the `Solidity` port so one type changes when a registry lands |
 
-Items 4, 5, and 6 are the ones to settle inside M7 and M9 rather than at the
-example. Each is small; each makes an entire state unbuildable if it is missed.
+Items 4, 5, and the spawn half of item 2 are settled. Item 6 is still owed by
+M9, and item 11 is owed by nobody, which makes it the one to argue about: it is
+the only thing now standing between this example and a complete revolution.
 
 ## Bounds
 
@@ -275,6 +338,21 @@ building a sealed box on a live server is slower than scripting the packets that
 describe one.
 
 ## Decided
+
+- **Block solidity waits for a library block registry rather than being
+  approximated here.** Settled 2026-08-17. Two shortcuts were available and both
+  were rejected. Treating every non-zero state as solid detours the bot around
+  flowers and drowns it in water it read as a wall, so the orbit it walks is not
+  the orbit the verification describes and every automated check still passes.
+  Hand-writing a table of passable state IDs per protocol puts block semantics
+  inside an example, which is exactly what the `world` package refuses to do, and
+  it rots silently on the next version. The cost is that the example cannot
+  complete a revolution until something owns the mapping: `Solidity` classifies
+  nothing, every position reads `Unknown`, and the bot will trap as soon as it
+  can move.
+  That is a visible failure with a named cause, which is the outcome this example
+  exists to produce. Isolating it behind its own port is what keeps the fix to
+  one type.
 
 - **`Trapped` exits non-zero after its budget.** Settled 2026-08-16. CI reads
   exit codes, and a bot that spent ten minutes sealed in did not do the job it

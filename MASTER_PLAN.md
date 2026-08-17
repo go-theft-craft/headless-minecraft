@@ -1086,6 +1086,26 @@ something the approved documents asserted:
   carries the shared `event.Damage` instead of a bare source type. Orbit's
   required-surface items 4 and 5 are satisfied; item 6, respawn as a sendable
   action, stays open against M9.
+- [x] Observe the spawn position. Found on 2026-08-17 while binding
+  [`examples/orbit`](docs/superpowers/specs/2026-08-16-orbit-example-design.md)
+  to the world M7 delivered: no reducer touched the spawn-position packet, so the
+  value the orbit is centred on existed nowhere in the library even though both
+  protocols send it and `minecraft-protocol` decoded both. Closed by
+  `Environment.SpawnChanged`, `event.WorldSpawnChanged`, and a case in each
+  adapter, with reducer tests on both. The example's design had the fact
+  backwards too, and now says so: this packet is the compass target, a vanilla
+  server re-sends it when the player's respawn point moves, and there is no
+  separate immovable world landmark on the wire. Second time an orbit
+  required-surface row marked "Designed" turned out to be a hole.
+- [ ] Decide who owns a map from a block state to whether it is solid. No
+  milestone does. `world` stores state IDs as sent and refuses block semantics by
+  design, which is right, but nothing downstream supplies them either, so
+  [`examples/orbit`](docs/superpowers/specs/2026-08-16-orbit-example-design.md)
+  can see the whole world and still cannot tell a wall from air: every position
+  reads unknown, so the bot will trap as soon as movement lands. It is
+  the only thing left between that example and a complete revolution, and it is
+  the only gap in its table with no milestone behind it. Isolated behind a
+  `Solidity` port there so the fix lands in one type, wherever it ends up living.
 
 ### M8–M9 — Simulation and gameplay
 
