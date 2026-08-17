@@ -25,6 +25,7 @@ func Reducers(w *world.World) []world.Reducer {
 		chunkReducer(w.Chunks()),
 		environmentReducer(w.Environment()),
 		containerReducer(w.Containers()),
+		registryReducer(w.Registries()),
 	}
 }
 
@@ -634,3 +635,100 @@ const (
 // entity type follows: the number indexes a session registry, and the server's
 // own identifier is kept rather than a vanilla name guessed from it.
 func menuType(kind int32) string { return "java/26.1:menu/" + strconv.Itoa(int(kind)) }
+
+// registryReducer decodes the packets that describe the server's own
+// vocabulary.
+//
+// **Registry data arrives in the configuration state, before play.** It
+// reaches this reducer because the client owns the configuration phase rather
+// than letting the login negotiator consume it, and because the world applies
+// batches in every state rather than only in play. The state the batch arrived
+// in is recorded with the registry, so "not sent yet" and "will not be sent"
+// stay distinguishable.
+func registryReducer(registries *world.Registries) world.Func {
+	return func(ctx *world.Context, batch version.Batch, c *event.Collector) error {
+		for _, packet := range batch.Packets {
+			reduceRegistryPacket(ctx, registries, packet, c)
+		}
+
+		return nil
+	}
+}
+
+func reduceRegistryPacket(
+	ctx *world.Context,
+	registries *world.Registries,
+	packet protocol.Packet,
+	c *event.Collector,
+) {
+	switch value := packet.Value.(type) {
+	case *gen.ConfigurationClientboundRegistryData:
+		// The entry order is the registry's numeric ID space: entry 0 is the
+		// ID a packet means by 0. An unknown namespace is kept as sent, which
+		// is the whole point on a modded server.
+		entries := make([]string, 0, len(value.Entries))
+		for _, entry := range value.Entries {
+			entries = append(entries, entry.Key)
+		}
+		registries.DataReceived(c, value.ID, entries, ctx.State)
+
+	case *gen.ConfigurationClientboundTags:
+		counts := make(map[string]int, len(value.Tags))
+		for _, group := range value.Tags {
+			counts[group.TagType] = len(group.Tags)
+		}
+		registries.TagsReceived(c, counts)
+
+	case *gen.PlayClientboundTags:
+		counts := make(map[string]int, len(value.Tags))
+		for _, group := range value.Tags {
+			counts[group.TagType] = len(group.Tags)
+		}
+		registries.TagsReceived(c, counts)
+
+	case *gen.PlayClientboundDeclareCommands:
+		registries.CommandsReceived(c, len(value.Nodes))
+
+	case *gen.PlayClientboundPlayerInfo:
+		reducePlayerList775(registries, value, c)
+
+	case *gen.PlayClientboundPlayerRemove:
+		removed := make([]string, 0, len(value.Players))
+		for _, uuid := range value.Players {
+			removed = append(removed, uuid.String())
+		}
+		registries.PlayerListChanged(c, nil, removed)
+	}
+}
+
+// reducePlayerList775 reads 775's action bitfield. One packet can add a player
+// and change another's latency, which is why every field carries whether it
+// was supplied.
+func reducePlayerList775(
+	registries *world.Registries,
+	value *gen.PlayClientboundPlayerInfo,
+	c *event.Collector,
+) {
+	action := value.Action
+	changes := make([]world.PlayerListChange, 0, len(value.Data))
+	for _, item := range value.Data {
+		change := world.PlayerListChange{UUID: item.UUID.String()}
+		if action.AddPlayer {
+			change.Name, change.SetName = item.Player.True.Name, true
+		}
+		if action.UpdateGameMode {
+			change.GameMode, change.SetGameMode = item.Gamemode.True, true
+		}
+		if action.UpdateLatency {
+			change.Latency, change.SetLatency = item.Latency.True, true
+		}
+		if action.UpdateListed {
+			// The schema decodes the flag as a number, and anything non-zero
+			// is listed.
+			change.Listed, change.SetListed = item.Listed.True != 0, true
+		}
+		changes = append(changes, change)
+	}
+
+	registries.PlayerListChanged(c, changes, nil)
+}

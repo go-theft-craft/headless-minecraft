@@ -6,6 +6,7 @@ import (
 
 	protocol "github.com/go-theft-craft/minecraft-protocol"
 	gen "github.com/go-theft-craft/minecraft-protocol/generated/java/v26_1"
+	"github.com/go-theft-craft/minecraft-protocol/wire/java"
 
 	"github.com/go-theft-craft/headless-minecraft/event"
 	adapter "github.com/go-theft-craft/headless-minecraft/internal/adapter/v26_1"
@@ -881,5 +882,153 @@ func TestTradesRecordTheirScalars(t *testing.T) {
 	last := events[len(events)-1].(event.ContainerTradesChanged)
 	if last.ContainerID != 2 || last.Count != 5 || last.VillagerLevel != 3 || !last.CanRestock {
 		t.Errorf("trades are %+v", last)
+	}
+}
+
+// configuration drives one batch of configuration-state packets, which is the
+// state registry data really arrives in.
+func configurationScript(t *testing.T, packets ...protocol.Packet) (*world.World, []event.Event) {
+	t.Helper()
+
+	w := world.New()
+	for _, reducer := range adapter.Reducers(w) {
+		if err := w.Register(reducer); err != nil {
+			t.Fatalf("Register: %v", err)
+		}
+	}
+
+	var c event.Collector
+	revision, err := w.Apply(version.Batch{
+		Packets: packets, Bundled: len(packets) > 1, State: gen.StateConfiguration,
+	}, &c)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	return w, c.Events(revision)
+}
+
+func TestRegistryDataArrivesInConfiguration(t *testing.T) {
+	t.Parallel()
+
+	// The registry domain's reason for existing: a session registry defines
+	// the ID space a modded server's packets mean, and it arrives before play.
+	// If the world did not apply configuration batches, none of this would
+	// reach a reducer at all.
+	w, events := configurationScript(
+		t,
+		configuration("registry_data", &gen.ConfigurationClientboundRegistryData{
+			ID: "minecraft:worldgen/biome",
+			Entries: []gen.ConfigurationClientboundRegistryDataEntriesItem{
+				{Key: "minecraft:plains"}, {Key: "minecraft:desert"},
+			},
+		}),
+		configuration("registry_data", &gen.ConfigurationClientboundRegistryData{
+			ID:      "modded:reactor_type",
+			Entries: []gen.ConfigurationClientboundRegistryDataEntriesItem{{Key: "modded:fusion"}},
+		}),
+	)
+
+	registries := w.Snapshot().Registries
+	if !registries.SessionRegistries {
+		t.Fatal("registry data arrived and the snapshot reports none")
+	}
+
+	biomes, ok := registries.Get("minecraft:worldgen/biome")
+	if !ok || len(biomes.Entries) != 2 || biomes.Entries[0] != "minecraft:plains" {
+		t.Errorf("biome registry is %+v", biomes)
+	}
+	// The entry order is the numeric ID space, so it must survive as sent.
+	if biomes.Entries[1] != "minecraft:desert" {
+		t.Errorf("entry order changed: %v", biomes.Entries)
+	}
+	if biomes.State != string(gen.StateConfiguration) {
+		t.Errorf("registry state is %q, want configuration", biomes.State)
+	}
+
+	// An unknown namespace is preserved: it is what a modded server sends.
+	if _, ok := registries.Get("modded:reactor_type"); !ok {
+		t.Errorf("a modded registry was dropped: %+v", registries.Defined)
+	}
+
+	received := 0
+	for _, published := range events {
+		if published.Name() == event.NameRegistryDataReceived {
+			received++
+		}
+	}
+	if received != 2 {
+		t.Errorf("published %d registry events, want 2", received)
+	}
+}
+
+func TestOnePlayerInfoPacketAddsAndUpdatesAtOnce(t *testing.T) {
+	t.Parallel()
+
+	// 775's action is a bitfield, so one packet carries several kinds of
+	// change, and a field the bitfield does not name must not blank what an
+	// earlier packet set.
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundPlayerInfo{
+				Action: gen.PlayClientboundPlayerInfoActionFlags{
+					AddPlayer: true, UpdateGameMode: true, UpdateLatency: true,
+				},
+				Data: []gen.PlayClientboundPlayerInfoDataItem{{
+					Player: gen.PlayClientboundPlayerInfoDataItemPlayerSwitch{
+						True: gen.PlayClientboundPlayerInfoDataItemPlayerSwitchTrue{Name: "someone"},
+					},
+					Gamemode: gen.PlayClientboundPlayerInfoDataItemGamemodeSwitch{True: 1},
+					Latency:  gen.PlayClientboundPlayerInfoDataItemLatencySwitch{True: 40},
+				}},
+			}),
+		},
+		[]protocol.Packet{
+			play(&gen.PlayClientboundPlayerInfo{
+				Action: gen.PlayClientboundPlayerInfoActionFlags{UpdateLatency: true},
+				Data: []gen.PlayClientboundPlayerInfoDataItem{{
+					Latency: gen.PlayClientboundPlayerInfoDataItemLatencySwitch{True: 90},
+				}},
+			}),
+		},
+	)
+
+	players := w.Snapshot().Registries.Players
+	if len(players) != 1 {
+		t.Fatalf("player list is %+v, want one player", players)
+	}
+	for _, player := range players {
+		if player.Latency != 90 {
+			t.Errorf("latency is %d, want 90", player.Latency)
+		}
+		// The latency-only update named neither, so both must survive.
+		if player.Name != "someone" || player.GameMode != 1 {
+			t.Errorf("a latency update blanked the rest: %+v", player)
+		}
+	}
+}
+
+func TestRemovingAPlayerReleasesTheListEntry(t *testing.T) {
+	t.Parallel()
+
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundPlayerInfo{
+				Action: gen.PlayClientboundPlayerInfoActionFlags{AddPlayer: true},
+				Data:   []gen.PlayClientboundPlayerInfoDataItem{{}},
+			}),
+		},
+		[]protocol.Packet{
+			// 775 removes through its own packet rather than a list action.
+			play(&gen.PlayClientboundPlayerRemove{Players: make([]java.UUID, 1)}),
+		},
+	)
+
+	if players := w.Snapshot().Registries.Players; len(players) != 0 {
+		t.Errorf("player list is %+v, want empty", players)
 	}
 }

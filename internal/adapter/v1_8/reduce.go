@@ -29,6 +29,7 @@ func Reducers(w *world.World) []world.Reducer {
 		chunkReducer(w.Chunks()),
 		environmentReducer(w.Environment()),
 		containerReducer(w.Containers()),
+		registryReducer(w.Registries()),
 	}
 }
 
@@ -683,3 +684,84 @@ func reduceContainerPacket(
 // horseMenuType is the one protocol 47 menu whose open packet carries an
 // entity. The schema makes the entity field conditional on this exact string.
 const horseMenuType = "EntityHorse"
+
+// Protocol 47's player-list actions. The action is a single choice here, where
+// 775 sends a bitfield and can do several at once.
+const (
+	playerAdd         = "add_player"
+	playerGameMode    = "update_game_mode"
+	playerLatency     = "update_latency"
+	playerDisplayName = "update_display_name"
+	playerRemove      = "remove_player"
+)
+
+// registryReducer decodes the packets that describe the server's own
+// vocabulary.
+//
+// **Protocol 47 has no registry data, no tags, and no command tree.** Its
+// registries are entirely static, which is why the only packet this reducer
+// reads is the player list, and why the snapshot reports the session registry
+// as never supplied rather than as empty.
+func registryReducer(registries *world.Registries) world.Func {
+	return func(_ *world.Context, batch version.Batch, c *event.Collector) error {
+		for _, packet := range batch.Packets {
+			value, ok := packet.Value.(*gen.PlayClientboundPlayerInfo)
+			if !ok {
+				continue
+			}
+			reducePlayerList47(registries, value, c)
+		}
+
+		return nil
+	}
+}
+
+func reducePlayerList47(
+	registries *world.Registries,
+	value *gen.PlayClientboundPlayerInfo,
+	c *event.Collector,
+) {
+	var (
+		changes []world.PlayerListChange
+		removed []string
+	)
+	for _, item := range value.Data {
+		uuid := item.UUID.String()
+		switch value.Action {
+		case playerAdd:
+			add := item.AnonymousSwitch1.AddPlayer
+			changes = append(changes, world.PlayerListChange{
+				UUID: uuid,
+				Name: add.Name, SetName: true,
+				GameMode: add.Gamemode, SetGameMode: true,
+				Latency: add.Ping, SetLatency: true,
+				// 47 has no separate "listed" flag: a player on the list is
+				// listed, which is what the add packet means.
+				Listed: true, SetListed: true,
+			})
+
+		case playerGameMode:
+			changes = append(changes, world.PlayerListChange{
+				UUID:     uuid,
+				GameMode: item.AnonymousSwitch1.UpdateGameMode.Gamemode, SetGameMode: true,
+			})
+
+		case playerLatency:
+			changes = append(changes, world.PlayerListChange{
+				UUID:    uuid,
+				Latency: item.AnonymousSwitch1.UpdateLatency.Ping, SetLatency: true,
+			})
+
+		case playerDisplayName:
+			// The display name is a chat component the library does not render,
+			// so this changes nothing the snapshot models. The player is still
+			// touched, so a subscriber sees that the server said something.
+			changes = append(changes, world.PlayerListChange{UUID: uuid})
+
+		case playerRemove:
+			removed = append(removed, uuid)
+		}
+	}
+
+	registries.PlayerListChanged(c, changes, removed)
+}

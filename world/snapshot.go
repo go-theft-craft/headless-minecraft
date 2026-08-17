@@ -24,6 +24,8 @@ type Snapshot struct {
 	Environment EnvironmentView
 	// Containers is every menu the server has open.
 	Containers ContainersView
+	// Registries is the vocabulary the server defined for this connection.
+	Registries RegistriesView
 }
 
 // snapshot builds the snapshot. It runs under the world's lock, held by the
@@ -36,5 +38,6 @@ func (w *World) snapshot() Snapshot {
 		Chunks:      w.chunks.view(),
 		Environment: w.environment.view(),
 		Containers:  w.containers.view(),
+		Registries:  w.registries.view(),
 	}
 }

@@ -1015,3 +1015,92 @@ func TestProtocol47HasNoRecipeBook(t *testing.T) {
 		t.Error("protocol 47 reported a recipe book it has no packet for")
 	}
 }
+
+func TestProtocol47HasNoSessionRegistry(t *testing.T) {
+	t.Parallel()
+
+	// 1.8's registries are entirely static: there is no registry-data packet,
+	// no tag packet, and no command tree. An empty session registry must
+	// report that none was sent rather than presenting itself as a server that
+	// defined nothing.
+	w, _ := script(t, []protocol.Packet{login(1)})
+
+	registries := w.Snapshot().Registries
+	if registries.SessionRegistries || registries.TagsSent || registries.CommandsKnown {
+		t.Errorf("protocol 47 reported a session vocabulary: %+v", registries)
+	}
+}
+
+func TestThePlayerListIsNotTheEntityStore(t *testing.T) {
+	t.Parallel()
+
+	// A listed player may be nowhere near this client and have no entity. The
+	// two describe different things, and adding one must not create the other.
+	w, _ := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundPlayerInfo{
+			Action: "add_player",
+			Data: []gen.PlayClientboundPlayerInfoDataItem{{
+				AnonymousSwitch1: gen.PlayClientboundPlayerInfoDataItemAnonymousSwitch1Switch{
+					AddPlayer: gen.PlayClientboundPlayerInfoDataItemAnonymousSwitch1SwitchAddPlayer{
+						Name: "someone", Gamemode: 1, Ping: 25,
+					},
+				},
+			}},
+		}),
+	})
+
+	snapshot := w.Snapshot()
+	if len(snapshot.Registries.Players) != 1 {
+		t.Fatalf("player list is %+v", snapshot.Registries.Players)
+	}
+	for _, player := range snapshot.Registries.Players {
+		if player.Name != "someone" || player.Latency != 25 || !player.Listed {
+			t.Errorf("listed player is %+v", player)
+		}
+	}
+	if len(snapshot.Entities.Tracked) != 0 {
+		t.Errorf("a list entry created an entity: %+v", snapshot.Entities.Tracked)
+	}
+}
+
+func TestAProtocol47LatencyUpdateKeepsTheName(t *testing.T) {
+	t.Parallel()
+
+	// 47's action is a single choice, so a latency update carries nothing
+	// else, and it must not blank what the add supplied.
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			login(1),
+			play(&gen.PlayClientboundPlayerInfo{
+				Action: "add_player",
+				Data: []gen.PlayClientboundPlayerInfoDataItem{{
+					AnonymousSwitch1: gen.PlayClientboundPlayerInfoDataItemAnonymousSwitch1Switch{
+						AddPlayer: gen.PlayClientboundPlayerInfoDataItemAnonymousSwitch1SwitchAddPlayer{
+							Name: "someone", Gamemode: 1, Ping: 25,
+						},
+					},
+				}},
+			}),
+		},
+		[]protocol.Packet{
+			play(&gen.PlayClientboundPlayerInfo{
+				Action: "update_latency",
+				Data: []gen.PlayClientboundPlayerInfoDataItem{{
+					AnonymousSwitch1: gen.PlayClientboundPlayerInfoDataItemAnonymousSwitch1Switch{
+						UpdateLatency: gen.PlayClientboundPlayerInfoDataItemAnonymousSwitch1SwitchUpdateLatency{
+							Ping: 300,
+						},
+					},
+				}},
+			}),
+		},
+	)
+
+	for _, player := range w.Snapshot().Registries.Players {
+		if player.Latency != 300 || player.Name != "someone" || player.GameMode != 1 {
+			t.Errorf("player is %+v, want latency 300 with the rest kept", player)
+		}
+	}
+}
