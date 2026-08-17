@@ -78,6 +78,165 @@ tasks:
       - go test -race ./...
       - go vet ./...
 
+  server:vanilla:
+    desc: Run a pinned vanilla server for live checks, fetching the jar if absent
+    # Examples are this repository's integration surface, and the only way to
+    # know one works is to point it at the server the protocol was written
+    # against. This task stands that server up the same way every time, so a
+    # result is reproducible rather than a story about somebody's laptop.
+    #
+    # The jar is never committed here and never downloaded by hand. mcreference
+    # already owns fetching Mojang artifacts and verifying them against Mojang's
+    # own manifest, so this asks for the jar and it appears; provenance is
+    # published, the artifact stays local, and the run directory is git-ignored.
+    #
+    # Override any of these: VERSION, WORKSPACE, VANILLA_JAR, MCREFERENCE, JAVA,
+    # PREPARE_JAVA, PREPARE_JAVAP, PORT, RUN_DIR, ADMIN, SEED, LEVEL_TYPE,
+    # COMPRESSION.
+    vars:
+      VERSION: '{{.VERSION | default "1.8.9"}}'
+      # Where mcreference keeps prepared versions. The default is the sibling
+      # checkout that already has them, so a first run usually costs nothing.
+      WORKSPACE: '{{.WORKSPACE | default "../minecraft-simulation"}}'
+      VANILLA_JAR: '{{.VANILLA_JAR | default ""}}'
+      MCREFERENCE: '{{.MCREFERENCE | default ""}}'
+      # The JVM that runs the server, which is the version Minecraft requires:
+      # 1.8.x needs Java 8 and will not start on a modern one.
+      JAVA: '{{.JAVA | default "java"}}'
+      # The JDK mcreference decompiles with, which is a different requirement —
+      # 17 or newer, whatever the version being prepared.
+      PREPARE_JAVA: '{{.PREPARE_JAVA | default "java"}}'
+      PREPARE_JAVAP: '{{.PREPARE_JAVAP | default "javap"}}'
+      # Not 25565. The relay capture proxy listens there in front of this
+      # server, and a client that reaches the server directly is not the thing
+      # under test.
+      PORT: '{{.PORT | default "25566"}}'
+      RUN_DIR: '{{.RUN_DIR | default ".local/vanilla"}}'
+      ADMIN: '{{.ADMIN | default "OCharnyshevich"}}'
+      SEED: '{{.SEED | default "orbit1889"}}'
+      LEVEL_TYPE: '{{.LEVEL_TYPE | default "FLAT"}}'
+      # Vanilla's own default. Leave it on: a capture taken with compression
+      # disabled does not exercise the path that broke the relay recorder once.
+      COMPRESSION: '{{.COMPRESSION | default "256"}}'
+    cmds:
+      - |
+        set -e
+
+        version='{{.VERSION}}'
+        workspace='{{.WORKSPACE}}'
+        jar='{{.VANILLA_JAR}}'
+        if [ -z "$jar" ]; then
+          jar="$workspace/reference/work/versions/$version/server/original.jar"
+        fi
+
+        if [ ! -f "$jar" ]; then
+          printf 'no server jar for %s; preparing one with mcreference\n' "$version"
+
+          mcreference='{{.MCREFERENCE}}'
+          if [ -z "$mcreference" ]; then
+            if command -v mcreference >/dev/null 2>&1; then
+              mcreference='mcreference'
+            elif [ -d ../minecraft-reference ]; then
+              # A sibling checkout is the common local case. Released binaries
+              # are the supported path; this is the convenience one.
+              mcreference='go -C ../minecraft-reference run ./cmd/mcreference'
+            else
+              printf 'mcreference not found\n' >&2
+              printf 'install it with: go install github.com/go-theft-craft/minecraft-reference/cmd/mcreference@latest\n' >&2
+              printf 'or set MCREFERENCE, or set VANILLA_JAR to a jar you already have\n' >&2
+              exit 1
+            fi
+          fi
+
+          mkdir -p "$workspace"
+          # --sides server only. The client jar is a much larger download and
+          # nothing here runs one.
+          $mcreference prepare \
+            --versions "$version" \
+            --sides server \
+            --workspace "$workspace" \
+            --java '{{.PREPARE_JAVA}}' \
+            --javap '{{.PREPARE_JAVAP}}'
+        fi
+
+        if [ ! -f "$jar" ]; then
+          printf 'still no jar at %s after preparing\n' "$jar" >&2
+          exit 1
+        fi
+
+        # Print what is about to run. A live check is only evidence if the
+        # thing it ran against is identified, and mcreference has already
+        # verified this file against Mojang's manifest.
+        printf 'jar   %s\n' "$jar"
+        printf 'sha1  %s\n' "$(sha1sum "$jar" | cut -d' ' -f1)"
+
+        # Saying this here beats a stack trace from inside the server later.
+        case "$version" in
+          1.8*|1.7*|1.6*|1.5*|1.4*|1.3*|1.2*|1.1|1.0)
+            if ! '{{.JAVA}}' -version 2>&1 | head -1 | grep -q '"1\.8\.'; then
+              printf 'minecraft %s needs java 8 to run; JAVA={{.JAVA}} is:\n' "$version" >&2
+              '{{.JAVA}}' -version 2>&1 | head -1 >&2
+              printf 'set JAVA=<path to a java 8 binary>\n' >&2
+              exit 1
+            fi
+            ;;
+        esac
+
+        run='{{.RUN_DIR}}'
+        mkdir -p "$run"
+        cp -f "$jar" "$run/server.jar"
+        printf 'eula=true\n' > "$run/eula.txt"
+
+        cat > "$run/server.properties" <<PROPERTIES
+        server-port={{.PORT}}
+        online-mode=false
+        level-seed={{.SEED}}
+        level-type={{.LEVEL_TYPE}}
+        gamemode=0
+        spawn-protection=0
+        max-players=8
+        motd=go-theft-craft live check ({{.VERSION}})
+        network-compression-threshold={{.COMPRESSION}}
+        PROPERTIES
+
+        # Op the admin by writing ops.json, because a scripted run has no
+        # console to type into.
+        #
+        # The UUID is derived, not looked up: an offline server has no account
+        # to ask, and it identifies a player as Java's
+        # UUID.nameUUIDFromBytes("OfflinePlayer:" + name) — MD5, then the
+        # version nibble forced to 3 and the variant bits to RFC 4122. ops.json
+        # is keyed on that UUID, so a wrong one produces a file the server reads
+        # happily and an admin who is not opped.
+        #
+        # The variant nibble is mapped by case rather than computed. Task's
+        # shell does not parse 0x hex in arithmetic — it evaluates 0x9 to zero
+        # and silently yields the wrong digit, which is how this was first got
+        # wrong. The mapping is (d & 3) | 8.
+        hex="$(printf 'OfflinePlayer:%s' '{{.ADMIN}}' | md5sum | cut -d' ' -f1)"
+        case "$(printf '%s' "$hex" | cut -c17)" in
+          0|4|8|c) variant=8 ;;
+          1|5|9|d) variant=9 ;;
+          2|6|a|e) variant=a ;;
+          3|7|b|f) variant=b ;;
+        esac
+        uuid="$(printf '%s-%s-3%s-%s%s-%s' \
+          "$(printf '%s' "$hex" | cut -c1-8)"  \
+          "$(printf '%s' "$hex" | cut -c9-12)" \
+          "$(printf '%s' "$hex" | cut -c14-16)" \
+          "$variant" \
+          "$(printf '%s' "$hex" | cut -c18-20)" \
+          "$(printf '%s' "$hex" | cut -c21-32)")"
+
+        cat > "$run/ops.json" <<OPS
+        [{"uuid":"$uuid","name":"{{.ADMIN}}","level":4,"bypassesPlayerLimit":true}]
+        OPS
+
+        printf 'vanilla {{.VERSION}} on port {{.PORT}}, op {{.ADMIN}} (%s)\n' "$uuid"
+        printf 'run dir %s; stop with ctrl-c or the stop command\n' "$run"
+
+        cd "$run" && exec '{{.JAVA}}' -Xms512M -Xmx1024M -jar server.jar nogui
+
   vuln:
     desc: Check dependencies for known vulnerabilities
     deps: [deps]

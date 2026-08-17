@@ -9,6 +9,11 @@ coverage.*
 go.work
 go.work.sum
 
+# Local run directories for live checks. The vanilla server task writes a world,
+# logs, and a jar copy here; none of it belongs in a public repository, and the
+# jar is a Mojang artifact that must stay local.
+/.local/
+
 # Local configuration
 .env
 .env.*
