@@ -163,21 +163,55 @@ func TestAnUnknownBlockIsNotAssumedWalkable(t *testing.T) {
 	}
 }
 
-// TestAnUnmeasuredVersionClassifiesNothing pins the honest failure. Nobody has
-// measured the current version's jar, so its bot can see the world and cannot
-// tell a wall from air — and says so, rather than reading an absent measurement
-// as open ground and walking into the first hill it meets.
-func TestAnUnmeasuredVersionClassifiesNothing(t *testing.T) {
+// TestTheCurrentVersionClassifiesBlocks pins what closed the last gap between
+// this example and a complete revolution.
+//
+// Until the 26.1.2 jar was measured this version had no table at all, so the
+// bot could see the whole world, classify nothing in it, and refuse every step.
+// The states here are the ones the library measured out of the game, read
+// through this example's own port.
+func TestTheCurrentVersionClassifiesBlocks(t *testing.T) {
 	t.Parallel()
 
 	solidity, err := NewSolidity(false)
 	if err != nil {
 		t.Fatalf("NewSolidity: %v", err)
 	}
-	if solidity.Measured() {
-		t.Fatal("the current version reports a measurement it does not have")
+	if !solidity.Measured() {
+		t.Fatal("the current version reports no measurement")
 	}
-	if _, known := solidity.Solid(1); known {
-		t.Error("an unmeasured version classified a state")
+
+	for _, test := range []struct {
+		name  string
+		state uint32
+		want  bool
+	}{
+		{"air", 0, false},
+		{"stone", 1, true},
+		{"water", 86, false},
+	} {
+		solid, known := solidity.Solid(test.state)
+		if !known {
+			t.Errorf("%s was not classified", test.name)
+			continue
+		}
+		if solid != test.want {
+			t.Errorf("%s solid = %v, want %v", test.name, solid, test.want)
+		}
+	}
+}
+
+// TestAnUnknownCurrentStateIsNotAssumedWalkable keeps the refusal that mattered
+// when there was no measurement at all. A state past the end of the
+// measurement is a block this version does not have, and it is not open ground.
+func TestAnUnknownCurrentStateIsNotAssumedWalkable(t *testing.T) {
+	t.Parallel()
+
+	solidity, err := NewSolidity(false)
+	if err != nil {
+		t.Fatalf("NewSolidity: %v", err)
+	}
+	if _, known := solidity.Solid(1 << 24); known {
+		t.Error("a state beyond the measurement claimed to be classified")
 	}
 }

@@ -502,7 +502,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M8.8 | One kernel driven by client prediction and server authority, gated on zero corrections from vanilla | `minecraft-simulation`, `headless-minecraft`, `server` | Planned, plan written | M8.4, M6, M7 | [M8.8 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) |
 | M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic, each verified against both 1.8.9 and 26.1.2 | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.1b planned; M9.3–M9.8 plans drafted ahead of their prerequisites, each with a reconcile-first task; M9.2 unblocked by M8.4 and awaiting M8.8 | M9.1 on M5 and `relay` v0.2.0; M9.1b on M9.1 and M4; M9.2–M9.8 on M8.8, M9.1, and M9.1b | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite), [M9.1b–M10 cross-version plan](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps, [M10 plan](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) |
-| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | M11.1 and M11.2 complete; M11.3–M11.7 designed and planned, unimplemented | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), six sub-milestone designs, and a plan for each, [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) |
+| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | M11.1 through M11.3 complete; M11.4–M11.7 designed and planned, unimplemented | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), six sub-milestone designs, and a plan for each, [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) |
 
 ## What is complete
 
@@ -1652,8 +1652,59 @@ The three worth carrying furthest:
     carrying the reason and the client saw a bare socket close. Both sides now
     take one mutex. 100 consecutive runs pass, and 20 more under the race
     detector.
-- [ ] M11.3 Storage: `WorldStore` and `SideStore`, native format research,
-  vanilla Anvil adapter, snapshot saving. [Design](../server/docs/superpowers/specs/2026-08-17-m11-3-storage-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-3-storage.md), 2026-08-17.
+- [x] M11.3 Storage: `WorldStore` and `SideStore`, native format research,
+  vanilla Anvil adapter, snapshot saving. Done on 2026-08-17.
+  [Design](../server/docs/superpowers/specs/2026-08-17-m11-3-storage-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-3-storage.md), 2026-08-17.
+  Measurements: [M11.3 storage measurements](../server/docs/verification/2026-08-17-m11-3-storage-measurements.md).
+  - **No threshold was crossed, and the native-format question stays closed.**
+    An incremental save of 100 dirty chunks takes 45.5 ms against a 250 ms
+    threshold, a cold load of a 25-chunk view takes 20 ms against 500 ms, and a
+    chunk costs 4,148 bytes on disk against block data that is about 39,000
+    bytes on the wire — 0.11×, where 3× would have reopened the question.
+  - **The first run of the save measurement failed at 300 ms, and the fault was
+    not the format.** A region is the unit of write, so the cost is per region
+    rather than per chunk — that much is vanilla's too. What was ours is that
+    rewriting a region decompressed all 1,024 columns and re-compressed them in
+    order to change one. Carrying the untouched columns through still
+    compressed took it from 300 ms to 45.5 ms. The measurement earned its place
+    for this alone: a number that had simply passed would have hidden it.
+  - **The new NBT reader found the writer malformed on its first run.** A list
+    element carries only its payload, and the Anvil writer opened each
+    `Sections` entry with `BeginCompound("")`, putting a three-byte tag header
+    in front of it. Every region file this server had ever written was
+    malformed NBT — invisible because nothing read one back. It is fixed, and
+    every chunk payload is now also run through `minecraft-protocol`'s own NBT
+    validator in the tests, which is a second opinion with no stake in this
+    writer.
+  - **The vanilla fixture is the one thing this milestone could not do.**
+    Task 2 needs a region file written by a vanilla 1.8.9 server, which needs a
+    Mojang server jar and a running world; this repository cannot produce one.
+    `TestAVanillaRegionReads` and `TestAVanillaChestReads` are checked in and
+    skipped, each naming what it needs and what stands in for it. Anyone with a
+    1.8.9 world can drop `r.0.0.mca` into `pkg/world/anvil/testdata` and both
+    start running. Until then, "this reader handles files it did not write" is
+    argued rather than proved.
+  - **One plan instruction was wrong and is corrected in the code.** The plan
+    says a tile entity's item `id` is numeric on 1.8 and a name in later
+    versions. It is a string from 1.8 onward. The writer resolves the name
+    through the version's item registry, as the plan also said to, and only the
+    missing vanilla fixture can settle it for certain.
+  - **Two departures from the plan's file list, both forced by the same
+    thing.** The stores hand back public value types, and an internal package
+    cannot name them, so `WorldStore`, `SideStore`, and `PlayerStore` and their
+    file-backed implementations live in `server/` rather than
+    `internal/server/storage`. And `player.Player` gained no `Snapshot`/
+    `Restore`, because those would name `server.PlayerData` from below it; the
+    conversion lives in `server/playerstore.go`, the one package that sees both
+    sides.
+  - **A store learns the world's shape through `StoreBinder` at `New`.** An
+    application builds a store before `server.New` exists, and a block state
+    handle from another registry means nothing, so binding is the same
+    arrangement a generator already had.
+  - **`WithStore` is gone.** The M11.1 seam named a format — `SaveWorldAnvil`
+    was a method on it — and could not express player persistence at all. It
+    was one milestone old, consumed by nothing outside this repository, and the
+    framework design's risk section priced the removal.
 - [ ] M11.4 World generation: parameters, named world types, version-neutral
   output. No separate repository. [Design](../server/docs/superpowers/specs/2026-08-17-m11-4-world-generation-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-4-world-generation.md), 2026-08-17.
 - [ ] M11.5 Provenance: item and block identity, the ID index, the audit log and
