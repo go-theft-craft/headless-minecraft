@@ -330,16 +330,151 @@ func TestPassengersAndVehiclesAreBothRecorded(t *testing.T) {
 func TestDamageCarriesItsSourceOn775(t *testing.T) {
 	t.Parallel()
 
-	// Protocol 47 reports damage as an entity status with no source; 775
-	// says what did it, and the same event carries both.
+	// Protocol 47 reports damage as an entity status with no source; 775 says
+	// what did it and who is behind it. The source entity IDs arrive offset by
+	// one, so the skeleton below is sent as 43 and the arrow as 100.
 	_, events := script(t, []protocol.Packet{
 		playLogin(1),
-		play(&gen.PlayClientboundDamageEvent{EntityID: 7, SourceTypeID: 11}),
+		play(&gen.PlayClientboundDamageEvent{
+			EntityID: 7, SourceTypeID: 11, SourceCauseID: 43, SourceDirectID: 100,
+		}),
 	})
 
 	last := events[len(events)-1].(event.EntityDamaged)
-	if last.EntityID != 7 || last.SourceTypeID != 11 {
+	if last.EntityID != 7 || last.Damage.TypeID != 11 || !last.Damage.Typed {
 		t.Errorf("damage is %+v", last)
+	}
+	if !last.Damage.Attributed || last.Damage.CauseID != 42 {
+		t.Errorf("cause is %d attributed %v, want 42 true", last.Damage.CauseID, last.Damage.Attributed)
+	}
+	if !last.Damage.Direct || last.Damage.DirectID != 99 {
+		t.Errorf("direct is %d present %v, want 99 true", last.Damage.DirectID, last.Damage.Direct)
+	}
+	if last.Damage.Positioned {
+		t.Errorf("damage with no position reports one at %v,%v,%v",
+			last.Damage.X, last.Damage.Y, last.Damage.Z)
+	}
+}
+
+func TestUnattributedDamageDoesNotNameEntityZero(t *testing.T) {
+	t.Parallel()
+
+	// Zero on the wire means the server named nobody, and entity 0 is a legal
+	// entity. Reporting CauseID 0 as attributed would send a retaliating
+	// caller after whatever holds that ID.
+	_, events := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundDamageEvent{
+			EntityID: 7, SourceTypeID: 3,
+			SourcePosition: &gen.Vec3f64{X: 1, Y: 2, Z: 3},
+		}),
+	})
+
+	last := events[len(events)-1].(event.EntityDamaged)
+	if last.Damage.Attributed || last.Damage.Direct {
+		t.Errorf("damage from nobody is attributed: %+v", last.Damage)
+	}
+	if !last.Damage.Positioned || last.Damage.X != 1 || last.Damage.Z != 3 {
+		t.Errorf("source position is %+v, want 1,2,3 present", last.Damage)
+	}
+}
+
+func TestDamageToTheLocalPlayerIsAPlayerEvent(t *testing.T) {
+	t.Parallel()
+
+	// The player domain is the local player and the entity domain is everybody
+	// else. Damage naming the local entity must not create a tracked entity
+	// for it.
+	w, events := script(t, []protocol.Packet{
+		playLogin(42),
+		play(&gen.PlayClientboundDamageEvent{EntityID: 42, SourceTypeID: 11, SourceCauseID: 8}),
+	})
+
+	last := events[len(events)-1]
+	damaged, ok := last.(event.PlayerDamaged)
+	if !ok {
+		t.Fatalf("published %T, want event.PlayerDamaged", last)
+	}
+	if !damaged.Damage.Attributed || damaged.Damage.CauseID != 7 {
+		t.Errorf("cause is %+v, want entity 7", damaged.Damage)
+	}
+	if _, tracked := w.Snapshot().Entities.Get(42); tracked {
+		t.Error("the local player is tracked as an entity")
+	}
+}
+
+func TestDeathIsPublishedOncePerDeath(t *testing.T) {
+	t.Parallel()
+
+	// 775 announces the local player's death twice, as an entity status and as
+	// a death combat event, and it names no killer in either.
+	w, events := script(t, []protocol.Packet{
+		playLogin(42),
+		play(&gen.PlayClientboundEntityStatus{EntityID: 42, EntityStatus: 3}),
+		play(&gen.PlayClientboundDeathCombatEvent{PlayerID: 42}),
+	})
+
+	var deaths []event.PlayerDied
+	for _, published := range events {
+		if died, ok := published.(event.PlayerDied); ok {
+			deaths = append(deaths, died)
+		}
+	}
+	if len(deaths) != 1 {
+		t.Fatalf("published %d deaths, want 1", len(deaths))
+	}
+	if deaths[0].Attributed {
+		t.Errorf("775 named a killer it does not send: %+v", deaths[0])
+	}
+	if !w.Snapshot().Player.Dead {
+		t.Error("the player is not dead after dying")
+	}
+}
+
+func TestRespawnClearsDeath(t *testing.T) {
+	t.Parallel()
+
+	w, _ := script(
+		t,
+		[]protocol.Packet{
+			playLogin(42),
+			play(&gen.PlayClientboundDeathCombatEvent{PlayerID: 42}),
+		},
+		[]protocol.Packet{
+			play(&gen.PlayClientboundRespawn{
+				WorldState: gen.SpawnInfo{Name: "minecraft:overworld", Gamemode: "survival"},
+			}),
+		},
+	)
+
+	if w.Snapshot().Player.Dead {
+		t.Error("the player is still dead after respawning")
+	}
+}
+
+func TestAnEntityDeathKeepsTheCorpseTracked(t *testing.T) {
+	t.Parallel()
+
+	// The server destroys a corpse a moment after killing it. Until it does,
+	// the entity is tracked and marked dead, which is how a caller that was
+	// fighting it learns the fight is over.
+	w, events := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundSpawnEntity{EntityID: 7, Type: 3}),
+		play(&gen.PlayClientboundEntityStatus{EntityID: 7, EntityStatus: 3}),
+	})
+
+	last := events[len(events)-1]
+	died, ok := last.(event.EntityDied)
+	if !ok {
+		t.Fatalf("published %T, want event.EntityDied", last)
+	}
+	if died.EntityID != 7 || died.Attributed {
+		t.Errorf("death is %+v, want entity 7 unattributed", died)
+	}
+	corpse, tracked := w.Snapshot().Entities.Get(7)
+	if !tracked || !corpse.Dead {
+		t.Errorf("corpse is tracked %v dead %v, want both", tracked, corpse.Dead)
 	}
 }
 

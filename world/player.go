@@ -28,6 +28,7 @@ type Player struct {
 	health     float32
 	food       int32
 	saturation float32
+	dead       bool
 
 	experienceBar   float32
 	level           int32
@@ -69,6 +70,10 @@ type PlayerView struct {
 	Health     float32
 	Food       int32
 	Saturation float32
+	// Dead reports that the server announced this player's death and has not
+	// respawned it. It is not Health == 0: a server can hold a player at zero
+	// health without killing it, and a death arrives as its own packet.
+	Dead bool
 
 	ExperienceBar   float32
 	Level           int32
@@ -96,7 +101,7 @@ func (p *Player) view() PlayerView {
 	return PlayerView{
 		Known: p.known, EntityID: p.entityID, Dimension: p.dimension, GameMode: p.gameMode,
 		X: p.x, Y: p.y, Z: p.z, Yaw: p.yaw, Pitch: p.pitch, Placed: p.placed,
-		Health: p.health, Food: p.food, Saturation: p.saturation,
+		Health: p.health, Food: p.food, Saturation: p.saturation, Dead: p.dead,
 		ExperienceBar: p.experienceBar, Level: p.level, TotalExperience: p.totalExperience,
 		AbilityFlags: p.abilityFlags, FlyingSpeed: p.flyingSpeed, WalkingSpeed: p.walkingSpeed,
 		HeldSlot:  p.heldSlot,
@@ -179,6 +184,27 @@ func (p *Player) Health(c *event.Collector, health float32, food int32, saturati
 	event.Emit(c, event.PlayerHealthChanged{Health: health, Food: food, Saturation: saturation})
 }
 
+// Damaged records something hurting the local player. What the protocol said
+// about the source is passed through untouched; nothing is inferred here.
+func (p *Player) Damaged(c *event.Collector, damage event.Damage) {
+	event.Emit(c, event.PlayerDamaged{Damage: damage})
+}
+
+// Died records the server announcing this player's death.
+//
+// It is idempotent until the next respawn, because both protocols announce one
+// death through more than one packet: protocol 47 sends an entity status and a
+// combat event, and 775 sends an entity status and a death combat event. The
+// first one to arrive publishes and the rest are the same fact again.
+func (p *Player) Died(c *event.Collector, killerID int32, attributed bool) {
+	if p.dead {
+		return
+	}
+	p.dead = true
+
+	event.Emit(c, event.PlayerDied{KillerID: killerID, Attributed: attributed})
+}
+
 // Experience records the experience bar, level, and total.
 func (p *Player) Experience(c *event.Collector, bar float32, level, total int32) {
 	p.experienceBar, p.level, p.totalExperience = bar, level, total
@@ -207,6 +233,7 @@ func (p *Player) GameMode(c *event.Collector, mode uint8) {
 func (p *Player) Respawn(c *event.Collector, dimension string, gameMode uint8) {
 	p.dimension, p.gameMode = dimension, gameMode
 	p.placed = false
+	p.dead = false
 	clear(p.effects)
 
 	event.Emit(c, event.PlayerRespawned{Dimension: dimension, GameMode: gameMode})

@@ -593,3 +593,122 @@ func TestUnloadingIsDrivenByTheServer(t *testing.T) {
 		t.Fatal("the chunk was not loaded")
 	}
 }
+
+func TestProtocol47DamageIsHonestlyUnattributed(t *testing.T) {
+	t.Parallel()
+
+	// Protocol 47 has no damage packet. Hurt is one of many entity statuses
+	// and carries no source at all, so the event says so rather than naming
+	// entity 0 or damage type 0 as though the server had sent them.
+	_, events := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundEntityStatus{EntityID: 7, EntityStatus: 2}),
+	})
+
+	last := events[len(events)-1]
+	damaged, ok := last.(event.EntityDamaged)
+	if !ok {
+		t.Fatalf("published %T, want event.EntityDamaged", last)
+	}
+	if damaged.EntityID != 7 {
+		t.Errorf("damage names entity %d, want 7", damaged.EntityID)
+	}
+	if damaged.Damage.Typed || damaged.Damage.Attributed || damaged.Damage.Direct {
+		t.Errorf("protocol 47 attributed damage it cannot see: %+v", damaged.Damage)
+	}
+}
+
+func TestHurtNamingTheLocalPlayerIsAPlayerEvent(t *testing.T) {
+	t.Parallel()
+
+	w, events := script(t, []protocol.Packet{
+		login(42),
+		play(&gen.PlayClientboundEntityStatus{EntityID: 42, EntityStatus: 2}),
+	})
+
+	last := events[len(events)-1]
+	if _, ok := last.(event.PlayerDamaged); !ok {
+		t.Fatalf("published %T, want event.PlayerDamaged", last)
+	}
+	if _, tracked := w.Snapshot().Entities.Get(42); tracked {
+		t.Error("the local player is tracked as an entity")
+	}
+}
+
+func TestProtocol47NamesTheKillerItDoesSend(t *testing.T) {
+	t.Parallel()
+
+	// The reverse of damage: 47's combat event carries a killer and 775's
+	// death event does not. The status and the combat event describe one
+	// death, and one death publishes once.
+	w, events := script(t, []protocol.Packet{
+		login(42),
+		play(&gen.PlayClientboundEntityStatus{EntityID: 42, EntityStatus: 3}),
+		play(&gen.PlayClientboundCombatEvent{
+			Event:    2,
+			PlayerID: gen.PlayClientboundCombatEventPlayerIDSwitch{Case2: 42},
+			EntityID: gen.PlayClientboundCombatEventEntityIDSwitch{Case2: 9},
+		}),
+	})
+
+	var deaths []event.PlayerDied
+	for _, published := range events {
+		if died, ok := published.(event.PlayerDied); ok {
+			deaths = append(deaths, died)
+		}
+	}
+	if len(deaths) != 1 {
+		t.Fatalf("published %d deaths, want 1", len(deaths))
+	}
+	// The entity status arrived first and it names no killer. Publishing once
+	// costs the attribution the later packet carried, and publishing twice
+	// would report two deaths — the first is the lesser wrong, and it is why
+	// PlayerDied says whether it was attributed at all.
+	if deaths[0].Attributed {
+		t.Errorf("the first announcement of a death claimed a killer: %+v", deaths[0])
+	}
+	if !w.Snapshot().Player.Dead {
+		t.Error("the player is not dead after dying")
+	}
+}
+
+func TestACombatDeathAloneCarriesItsKiller(t *testing.T) {
+	t.Parallel()
+
+	_, events := script(t, []protocol.Packet{
+		login(42),
+		play(&gen.PlayClientboundCombatEvent{
+			Event:    2,
+			PlayerID: gen.PlayClientboundCombatEventPlayerIDSwitch{Case2: 7},
+			EntityID: gen.PlayClientboundCombatEventEntityIDSwitch{Case2: 9},
+		}),
+	})
+
+	last := events[len(events)-1]
+	died, ok := last.(event.EntityDied)
+	if !ok {
+		t.Fatalf("published %T, want event.EntityDied", last)
+	}
+	if died.EntityID != 7 || !died.Attributed || died.KillerID != 9 {
+		t.Errorf("death is %+v, want entity 7 killed by 9", died)
+	}
+}
+
+func TestACombatDeathWithNoKillerSaysSo(t *testing.T) {
+	t.Parallel()
+
+	// Protocol 47 sends -1 when nothing killed the player.
+	_, events := script(t, []protocol.Packet{
+		login(42),
+		play(&gen.PlayClientboundCombatEvent{
+			Event:    2,
+			PlayerID: gen.PlayClientboundCombatEventPlayerIDSwitch{Case2: 42},
+			EntityID: gen.PlayClientboundCombatEventEntityIDSwitch{Case2: -1},
+		}),
+	})
+
+	died := events[len(events)-1].(event.PlayerDied)
+	if died.Attributed || died.KillerID != 0 {
+		t.Errorf("a death with no killer is %+v, want unattributed and zero", died)
+	}
+}

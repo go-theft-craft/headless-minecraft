@@ -7,7 +7,8 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
 ### Added
 
 - Initial repository structure, endpoint-scoped authorization, strict safety defaults, version-profile validation, Devbox tooling, CI, and a tracked pre-commit hook for lint and secret scanning.
-- `event`: the client event taxonomy — eight domains, 73 names, and the sixteen session event structs. Every event carries the observed-state revision that produced it.
+- `event`: the client event taxonomy — eight domains, 76 names, and the sixteen session event structs. Every event carries the observed-state revision that produced it.
+- `event`, `world`: damage attribution and death. `event.Damage` names the damage type, the entity held responsible, the entity that dealt it, and a source position, each with a flag saying whether the protocol sent it at all. `player.damaged`, `player.died`, and `entity.died` are new; `entity.damaged` carries `event.Damage` in place of its bare source type. Protocol 775 attributes damage and protocol 47 attributes death, and where a protocol is silent the event reports silence rather than a zero that reads like an observation.
 - `auth`: the identity seam, with an offline provider whose UUID matches the server's own derivation.
 - `version`: bundle batching, the version-owned readiness rule, and the adapter contract for handshakes and packet handlers.
 - `version/java`: the built-in `Java1_8` and `Current` profiles for protocol 47 and protocol 775.

@@ -99,6 +99,31 @@ func reducePlayerPacket(
 		if isLocal(ctx, value.EntityID) {
 			p.EffectRemoved(c, int32(value.EffectID))
 		}
+
+	case *gen.PlayClientboundEntityStatus:
+		// The entity reducer switches on this packet too, for the statuses
+		// that name somebody else. Same packet, two domains, each ignoring
+		// what is not its own — the arrangement GameStateChange already uses.
+		if !isLocal(ctx, value.EntityID) {
+			return
+		}
+		switch value.EntityStatus {
+		case statusHurt:
+			// Protocol 47 sends no source of any kind. An empty Damage says
+			// so, and a caller that wants an attacker here infers one itself.
+			p.Damaged(c, event.Damage{})
+		case statusDeath:
+			p.Died(c, 0, false)
+		}
+
+	case *gen.PlayClientboundCombatEvent:
+		// Protocol 47's combat event is the one place either protocol names a
+		// killer: 775 dropped the field from its death event.
+		if value.Event != combatEventEntityDead || !isLocal(ctx, value.PlayerID.Case2) {
+			return
+		}
+		killer, attributed := combatKiller(value.EntityID.Case2)
+		p.Died(c, killer, attributed)
 	}
 }
 
@@ -219,11 +244,26 @@ func reduceEntityPacket(
 		entities.Attached(c, value.EntityID, value.VehicleID)
 
 	case *gen.PlayClientboundEntityStatus:
-		// Protocol 47 has no damage packet: hurt is one of many entity
-		// statuses, and the source is not sent.
-		if value.EntityStatus == statusHurt {
-			entities.Damaged(c, value.EntityID, 0)
+		// Protocol 47 has no damage packet: hurt and death are two of many
+		// entity statuses, and neither carries a source.
+		if isLocal(ctx, value.EntityID) {
+			return
 		}
+		switch value.EntityStatus {
+		case statusHurt:
+			entities.Damaged(c, value.EntityID, event.Damage{})
+		case statusDeath:
+			entities.Died(c, value.EntityID, 0, false)
+		}
+
+	case *gen.PlayClientboundCombatEvent:
+		// A death this protocol does attribute — for another player, since the
+		// local player's goes to the player domain.
+		if value.Event != combatEventEntityDead || isLocal(ctx, value.PlayerID.Case2) {
+			return
+		}
+		killer, attributed := combatKiller(value.EntityID.Case2)
+		entities.Died(c, value.PlayerID.Case2, killer, attributed)
 
 	case *gen.PlayClientboundAnimation:
 		entities.Animated(c, value.EntityID, value.Animation)
@@ -244,8 +284,33 @@ func reduceEntityPacket(
 	}
 }
 
-// statusHurt is the entity status protocol 47 uses for damage.
-const statusHurt int8 = 2
+// The entity statuses this reducer reads, and the combat event that reports a
+// death.
+//
+// Protocol 47 packs dozens of unrelated effects into one numbered status byte
+// and the schema names none of them, so the two numbers this client cares about
+// are written here rather than looked up: 2 is a living entity being hurt and 3
+// is one dying. The 775 half of this adapter names 3 for itself, for the same
+// reason and with the same number.
+const (
+	statusHurt  int8 = 2
+	statusDeath int8 = 3
+
+	combatEventEntityDead int32 = 2
+)
+
+// combatKiller reads the killer out of a protocol 47 combat event. The server
+// sends -1 when nothing killed the player, and the absent case reports a zero
+// ID rather than the sentinel, so no caller reads -1 as an entity. Protocol
+// 775's damage event uses a different sentinel for the same idea and is undone
+// in the same place, in its own adapter.
+func combatKiller(entityID int32) (int32, bool) {
+	if entityID < 0 {
+		return 0, false
+	}
+
+	return entityID, true
+}
 
 func block47(fixed int32) float64 { return float64(fixed) / fixedPoint47 }
 

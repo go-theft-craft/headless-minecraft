@@ -746,6 +746,43 @@ Domain-specific tests:
   arrive for an entity the client never saw spawn — after a chunk unload, for
   instance. Record it or drop it, but do not fail the session.
 
+### Task 4.5: Damage attribution and death — done
+
+Added 2026-08-17 by design Decision 11, after `examples/orbit`'s design found
+that no consumer can pick a target to retaliate against and no consumer is told
+it died. It amends Tasks 3 and 4 rather than replacing them: both reducers
+already existed, and this adds three declared names to them.
+
+**Files:** `event/damage.go`, `event/player.go`, `event/entities.go`,
+`event/taxonomy.go`, `world/player.go`, `world/entities.go`, both
+`internal/adapter/*/reduce.go` and their tests.
+
+**Events:** `PlayerDamaged`, `PlayerDied`, `EntityDied` — three new names,
+declared in the taxonomy in the same change, which is what the Stage B preamble
+requires. `EntityDamaged` keeps its name and loses `SourceTypeID` for the shared
+`event.Damage`.
+
+**Packets:** `DamageEvent` (775), `DeathCombatEvent` (775), `CombatEvent` (47),
+`EntityStatus` (both).
+
+Domain-specific tests:
+
+- **Protocol 47 damage reports no attribution rather than zeroes.** An empty
+  `Damage` says the protocol was silent; `TypeID: 0, CauseID: 0` would name a
+  legal damage type and a legal entity.
+- **775's source entity IDs are offset by one on the wire**, with zero meaning
+  absent. The adapter undoes it, and a test drives a cause of 43 and asserts
+  entity 42.
+- **Damage and death naming the local player reach the player domain**, and the
+  local player does not appear in the entity store.
+- **A death publishes once.** Both protocols announce one death through two
+  packets; assert one `PlayerDied` from a status and a combat event together.
+- **Each protocol attributes the half the other does not.** 47's combat event
+  names a killer and 775's death event does not; 775's damage event names a
+  cause and 47 has no damage packet.
+- **A respawn clears the dead flag, and a corpse stays tracked until the server
+  destroys it.**
+
 ### Task 5: The chunk reducer
 
 The largest and the one with the most room to be slow.

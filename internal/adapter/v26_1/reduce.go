@@ -102,6 +102,23 @@ func reducePlayerPacket(
 		if isLocal(ctx, value.EntityID) {
 			p.EffectRemoved(c, value.EffectID)
 		}
+
+	case *gen.PlayClientboundDamageEvent:
+		if isLocal(ctx, value.EntityID) {
+			p.Damaged(c, damage775(value))
+		}
+
+	case *gen.PlayClientboundDeathCombatEvent:
+		// 775 names no killer here. Protocol 47's combat event does, which is
+		// the reverse of how the two protocols treat damage.
+		if isLocal(ctx, value.PlayerID) {
+			p.Died(c, 0, false)
+		}
+
+	case *gen.PlayClientboundEntityStatus:
+		if isLocal(ctx, value.EntityID) && value.EntityStatus == statusDeath {
+			p.Died(c, 0, false)
+		}
 	}
 }
 
@@ -206,8 +223,24 @@ func reduceEntityPacket(
 		entities.Attached(c, value.EntityID, value.VehicleID)
 
 	case *gen.PlayClientboundDamageEvent:
-		// Unlike 47, 775 says what did the damage.
-		entities.Damaged(c, value.EntityID, value.SourceTypeID)
+		// Unlike 47, 775 says what did the damage and who is behind it.
+		if !isLocal(ctx, value.EntityID) {
+			entities.Damaged(c, value.EntityID, damage775(value))
+		}
+
+	case *gen.PlayClientboundDeathCombatEvent:
+		if !isLocal(ctx, value.PlayerID) {
+			entities.Died(c, value.PlayerID, 0, false)
+		}
+
+	case *gen.PlayClientboundEntityStatus:
+		// Only death is read from this packet on 775. Hurt moved to the damage
+		// event in a version this profile is well past, and reading status 2 as
+		// damage here would republish something the server no longer means by
+		// it.
+		if !isLocal(ctx, value.EntityID) && value.EntityStatus == statusDeath {
+			entities.Died(c, value.EntityID, 0, false)
+		}
 
 	case *gen.PlayClientboundAnimation:
 		entities.Animated(c, value.EntityID, value.Animation)
@@ -225,6 +258,38 @@ func reduceEntityPacket(
 			entities.EffectRemoved(c, value.EntityID, value.EffectID)
 		}
 	}
+}
+
+// statusDeath is the entity status both protocols use for a living entity
+// dying. Protocol 47's half of this reducer names it for the same reason: the
+// schema numbers the statuses and names none of them.
+const statusDeath int8 = 3
+
+// damage775 reads protocol 775's damage event into the shared attribution.
+//
+// The two source entity IDs are sent offset by one, with zero meaning the
+// server named nobody, because entity 0 is a legal entity and could not
+// otherwise be told from an absent one. Undoing the offset here rather than in
+// the world is the same rule the fixed-point positions follow: wire encoding
+// stays in the adapter.
+func damage775(value *gen.PlayClientboundDamageEvent) event.Damage {
+	damage := event.Damage{TypeID: value.SourceTypeID, Typed: true}
+	damage.CauseID, damage.Attributed = sourceEntity775(value.SourceCauseID)
+	damage.DirectID, damage.Direct = sourceEntity775(value.SourceDirectID)
+	if position := value.SourcePosition; position != nil {
+		damage.X, damage.Y, damage.Z = position.X, position.Y, position.Z
+		damage.Positioned = true
+	}
+
+	return damage
+}
+
+func sourceEntity775(raw int32) (int32, bool) {
+	if raw <= 0 {
+		return 0, false
+	}
+
+	return raw - 1, true
 }
 
 func delta775(d int16) float64 { return float64(d) / deltaScale775 }

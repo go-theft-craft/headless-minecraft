@@ -782,6 +782,19 @@ something the approved documents asserted:
   in a 775 section report `ErrSectionNotDecodable`. **What unblocks it is one
   captured 26.1 chunk as a fixture**, which `mcproto capture` can record — the
   same route M4 used to close its vanilla-client check.
+- **Each protocol attributes the half the other does not.** Protocol 775 sends a
+  damage event naming the entity responsible and the entity that dealt it, and
+  its death event carries only a player and a message — the killer field is
+  gone. Protocol 47 has no damage packet at all, and its combat event carries
+  the killer. Neither is the superset, which is what justifies a normalized
+  attribution shape rather than exposing whichever protocol is richer. Where a
+  protocol is silent the event says so, because entity 0 is a legal entity and
+  there is no sentinel that means "not sent".
+- **A death arrives twice on both protocols**, as an entity status and as a
+  combat event, so `Died` is idempotent until the next respawn. The first
+  announcement wins, and on protocol 47 the first one is the unattributed one —
+  which is why `PlayerDied` reports whether it was attributed rather than
+  reporting a killer of zero.
 - **The chunk benchmarks say copy-on-read is still right.** A block lookup on
   a decoded section is 39.5 ns, and a snapshot over 400 columns of two sections
   each is 33.6 µs — a pointer copy per section, as design decision 4 intended.
@@ -844,15 +857,16 @@ something the approved documents asserted:
   library does not make for a consumer, which matches what the shared login
   exchange already does. A consumer that wants the text renders it from the
   raw packet.
-- [ ] Carry damage attribution and death on the taxonomy. Found while designing
+- [x] Carry damage attribution and death on the taxonomy. Found while designing
   [`examples/orbit`](docs/superpowers/specs/2026-08-16-orbit-example-design.md):
-  the taxonomy has `PlayerHealthChanged` and `EntityDamaged` and neither is
-  specified to name who dealt the damage, so no consumer can pick a target to
-  retaliate against. Protocol 775's damage event carries the source and 47 does
-  not, which is a normalization decision M7 has to make rather than inherit.
-  Death is the same shape of gap: health reaching zero is an inference a
-  consumer draws, and `PlayerRespawned` reports the recovery from an event that
-  was never published.
+  the taxonomy had `PlayerHealthChanged` and `EntityDamaged` and neither named
+  who dealt the damage, so no consumer could pick a target to retaliate
+  against, and death was an inference a consumer drew from health reaching
+  zero. Closed by design Decision 11 and plan Task 4.5. Three names added —
+  `player.damaged`, `player.died`, `entity.died` — and `EntityDamaged` now
+  carries the shared `event.Damage` instead of a bare source type. Orbit's
+  required-surface items 4 and 5 are satisfied; item 6, respawn as a sendable
+  action, stays open against M9.
 
 ### M8–M9 — Simulation and gameplay
 

@@ -131,19 +131,43 @@ type EntityPassengersChanged struct {
 func (EntityPassengersChanged) Name() Name     { return NameEntityPassengersChanged }
 func (EntityPassengersChanged) Domain() Domain { return DomainEntities }
 
-// EntityDamaged reports an entity taking damage.
-//
-// Protocol 775 says what damaged it; protocol 47 reports damage as one of
-// many entity statuses and carries no source, so SourceTypeID is zero there.
+// EntityDamaged reports an entity taking damage. Damage names who is
+// responsible, on the protocols that say.
 type EntityDamaged struct {
 	Stamp
 
-	EntityID     int32
-	SourceTypeID int32
+	EntityID int32
+	Damage   Damage
 }
 
 func (EntityDamaged) Name() Name     { return NameEntityDamaged }
 func (EntityDamaged) Domain() Domain { return DomainEntities }
+
+// EntityDied reports an entity dying, which is an observation and not the
+// inference a caller would otherwise draw from health reaching zero. It fires
+// once: a server announces a death through more than one packet and the world
+// publishes the first.
+//
+// The entity is not removed here. A server keeps a corpse tracked for the death
+// animation and destroys it a second later, and the snapshot reports it as dead
+// until it does — which is the window a caller has to notice that the thing it
+// was fighting is gone.
+//
+// KillerID names the entity credited with the kill and Attributed reports
+// whether the protocol named one. This is the mirror of EntityDamaged:
+// protocol 47's combat event carries a killer and protocol 775's death event
+// dropped the field, so the version that attributes damage is not the version
+// that attributes death.
+type EntityDied struct {
+	Stamp
+
+	EntityID   int32
+	KillerID   int32
+	Attributed bool
+}
+
+func (EntityDied) Name() Name     { return NameEntityDied }
+func (EntityDied) Domain() Domain { return DomainEntities }
 
 // EntityAnimated reports an animation the server played on an entity, in the
 // protocol's own numbering.

@@ -8,8 +8,9 @@
 ## Context
 
 M7 builds the observed world: player, entities, chunks, containers, registries,
-environment, chat. It publishes the 57 non-session events M6.3's taxonomy
-declared and it holds only what the server sent. Mechanics stay out. A body
+environment, chat. It publishes the non-session events M6.3's taxonomy
+declared — 57 of them then, 60 after Decision 11 — and it holds only what the
+server sent. Mechanics stay out. A body
 model, a physics kernel, and a movement strategy are M8 and M9.
 
 M7 never got a design pass. M6.3's design fixed the taxonomy and the batch
@@ -296,6 +297,64 @@ task, mark it deferred in `MASTER_PLAN.md`, and ship the rest.
 If it is cut, Task 10's completeness test asserts the implemented set equals
 `AllNames()` minus the deferred chat names, and the deferral is recorded in the
 milestone rather than left for a reader to infer from a failing test.
+
+## Decision 11: damage names its source, death is an event, and neither is inferred
+
+Added 2026-08-17, after the taxonomy met the first consumer that needs to act on
+being hit. `examples/orbit`'s design found the gap: the taxonomy has
+`PlayerHealthChanged` and `EntityDamaged`, neither names who dealt the damage,
+and there is no death event at all — so a bot cannot pick a target to retaliate
+against, and it learns it died by inferring it from a health number reaching
+zero. Both are normalization decisions M7 has to make rather than inherit,
+because the two protocols disagree about which of them they support.
+
+Three names are added: `player.damaged`, `player.died`, and `entity.died`. The
+taxonomy goes from 71 named events to 74.
+
+**Damage carries an attribution value, not a bare type ID.** `event.Damage`
+holds the damage type, the entity held responsible, the entity that physically
+dealt it, and a source position, each paired with a boolean that says whether
+the protocol sent it. The booleans are not decoration: entity 0 is a legal
+entity and damage type 0 is a legal damage type, so there is no sentinel
+available that means "the server said nothing".
+
+**Nothing is inferred where a protocol is silent.** Protocol 775 sends a damage
+event with a cause and a direct source. Protocol 47 has no damage packet at all
+— being hurt is one of several dozen numbered entity statuses, and the status
+byte is the entire message. A protocol 47 `EntityDamaged` therefore carries an
+empty `Damage`, and a caller that wants an attacker on 1.8.9 infers one from
+who swung or who is nearest. That inference is a guess, guesses belong to the
+caller, and a guess presented through the same field as an observation is worse
+than an honest zero.
+
+**Death is observed, not derived.** Health reaching zero is not death: a server
+can hold a player at zero health, and a death arrives as its own packet. Both
+protocols announce one death through more than one packet, so `Died` is
+idempotent until the next respawn and the first announcement wins. That costs
+attribution when the unattributed packet arrives first, which is why `PlayerDied`
+reports whether it was attributed rather than reporting a killer of zero.
+
+**The two protocols attribute opposite halves.** 775 attributes damage and not
+death — its death event carries a player and a message, and the killer field
+was removed. 47 attributes death and not damage — its combat event carries the
+killer. Neither protocol is the superset, which is the case that justifies
+having a normalized shape at all.
+
+**A dead entity stays tracked.** A server keeps a corpse for its death animation
+and destroys it about a second later. Releasing it on death would hide it from
+the caller that was fighting it during exactly the window that caller needs, so
+`EntityView.Dead` is set and `EntityRemoved` still does the releasing.
+
+**Damage to the local player is a player event.** `PlayerDamaged`, not
+`EntityDamaged` filtered by the caller, on the rule the rest of the taxonomy
+already follows: the player domain is the local player and the entity domain is
+everybody else. Without this the local player also acquires a phantom entry in
+the entity store, which is how the gap was noticed a second time.
+
+What this does not add is respawning. Respawn is an action, actions are M9, and
+a library that respawned a bot on its own would be deciding something the caller
+may want to handle. `examples/orbit`'s required-surface item 6 stays open
+against M9.
 
 ## Dependencies
 

@@ -39,6 +39,8 @@ const (
 	NamePlayerSpawned           Name = "player.spawned"
 	NamePlayerMoved             Name = "player.moved"
 	NamePlayerHealthChanged     Name = "player.health_changed"
+	NamePlayerDamaged           Name = "player.damaged"
+	NamePlayerDied              Name = "player.died"
 	NamePlayerExperienceChanged Name = "player.experience_changed"
 	NamePlayerAbilitiesChanged  Name = "player.abilities_changed"
 	NamePlayerGameModeChanged   Name = "player.game_mode_changed"
@@ -76,6 +78,7 @@ const (
 	NameEntityVelocityChanged   Name = "entity.velocity_changed"
 	NameEntityPassengersChanged Name = "entity.passengers_changed"
 	NameEntityDamaged           Name = "entity.damaged"
+	NameEntityDied              Name = "entity.died"
 	NameEntityAnimated          Name = "entity.animated"
 	NameEntityItemCollected     Name = "entity.item_collected"
 )
@@ -131,7 +134,8 @@ var domains = map[Name]Domain{
 	NameSessionCookieStored: DomainSession, NameSessionCustomPayloadReceived: DomainSession,
 
 	NamePlayerSpawned: DomainPlayer, NamePlayerMoved: DomainPlayer,
-	NamePlayerHealthChanged: DomainPlayer, NamePlayerExperienceChanged: DomainPlayer,
+	NamePlayerHealthChanged: DomainPlayer, NamePlayerDamaged: DomainPlayer,
+	NamePlayerDied: DomainPlayer, NamePlayerExperienceChanged: DomainPlayer,
 	NamePlayerAbilitiesChanged: DomainPlayer, NamePlayerGameModeChanged: DomainPlayer,
 	NamePlayerRespawned: DomainPlayer, NamePlayerHeldSlotChanged: DomainPlayer,
 	NamePlayerEffectsChanged: DomainPlayer, NamePlayerCooldownChanged: DomainPlayer,
@@ -148,7 +152,8 @@ var domains = map[Name]Domain{
 	NameEntityEquipmentChanged: DomainEntities, NameEntityAttributesChanged: DomainEntities,
 	NameEntityEffectsChanged: DomainEntities, NameEntityVelocityChanged: DomainEntities,
 	NameEntityPassengersChanged: DomainEntities, NameEntityDamaged: DomainEntities,
-	NameEntityAnimated: DomainEntities, NameEntityItemCollected: DomainEntities,
+	NameEntityDied: DomainEntities, NameEntityAnimated: DomainEntities,
+	NameEntityItemCollected: DomainEntities,
 
 	NameContainerOpened: DomainContainers, NameContainerClosed: DomainContainers,
 	NameContainerSlotsChanged: DomainContainers, NameContainerCursorChanged: DomainContainers,

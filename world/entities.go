@@ -47,6 +47,7 @@ type entity struct {
 	headYaw    float32
 	onGround   bool
 	velocity   [3]int16
+	dead       bool
 
 	metadata   map[uint8]Metadata
 	equipment  map[int32]any
@@ -72,6 +73,11 @@ type EntityView struct {
 	HeadYaw    float32
 	OnGround   bool
 	Velocity   [3]int16
+	// Dead reports that the server announced this entity's death. A server
+	// keeps a corpse tracked for its death animation before destroying it, so
+	// this is visible for about a second — which is the window a caller that
+	// was fighting it has to notice.
+	Dead bool
 
 	Metadata   map[uint8]Metadata
 	Equipment  map[int32]any
@@ -108,7 +114,7 @@ func (s *Entities) view() EntitiesView {
 		tracked[id] = EntityView{
 			EntityID: e.id, UUID: e.uuid, Type: e.kind,
 			X: e.x, Y: e.y, Z: e.z, Yaw: e.yaw, Pitch: e.pitch,
-			HeadYaw: e.headYaw, OnGround: e.onGround, Velocity: e.velocity,
+			HeadYaw: e.headYaw, OnGround: e.onGround, Velocity: e.velocity, Dead: e.dead,
 			Metadata:   maps.Clone(e.metadata),
 			Equipment:  maps.Clone(e.equipment),
 			Attributes: maps.Clone(e.attributes),
@@ -355,11 +361,28 @@ func (s *Entities) Attached(c *event.Collector, id, vehicle int32) {
 	event.Emit(c, event.EntityPassengersChanged{EntityID: vehicle, Passengers: passengers})
 }
 
-// Damaged records an entity taking damage.
-func (s *Entities) Damaged(c *event.Collector, id, sourceTypeID int32) {
+// Damaged records an entity taking damage. What the protocol said about the
+// source is passed through untouched; nothing is inferred here.
+func (s *Entities) Damaged(c *event.Collector, id int32, damage event.Damage) {
 	s.track(id)
 
-	event.Emit(c, event.EntityDamaged{EntityID: id, SourceTypeID: sourceTypeID})
+	event.Emit(c, event.EntityDamaged{EntityID: id, Damage: damage})
+}
+
+// Died records the server announcing an entity's death.
+//
+// The entity stays tracked and is marked dead rather than released: the server
+// destroys it a moment later, and dropping it here would hide the corpse from a
+// caller that was fighting it. Died is idempotent, because a death arrives as
+// more than one packet.
+func (s *Entities) Died(c *event.Collector, id, killerID int32, attributed bool) {
+	e := s.track(id)
+	if e.dead {
+		return
+	}
+	e.dead = true
+
+	event.Emit(c, event.EntityDied{EntityID: id, KillerID: killerID, Attributed: attributed})
 }
 
 // Animated records an animation the server played.
