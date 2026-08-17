@@ -394,6 +394,51 @@ writes behind an explicit flag. What it does without the flag is check that the
 committed fixtures still say what the jar says, so a fixture that drifts is
 caught where the game is, not later on a machine that cannot ask it.
 
+**M8.6 is complete, and the determinism matrix paid for itself immediately.**
+`replay` records a run as its initial world, its per-tick input, and the digest
+of every tick, and a workflow replays five committed recordings on six targets:
+Linux, macOS, and Windows, each on amd64 and arm64. All six run and all six
+agree.
+
+The runner risk this file recorded is retired, and the resolution is the one the
+plan proposed: verification keeps Devbox on one platform, determinism uses
+`actions/setup-go` on six, and a test fails if `devbox.json`, the workflow, and
+`go.mod` stop naming one Go version. One target needed replacing —  `macos-13`
+sat queued for a quarter of an hour on three separate runs and was scheduled on
+none of them, which is what a retired image looks like from outside, so the
+Intel target is now `macos-15-intel` and it starts.
+
+**The matrix found a wrong answer on arm64 on its first run with real
+recordings.** All three arm64 targets disagreed with both amd64 targets, on
+exactly three of the five recordings — the three where strafe and forward are
+both non-zero. Go permits an implementation to contract a multiply and an add
+into a single rounding unless an explicit conversion rounds the intermediate,
+and the arm64 compiler takes that permission, so the two products in the heading
+rule fused. The recordings driven with forward alone agreed, because their other
+product is zero and fusing it changes nothing.
+
+This is worth carrying past M8. Three points:
+
+- **It was a correctness bug, not a tie.** Java never contracts unless
+  `Math.fma` is called, so the game computes each product separately, and M8.4's
+  oracle had already checked the unfused arithmetic against a real server. An
+  arm64 build was producing positions vanilla does not produce. Anyone running
+  this on Apple silicon or a Graviton server was getting them.
+- **The fix left the recordings unchanged**, which is the evidence that the
+  conversions force the answer amd64 already had rather than choosing a third
+  one. No recording was regenerated to make the matrix green; the plan forbids
+  it, and it was not needed.
+- **M8.4's gate could not have found this.** The oracle runs where the jar runs,
+  which is one platform at a time. Two gates were needed and both were: the
+  oracle says which answer is right, and the matrix says everyone computes it.
+
+The general lesson for M8.7 and M9: every `float32` product feeding an add is a
+place arm64 may fuse, and the only reliable defence is an explicit conversion
+rather than an intermediate variable. The recordings join the matrix
+automatically as later profiles arrive, since it replays every file in the
+directory and each recording pins its own profile identity and a digest of the
+game data it ran against.
+
 **M11: server framework is newly planned.** The eight items in
 `server/docs/todo.md` fit no existing plan, because every server plan is
 protocol migration, and this file had no milestone for `server` becoming
@@ -447,12 +492,12 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | Complete | M4 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md) (amended 2026-08-15), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) (amended 2026-08-15) |
 | M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Complete; M6.4 Microsoft device-code postponed, nothing depends on it | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
 | M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Complete | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [observed world state plan](docs/superpowers/plans/2026-08-15-observed-world-state.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
-| M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 player movement slice with canonical replay and server/client adapters; items and arrows moved to M9 | `minecraft-simulation` | M8.1–M8.4 complete | M4, M7 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
+| M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 player movement slice with canonical replay and server/client adapters; items and arrows moved to M9 | `minecraft-simulation` | M8.1–M8.4 and M8.6 complete | M4, M7 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
 | M8.1 | Extract Java 1.8.9 physics constants from a verified Mojang server jar and publish them as a pinned, generated Go package | `minecraft-reference`, `minecraft-protocol` | Complete | — | [Physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) |
 | M8.2 | `geom`, `world`, and `collision`: swept axis-aligned collision reproducing Java Edition 1.8.9 axis order and step-up, over a tri-state block view, verified against a real server jar | `minecraft-simulation` | Complete | — | [M8.2 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-15-m8-2-geometry-collision-core.md) |
 | M8.3 | `sim`, `entity`, `runtime`, block handles in `world`, and an in-memory store: the tick contract, canonical result digest, and revision-checked change sets | `minecraft-simulation` | Complete | M8.2 | [M8.3 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-3-kernel-contracts.md) |
 | M8.4 | `movement` and `profile/java/v1_8` for the player, gated on a differential test against the game's own movement tick | `minecraft-simulation` | Complete; 4,800 ticks agree with the game, and six fixtures replay without a JDK | M8.3 | [M8.4 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-4-v1-8-player-movement.md) |
-| M8.6 | Canonical recording and replay, and a six-target determinism matrix | `minecraft-simulation` | Planned, plan written; runner obstacle identified | M8.3 for encoding, M8.4 for the matrix | [M8.6 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-6-replay-and-determinism.md) |
+| M8.6 | Canonical recording and replay, and a six-target determinism matrix | `minecraft-simulation` | Complete; all six targets agree, and the matrix found an arm64 fused-multiply-add bug | M8.3 for encoding, M8.4 for the matrix | [M8.6 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-6-replay-and-determinism.md) |
 | M8.7 | `profile/java/v26_1` for the player, plus a 26.1.2 physics dumper and dataset | `minecraft-reference`, `minecraft-protocol`, `minecraft-simulation` | Planned, plan written; starts with an oracle feasibility task | M8.4, M4 | [M8.7 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-7-v26-1-player-movement.md) |
 | M8.8 | One kernel driven by client prediction and server authority, gated on zero corrections from vanilla | `minecraft-simulation`, `headless-minecraft`, `server` | Planned, plan written | M8.4, M6, M7 | [M8.8 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) |
 | M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic, each verified against both 1.8.9 and 26.1.2 | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.1b planned; M9.3–M9.8 plans drafted ahead of their prerequisites, each with a reconcile-first task; M9.2 unblocked by M8.4 and awaiting M8.8 | M9.1 on M5 and `relay` v0.2.0; M9.1b on M9.1 and M4; M9.2–M9.8 on M8.8, M9.1, and M9.1b | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite), [M9.1b–M10 cross-version plan](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) |
@@ -1319,7 +1364,7 @@ Three changes to the original plan, all recorded in the sequencing design:
 | M8.2 | — | Complete. Property tests prove no tunneling, bounded step-up, and that zero motion is a fixed point, and a differential harness proves the whole movement path bit-identical to a real 1.8.9 server |
 | M8.3 | M8.2 | Complete. An empty tick produces a stable digest and a change set that a stale store rejects |
 | M8.4 | M8.3 | Complete. Walk, sprint, jump, sneak, fall, and collide agree with the game's own movement tick bit for bit every tick, and the same six replay from game-generated fixtures with no JDK |
-| M8.6 | M8.3 for encoding; M8.4 for the matrix | Identical digest on Linux, macOS, and Windows, on amd64 and arm64 |
+| M8.6 | M8.3 for encoding; M8.4 for the matrix | Complete. Identical digest on Linux, macOS, and Windows, on amd64 and arm64, over five recordings chosen to reach the float32 paths |
 | M8.7 | M8.4, M4 | The M8.4 fixture suite passes on 26.1.2 |
 | M8.8 | M8.4, M6, M7 | Both adapters run one kernel; scripted input draws zero corrections from vanilla 1.8.9 |
 
