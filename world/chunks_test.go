@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/go-theft-craft/headless-minecraft/event"
+	"github.com/go-theft-craft/headless-minecraft/version"
 	"github.com/go-theft-craft/headless-minecraft/world"
 )
 
@@ -82,6 +83,22 @@ func TestConcurrentReadersAndAWriterNeverRace(t *testing.T) {
 	w := world.New()
 	loadChunk(t, w.Chunks(), world.ChunkPos{}, decoder.decode)
 
+	// The block change runs inside a reducer, which is the only place a real
+	// one ever runs. Writing through w.Chunks() from the goroutine instead
+	// would mutate the store outside the write lock Apply holds, and the race
+	// that produces is the test's, not the world's.
+	state := uint32(0)
+	if err := w.Register(reducerFunc(func(_ *world.Context, _ version.Batch, c *event.Collector) error {
+		state++
+		w.Chunks().BlocksChanged(c, []world.BlockChange{{
+			Pos: world.BlockPos{X: 1, Y: 64, Z: 1}, State: state,
+		}})
+
+		return nil
+	})); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Add(1)
@@ -96,12 +113,11 @@ func TestConcurrentReadersAndAWriterNeverRace(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := range 200 {
+		for range 200 {
 			var c event.Collector
-			_, _ = w.Apply(batch(), &c)
-			w.Chunks().BlocksChanged(&c, []world.BlockChange{{
-				Pos: world.BlockPos{X: 1, Y: 64, Z: 1}, State: uint32(i),
-			}})
+			if _, err := w.Apply(batch(), &c); err != nil {
+				return
+			}
 		}
 	}()
 
