@@ -1,6 +1,7 @@
 package v1_8_test
 
 import (
+	"slices"
 	"testing"
 
 	protocol "github.com/go-theft-craft/minecraft-protocol"
@@ -710,5 +711,175 @@ func TestACombatDeathWithNoKillerSaysSo(t *testing.T) {
 	died := events[len(events)-1].(event.PlayerDied)
 	if died.Attributed || died.KillerID != 0 {
 		t.Errorf("a death with no killer is %+v, want unattributed and zero", died)
+	}
+}
+
+func TestGameStateChangeReachesTwoDomains(t *testing.T) {
+	t.Parallel()
+
+	// One packet type, several unrelated meanings, discriminated by a reason
+	// byte. The player reducer and the environment reducer both handle it and
+	// each ignores the reasons that are not its own.
+	_, modeEvents := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundGameStateChange{Reason: 3, GameMode: 1}),
+	})
+	if got := names(modeEvents); !slices.Contains(got, event.NamePlayerGameModeChanged) ||
+		slices.Contains(got, event.NameWorldWeatherChanged) {
+		t.Errorf("a game-mode change published %v", got)
+	}
+
+	// Protocol 47 numbers the weather reasons the opposite way round from 775:
+	// here 2 begins rain and 1 ends it.
+	w, rainEvents := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundGameStateChange{Reason: 2}),
+	})
+	if got := names(rainEvents); !slices.Contains(got, event.NameWorldWeatherChanged) ||
+		slices.Contains(got, event.NamePlayerGameModeChanged) {
+		t.Errorf("a weather change published %v", got)
+	}
+	if weather := w.Snapshot().Environment; !weather.Raining || !weather.WeatherKnown {
+		t.Errorf("reason 2 did not start rain: %+v", weather)
+	}
+
+	w, _ = script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundGameStateChange{Reason: 1}),
+	})
+	if w.Snapshot().Environment.Raining {
+		t.Error("reason 1 started rain instead of ending it")
+	}
+}
+
+func TestWeatherIsUnknownUntilTheServerMentionsIt(t *testing.T) {
+	t.Parallel()
+
+	// A world nobody mentioned rain in is not a world known to be dry.
+	w, _ := script(t, []protocol.Packet{login(1)})
+	if w.Snapshot().Environment.WeatherKnown {
+		t.Error("weather is reported as known before the server said anything")
+	}
+}
+
+func TestSixBorderActionsProduceOneEventShape(t *testing.T) {
+	t.Parallel()
+
+	// Protocol 47 sends one packet with an action discriminator where 775
+	// sends six packets. Both produce WorldBorderChanged carrying the whole
+	// resulting border, and each action leaves the fields it does not carry.
+	w, events := script(
+		t,
+		[]protocol.Packet{
+			login(1),
+			play(&gen.PlayClientboundWorldBorder{
+				Action:         3,
+				X:              gen.PlayClientboundWorldBorderXSwitch{Case3: 8},
+				Z:              gen.PlayClientboundWorldBorderZSwitch{Case3: 9},
+				OldRadius:      gen.PlayClientboundWorldBorderOldRadiusSwitch{Case3: 100},
+				NewRadius:      gen.PlayClientboundWorldBorderNewRadiusSwitch{Case3: 100},
+				PortalBoundary: gen.PlayClientboundWorldBorderPortalBoundarySwitch{Case3: 29999984},
+				WarningTime:    gen.PlayClientboundWorldBorderWarningTimeSwitch{Case3: 15},
+				WarningBlocks:  gen.PlayClientboundWorldBorderWarningBlocksSwitch{Case3: 5},
+			}),
+		},
+		[]protocol.Packet{
+			play(&gen.PlayClientboundWorldBorder{
+				Action: 2,
+				X:      gen.PlayClientboundWorldBorderXSwitch{Case2: 1},
+				Z:      gen.PlayClientboundWorldBorderZSwitch{Case2: 2},
+			}),
+		},
+	)
+
+	for _, published := range events {
+		if published.Name() == event.NameWorldBorderChanged {
+			if _, ok := published.(event.WorldBorderChanged); !ok {
+				t.Fatalf("border event is %T", published)
+			}
+		}
+	}
+
+	// Moving the centre says nothing about the diameter, and the warning
+	// values the initializing packet set must survive it.
+	border := w.Snapshot().Environment.Border
+	if !border.Known || border.X != 1 || border.Z != 2 {
+		t.Errorf("border centre is %+v, want 1,2", border)
+	}
+	if border.NewDiameter != 100 || border.WarningTime != 15 || border.WarningBlocks != 5 {
+		t.Errorf("moving the centre cleared the rest of the border: %+v", border)
+	}
+}
+
+func TestWorldEventsAndParticlesAreNotTheSameEvent(t *testing.T) {
+	t.Parallel()
+
+	// A world event is a discrete effect with an ID and a position; particles
+	// are presentational and carry no state.
+	_, events := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundWorldParticles{ParticleID: 1, Particles: 30}),
+		play(&gen.PlayClientboundWorldEvent{
+			EffectID: 1003, Location: gen.Position{X: 4, Y: 64, Z: 5}, Data: 0,
+		}),
+	})
+
+	occurred := 0
+	for _, published := range events {
+		if world, ok := published.(event.WorldEventOccurred); ok {
+			occurred++
+			if world.EffectID != 1003 || world.Position.Y != 64 {
+				t.Errorf("world event is %+v", world)
+			}
+		}
+	}
+	if occurred != 1 {
+		t.Errorf("published %d world events, want exactly 1 — particles are not one", occurred)
+	}
+}
+
+func TestProtocol47SendsNoSimulationSettings(t *testing.T) {
+	t.Parallel()
+
+	// View distance, simulation distance, the view centre, the tick rate, and
+	// game rules are all 775-only. The snapshot must say unknown rather than
+	// reporting a view distance of zero for a whole session.
+	w, events := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundUpdateTime{Age: 120, Time: 6000}),
+	})
+
+	environment := w.Snapshot().Environment
+	if environment.SimulationKnown {
+		t.Errorf("protocol 47 reported simulation settings: %+v", environment)
+	}
+	if slices.Contains(names(events), event.NameWorldSimulationSettingsChanged) {
+		t.Error("protocol 47 published a simulation settings event")
+	}
+	// The clock, though, it does send, and directly.
+	if !environment.TimeOfDayKnown || environment.TimeOfDay != 6000 || environment.Age != 120 {
+		t.Errorf("time is %+v, want age 120 time 6000", environment)
+	}
+	if len(environment.Clocks) != 0 {
+		t.Errorf("protocol 47 produced clocks: %+v", environment.Clocks)
+	}
+}
+
+func TestDifficultyIsNamedOnBothProtocols(t *testing.T) {
+	t.Parallel()
+
+	// 47 numbers them and 775 names them; the snapshot holds the name, so a
+	// caller never sees a 2 it has to look up.
+	w, _ := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundDifficulty{Difficulty: 2}),
+	})
+
+	environment := w.Snapshot().Environment
+	if !environment.DifficultyKnown || environment.Difficulty != "normal" {
+		t.Errorf("difficulty is %q known %v, want normal", environment.Difficulty, environment.DifficultyKnown)
+	}
+	if environment.Locked {
+		t.Error("protocol 47 reported a difficulty lock it does not send")
 	}
 }

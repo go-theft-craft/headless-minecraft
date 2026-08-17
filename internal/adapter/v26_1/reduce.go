@@ -23,13 +23,25 @@ func Reducers(w *world.World) []world.Reducer {
 		playerReducer(w.Player()),
 		entityReducer(w.Entities()),
 		chunkReducer(w.Chunks()),
+		environmentReducer(w.Environment()),
 	}
 }
 
 // Protocol 775 names its game-state reasons rather than numbering them, and
 // the generated codec maps the wire number to the name. Only the game-mode
 // reason is the player's; the weather ones are the environment's.
-const reasonGameMode = "change_game_mode"
+//
+// **The two protocols number the weather reasons oppositely.** Here 1 is
+// `start_raining` and 2 is `stop_raining`; on protocol 47, 1 ends rain and 2
+// begins it. Names rather than numbers is what makes that safe to read on this
+// side, and it is why protocol 47's half names its constants too.
+const (
+	reasonGameMode     = "change_game_mode"
+	reasonRainStart    = "start_raining"
+	reasonRainStop     = "stop_raining"
+	reasonRainLevel    = "rain_level_change"
+	reasonThunderLevel = "thunder_level_change"
+)
 
 func playerReducer(p *world.Player) world.Func {
 	return func(ctx *world.Context, batch version.Batch, c *event.Collector) error {
@@ -378,4 +390,130 @@ func reduceChunkPacket(chunks *world.Chunks, packet protocol.Packet, c *event.Co
 
 func blockPos775(p gen.Position) world.BlockPos {
 	return world.BlockPos{X: p.X, Y: int32(p.Y), Z: p.Z}
+}
+
+// environmentReducer decodes the packets that describe the world's scalars.
+//
+// This protocol carries five facts protocol 47 has no packet for at all — view
+// distance, simulation distance, the view centre, the tick rate, and game
+// rules — which is why the snapshot reports them as unknown rather than zero
+// for a whole 47 session.
+func environmentReducer(environment *world.Environment) world.Func {
+	return func(_ *world.Context, batch version.Batch, c *event.Collector) error {
+		for _, packet := range batch.Packets {
+			reduceEnvironmentPacket(environment, packet, c)
+		}
+
+		return nil
+	}
+}
+
+// protocol 47 half for why it is not split.
+//
+//nolint:gocyclo // One switch over one protocol's environment packets; see the
+func reduceEnvironmentPacket(
+	environment *world.Environment,
+	packet protocol.Packet,
+	c *event.Collector,
+) {
+	switch value := packet.Value.(type) {
+	case *gen.PlayClientboundUpdateTime:
+		// 26.1 replaced 47's single time-of-day number with a set of clocks.
+		// The world reads a time from it when there is exactly one, and keeps
+		// them all either way.
+		environment.TimeChanged(c, value.Age, 0, false, clocks775(value.ClockUpdates))
+
+	// Six packets, one WorldBorderChanged — the same six actions protocol 47
+	// packs into one packet.
+	case *gen.PlayClientboundInitializeWorldBorder:
+		environment.BorderInitialized(c, event.Border{
+			X: value.X, Z: value.Z,
+			OldDiameter: value.OldDiameter, NewDiameter: value.NewDiameter,
+			Speed:          int64(value.Speed),
+			PortalBoundary: value.PortalTeleportBoundary,
+			WarningTime:    value.WarningTime,
+			WarningBlocks:  value.WarningBlocks,
+		})
+
+	case *gen.PlayClientboundWorldBorderCenter:
+		environment.BorderCenter(c, value.X, value.Z)
+
+	case *gen.PlayClientboundWorldBorderSize:
+		environment.BorderSize(c, value.Diameter)
+
+	case *gen.PlayClientboundWorldBorderLerpSize:
+		environment.BorderLerp(c, value.OldDiameter, value.NewDiameter, int64(value.Speed))
+
+	case *gen.PlayClientboundWorldBorderWarningDelay:
+		environment.BorderWarningTime(c, value.WarningTime)
+
+	case *gen.PlayClientboundWorldBorderWarningReach:
+		environment.BorderWarningBlocks(c, value.WarningBlocks)
+
+	case *gen.PlayClientboundDifficulty:
+		// Already a name here; protocol 47 sends the number this maps from.
+		environment.DifficultyChanged(c, value.Difficulty, value.DifficultyLocked)
+
+	case *gen.PlayClientboundExplosion:
+		explosion := event.WorldExplosionOccurred{
+			X: value.Center.X, Y: value.Center.Y, Z: value.Center.Z,
+			Radius: value.Radius,
+		}
+		// 775 makes the knockback optional, where 47 always sends one.
+		if knockback := value.PlayerKnockback; knockback != nil {
+			explosion.KnockbackX = knockback.X
+			explosion.KnockbackY = knockback.Y
+			explosion.KnockbackZ = knockback.Z
+			explosion.Knocked = true
+		}
+		environment.Explosion(c, explosion)
+
+	case *gen.PlayClientboundWorldEvent:
+		environment.WorldEvent(c, value.EffectID, blockPos775(value.Location), value.Data, value.Global)
+
+	case *gen.PlayClientboundGameStateChange:
+		switch value.Reason {
+		case reasonRainStart:
+			environment.WeatherChanged(c, true)
+		case reasonRainStop:
+			environment.WeatherChanged(c, false)
+		case reasonRainLevel:
+			environment.RainLevelChanged(c, value.GameMode)
+		case reasonThunderLevel:
+			environment.ThunderLevelChanged(c, value.GameMode)
+		}
+
+	case *gen.PlayClientboundUpdateViewDistance:
+		environment.ViewDistanceChanged(c, value.ViewDistance)
+
+	case *gen.PlayClientboundSimulationDistance:
+		environment.SimulationDistanceChanged(c, value.Distance)
+
+	case *gen.PlayClientboundUpdateViewPosition:
+		environment.ViewCenterChanged(c, value.ChunkX, value.ChunkZ)
+
+	case *gen.PlayClientboundSetTickingState:
+		environment.TickingStateChanged(c, value.TickRate, value.IsFrozen)
+
+	case *gen.PlayClientboundGameRuleValues:
+		rules := make(map[string]string, len(value.Values))
+		for _, rule := range value.Values {
+			rules[rule.Name] = rule.Value
+		}
+		environment.GameRulesChanged(c, rules)
+	}
+}
+
+// clocks775 keeps the server's clocks as sent. The ID space is the server's
+// own and nothing here interprets it.
+func clocks775(updates []gen.PlayClientboundUpdateTimeClockUpdatesItem) []event.Clock {
+	clocks := make([]event.Clock, 0, len(updates))
+	for _, update := range updates {
+		clocks = append(clocks, event.Clock{
+			ID: update.ID, TotalTicks: update.TotalTicks,
+			PartialTick: update.PartialTick, Rate: update.Rate,
+		})
+	}
+
+	return clocks
 }

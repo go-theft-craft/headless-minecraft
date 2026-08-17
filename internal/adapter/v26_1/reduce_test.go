@@ -1,6 +1,7 @@
 package v26_1_test
 
 import (
+	"slices"
 	"testing"
 
 	protocol "github.com/go-theft-craft/minecraft-protocol"
@@ -49,6 +50,15 @@ func playLogin(entityID int32) protocol.Packet {
 		EntityID:   entityID,
 		WorldState: gen.SpawnInfo{Name: "minecraft:overworld", Gamemode: "creative"},
 	})
+}
+
+func names(events []event.Event) []event.Name {
+	out := make([]event.Name, 0, len(events))
+	for _, e := range events {
+		out = append(out, e.Name())
+	}
+
+	return out
 }
 
 func TestLoginNamesTheLocalPlayer(t *testing.T) {
@@ -560,5 +570,177 @@ func TestABlockChangeIsRecordedEvenWhereBlocksCannotBeRead(t *testing.T) {
 	last := events[len(events)-1].(event.WorldBlocksChanged)
 	if last.Dropped != 1 {
 		t.Errorf("dropped count is %d, want the change counted", last.Dropped)
+	}
+}
+
+func TestGameStateChangeReachesTwoDomainsOn775(t *testing.T) {
+	t.Parallel()
+
+	// The same boundary protocol 47 asserts from the other side, and the same
+	// two numbers meaning the opposite thing: here start_raining is reason 1,
+	// where on 47 reason 1 ends rain. The generated mapper gives this side
+	// names, which is what makes the reversal safe to read.
+	_, modeEvents := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundGameStateChange{Reason: "change_game_mode", GameMode: 1}),
+	})
+	if got := names(modeEvents); !slices.Contains(got, event.NamePlayerGameModeChanged) ||
+		slices.Contains(got, event.NameWorldWeatherChanged) {
+		t.Errorf("a game-mode change published %v", got)
+	}
+
+	w, rainEvents := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundGameStateChange{Reason: "start_raining"}),
+		play(&gen.PlayClientboundGameStateChange{Reason: "thunder_level_change", GameMode: 0.75}),
+	})
+	if got := names(rainEvents); !slices.Contains(got, event.NameWorldWeatherChanged) ||
+		slices.Contains(got, event.NamePlayerGameModeChanged) {
+		t.Errorf("a weather change published %v", got)
+	}
+	environment := w.Snapshot().Environment
+	if !environment.Raining || environment.ThunderLevel != 0.75 {
+		t.Errorf("weather is %+v, want raining with thunder 0.75", environment)
+	}
+}
+
+func TestSixBorderPacketsProduceOneEventShapeOn775(t *testing.T) {
+	t.Parallel()
+
+	// 775 splits into six packets what 47 discriminates by action, and both
+	// reduce to the same border and the same event.
+	w, events := script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundInitializeWorldBorder{
+				X: 8, Z: 9, OldDiameter: 100, NewDiameter: 100,
+				PortalTeleportBoundary: 29999984, WarningTime: 15, WarningBlocks: 5,
+			}),
+		},
+		[]protocol.Packet{play(&gen.PlayClientboundWorldBorderCenter{X: 1, Z: 2})},
+	)
+
+	changes := 0
+	for _, published := range events {
+		if _, ok := published.(event.WorldBorderChanged); ok {
+			changes++
+		}
+	}
+	if changes != 2 {
+		t.Errorf("published %d border changes, want 2", changes)
+	}
+
+	border := w.Snapshot().Environment.Border
+	if !border.Known || border.X != 1 || border.Z != 2 {
+		t.Errorf("border centre is %+v, want 1,2", border)
+	}
+	if border.NewDiameter != 100 || border.WarningTime != 15 || border.WarningBlocks != 5 {
+		t.Errorf("moving the centre cleared the rest of the border: %+v", border)
+	}
+}
+
+func TestOneClockSuppliesTheTimeAndSeveralDoNot(t *testing.T) {
+	t.Parallel()
+
+	// 26.1 replaced protocol 47's single time-of-day number with a set of
+	// clocks. One clock is unambiguous; picking one out of several would be a
+	// guess, so the snapshot keeps them all and reports the time as unknown.
+	w, _ := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundUpdateTime{
+			Age: 120,
+			ClockUpdates: []gen.PlayClientboundUpdateTimeClockUpdatesItem{
+				{ID: 0, TotalTicks: 6000, Rate: 1},
+			},
+		}),
+	})
+
+	environment := w.Snapshot().Environment
+	if environment.Age != 120 || !environment.TimeOfDayKnown || environment.TimeOfDay != 6000 {
+		t.Errorf("one clock gave %+v, want age 120 time 6000", environment)
+	}
+
+	w, _ = script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundUpdateTime{
+			Age: 120,
+			ClockUpdates: []gen.PlayClientboundUpdateTimeClockUpdatesItem{
+				{ID: 0, TotalTicks: 6000}, {ID: 1, TotalTicks: 9000},
+			},
+		}),
+	})
+
+	environment = w.Snapshot().Environment
+	if environment.TimeOfDayKnown {
+		t.Errorf("two clocks produced a time of day: %+v", environment)
+	}
+	if len(environment.Clocks) != 2 {
+		t.Errorf("clocks are %+v, want both kept", environment.Clocks)
+	}
+}
+
+func TestSimulationSettingsAndGameRulesShareTheirEvent(t *testing.T) {
+	t.Parallel()
+
+	// The taxonomy declares no game-rule name and a game rule is a simulation
+	// setting, so they ride one event, which names the rules that changed.
+	w, events := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundUpdateViewDistance{ViewDistance: 12}),
+		play(&gen.PlayClientboundSimulationDistance{Distance: 10}),
+		play(&gen.PlayClientboundUpdateViewPosition{ChunkX: 3, ChunkZ: -4}),
+		play(&gen.PlayClientboundSetTickingState{TickRate: 20, IsFrozen: true}),
+		play(&gen.PlayClientboundGameRuleValues{
+			Values: []gen.PlayClientboundGameRuleValuesValuesItem{
+				{Name: "doDaylightCycle", Value: "false"},
+				{Name: "modded:someRuleThisClientHasNeverHeardOf", Value: "7"},
+			},
+		}),
+	})
+
+	environment := w.Snapshot().Environment
+	if !environment.SimulationKnown {
+		t.Fatal("775 sent simulation settings and the snapshot reports them unknown")
+	}
+	if environment.ViewDistance != 12 || environment.SimulationDistance != 10 {
+		t.Errorf("distances are %+v", environment)
+	}
+	if environment.ViewChunkX != 3 || environment.ViewChunkZ != -4 {
+		t.Errorf("view centre is %d,%d, want 3,-4", environment.ViewChunkX, environment.ViewChunkZ)
+	}
+	if environment.TickRate != 20 || !environment.Frozen {
+		t.Errorf("ticking state is %+v", environment)
+	}
+	// An unknown namespaced rule is kept as sent: that is the whole point on a
+	// modded server.
+	if environment.GameRules["modded:someRuleThisClientHasNeverHeardOf"] != "7" {
+		t.Errorf("game rules are %+v", environment.GameRules)
+	}
+
+	last := events[len(events)-1].(event.WorldSimulationSettingsChanged)
+	if len(last.RuleKeys) != 2 || last.RuleKeys[0] != "doDaylightCycle" {
+		t.Errorf("rule keys are %v, want both, sorted", last.RuleKeys)
+	}
+}
+
+func TestAnExplosionWithNoKnockbackSaysSo(t *testing.T) {
+	t.Parallel()
+
+	// 775 makes the knockback optional where 47 always sends one, and neither
+	// protocol's explosion carries a usable block list any more.
+	_, events := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundExplosion{
+			Center: gen.Vec3f64{X: 1, Y: 2, Z: 3}, Radius: 4, BlockCount: 9,
+		}),
+	})
+
+	last := events[len(events)-1].(event.WorldExplosionOccurred)
+	if last.X != 1 || last.Z != 3 || last.Radius != 4 {
+		t.Errorf("explosion is %+v", last)
+	}
+	if last.Knocked {
+		t.Errorf("an explosion with no knockback reported one: %+v", last)
 	}
 }

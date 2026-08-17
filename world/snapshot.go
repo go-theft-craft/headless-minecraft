@@ -19,15 +19,19 @@ type Snapshot struct {
 	Entities EntitiesView
 	// Chunks is the terrain the server has streamed.
 	Chunks ChunksView
+	// Environment is the world's scalars: clock, border, weather, difficulty,
+	// and simulation settings.
+	Environment EnvironmentView
 }
 
 // snapshot builds the snapshot. It runs under the world's lock, held by the
 // caller, and each domain added by a later task reads its view here.
 func (w *World) snapshot() Snapshot {
 	return Snapshot{
-		Revision: w.revision,
-		Player:   w.player.view(),
-		Entities: w.entities.view(),
-		Chunks:   w.chunks.view(),
+		Revision:    w.revision,
+		Player:      w.player.view(),
+		Entities:    w.entities.view(),
+		Chunks:      w.chunks.view(),
+		Environment: w.environment.view(),
 	}
 }

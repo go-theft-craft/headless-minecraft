@@ -27,6 +27,7 @@ func Reducers(w *world.World) []world.Reducer {
 		playerReducer(w.Player()),
 		entityReducer(w.Entities()),
 		chunkReducer(w.Chunks()),
+		environmentReducer(w.Environment()),
 	}
 }
 
@@ -478,4 +479,132 @@ func decodeSection47(raw []byte) ([]uint32, error) {
 	}
 
 	return states, nil
+}
+
+// Protocol 47's world border packs six actions into one packet, discriminated
+// by an action number, where 775 sends six packets. Both reduce to the same
+// six mutators on the environment store.
+const (
+	borderSetSize       int32 = 0
+	borderLerpSize      int32 = 1
+	borderSetCenter     int32 = 2
+	borderInitialize    int32 = 3
+	borderWarningTime   int32 = 4
+	borderWarningBlocks int32 = 5
+)
+
+// reasonRainLevel is protocol 47's fade value, which changes rain intensity
+// without starting or stopping it. There is no thunder reason on 47.
+const reasonRainLevel uint8 = 7
+
+// environmentReducer decodes the packets that describe the world's scalars.
+func environmentReducer(environment *world.Environment) world.Func {
+	return func(_ *world.Context, batch version.Batch, c *event.Collector) error {
+		for _, packet := range batch.Packets {
+			reduceEnvironmentPacket(environment, packet, c)
+		}
+
+		return nil
+	}
+}
+
+func reduceEnvironmentPacket(
+	environment *world.Environment,
+	packet protocol.Packet,
+	c *event.Collector,
+) {
+	switch value := packet.Value.(type) {
+	case *gen.PlayClientboundUpdateTime:
+		// 47 sends the time of day as a number. 775 replaced it with a set of
+		// clocks, which is why the world takes both and this passes nil.
+		environment.TimeChanged(c, value.Age, value.Time, true, nil)
+
+	case *gen.PlayClientboundWorldBorder:
+		reduceBorder47(environment, value, c)
+
+	case *gen.PlayClientboundDifficulty:
+		// 47 numbers the difficulties and 775 names them. The world stores the
+		// name, so the number is resolved here.
+		environment.DifficultyChanged(c, difficultyName(int32(value.Difficulty)), false)
+
+	case *gen.PlayClientboundExplosion:
+		environment.Explosion(c, event.WorldExplosionOccurred{
+			X: float64(value.X), Y: float64(value.Y), Z: float64(value.Z),
+			Radius:     value.Radius,
+			KnockbackX: float64(value.PlayerMotionX),
+			KnockbackY: float64(value.PlayerMotionY),
+			KnockbackZ: float64(value.PlayerMotionZ),
+			Knocked:    true,
+		})
+
+	case *gen.PlayClientboundWorldEvent:
+		environment.WorldEvent(c, value.EffectID, blockPos47(value.Location), value.Data, value.Global)
+
+	case *gen.PlayClientboundGameStateChange:
+		// The other half of the packet the player reducer reads. Each ignores
+		// the reasons that are not its own.
+		switch value.Reason {
+		case reasonRainStart:
+			environment.WeatherChanged(c, true)
+		case reasonRainEnd:
+			environment.WeatherChanged(c, false)
+		case reasonRainLevel:
+			environment.RainLevelChanged(c, value.GameMode)
+		}
+	}
+}
+
+// reduceBorder47 turns one action-discriminated packet into one of the world's
+// border mutators. The switch fields are named per case, so reading the wrong
+// case's field would silently give zero — which is why each case reads only
+// the fields its action carries.
+func reduceBorder47(
+	environment *world.Environment,
+	value *gen.PlayClientboundWorldBorder,
+	c *event.Collector,
+) {
+	switch value.Action {
+	case borderSetSize:
+		environment.BorderSize(c, value.Radius.Case0)
+
+	case borderLerpSize:
+		environment.BorderLerp(c, value.OldRadius.Case1, value.NewRadius.Case1, value.Speed.Case1)
+
+	case borderSetCenter:
+		environment.BorderCenter(c, value.X.Case2, value.Z.Case2)
+
+	case borderInitialize:
+		environment.BorderInitialized(c, event.Border{
+			X: value.X.Case3, Z: value.Z.Case3,
+			OldDiameter: value.OldRadius.Case3, NewDiameter: value.NewRadius.Case3,
+			Speed:          value.Speed.Case3,
+			PortalBoundary: value.PortalBoundary.Case3,
+			WarningTime:    value.WarningTime.Case3,
+			WarningBlocks:  value.WarningBlocks.Case3,
+		})
+
+	case borderWarningTime:
+		environment.BorderWarningTime(c, value.WarningTime.Case4)
+
+	case borderWarningBlocks:
+		environment.BorderWarningBlocks(c, value.WarningBlocks.Case5)
+	}
+}
+
+// difficultyName resolves protocol 47's numbered difficulty to the name 775
+// sends, which is what the world stores. An unnamed number keeps its digits
+// rather than being reported as one of the four.
+func difficultyName(difficulty int32) string {
+	switch difficulty {
+	case 0:
+		return "peaceful"
+	case 1:
+		return "easy"
+	case 2:
+		return "normal"
+	case 3:
+		return "hard"
+	default:
+		return "unknown/" + itoa(int(difficulty))
+	}
 }

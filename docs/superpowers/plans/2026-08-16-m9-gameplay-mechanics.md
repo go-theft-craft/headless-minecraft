@@ -57,11 +57,12 @@ depend on M8: capture is a protocol-level problem and needs no kernel.
 - Produces: module `github.com/go-theft-craft/minecraft-capture`, and the
   `devbox run -- task verify` entry point every later task runs.
 
-The name `minecraft-capture` is a proposal, not a settled decision. Settle it
-before Task 1, because the module path is in every import afterwards and Go's
-module mirror makes a published path permanent.
+**Settled 2026-08-17:** the name is `minecraft-capture`, and the module path is
+`github.com/go-theft-craft/minecraft-capture`. The repository is local only so
+far; nothing is pushed, so the module mirror has not yet made the path
+permanent.
 
-- [ ] **Step 1: Create the module**
+- [x] **Step 1: Create the module**
 
 ```bash
 mkdir -p ../minecraft-capture && cd ../minecraft-capture
@@ -69,20 +70,20 @@ go mod init github.com/go-theft-craft/minecraft-capture
 go get github.com/go-theft-craft/minecraft-protocol@v0.2.0
 ```
 
-- [ ] **Step 2: Copy the toolchain pin**
+- [x] **Step 2: Copy the toolchain pin**
 
 Copy `devbox.json` and `devbox.lock` from `minecraft-protocol` unchanged. The
 Go toolchain is pinned through `openserbia/go-flake` and every repository in
 this project uses the same pin; a capture tool that builds on a different Go
 than the library it records is a variable nobody wants when a trace diverges.
 
-- [ ] **Step 3: Write the Taskfile**
+- [x] **Step 3: Write the Taskfile**
 
 Copy `Taskfile.yml` from `headless-minecraft` and delete the tasks whose tools
 this repository does not have yet. Keep `deps`, `fmt`, `fmt:check`, `lint`,
 `test`, `build`, `secrets`, `vuln`, and `verify`.
 
-- [ ] **Step 4: Ignore recordings**
+- [x] **Step 4: Ignore recordings**
 
 ```gitignore
 # Recordings hold player UUIDs, usernames, and chat. Local runtime data only.
@@ -90,7 +91,7 @@ this repository does not have yet. Keep `deps`, `fmt`, `fmt:check`, `lint`,
 *.mccap
 ```
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `devbox run -- task verify`
 Expected: PASS with no packages to test yet.
