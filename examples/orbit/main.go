@@ -236,7 +236,7 @@ func drive(
 			}
 			pending.Revision = snapshot.Revision
 
-			action := core.Advance(pending, NewObserved(snapshot, PendingSolidity{}))
+			action := core.Advance(pending, NewObserved(snapshot, Chunk47Solidity{}))
 			narrate(logger, core, action, &last)
 			// Edge-triggered facts are consumed by the tick that saw them.
 			// Leaving Died set would make the core respawn on every tick after

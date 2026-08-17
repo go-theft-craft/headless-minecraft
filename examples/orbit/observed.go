@@ -123,22 +123,26 @@ func observeSelf(snapshot world.Snapshot) (Self, bool) {
 	}, true
 }
 
-// PendingSolidity is the solidity source until a block registry exists.
+// Chunk47Solidity answers solidity from the table extracted from the game.
 //
-// It classifies nothing. That is not a stub standing in for a decision nobody
-// made: mapping a state ID to a block's properties needs the version's block
-// registry, no milestone owns one, and the alternatives are both worse than
-// admitting it. Treating every non-zero state as solid detours the bot around
-// flowers and drowns it in water it thought was a wall; shipping a hand-written
-// table of state IDs per protocol puts block semantics in an example, where the
-// library deliberately refuses to put them, and quietly rots on the next
-// version.
+// It is the whole of vanilla's own rule. Block.isPassable in this version is
+// !blockMaterial.blocksMovement(), and the ground navigator that decides where
+// a mob may walk calls that same predicate; neither looks at a bounding box or
+// at whether the block fills its cell. So this looks up one boolean and stops.
 //
-// The consequence is visible rather than silent: every position reads Unknown
-// and the bypass search finds no offset it will accept, so the first thing the
-// bot does after movement lands will be to report itself trapped. Today a run
-// stops earlier, at the first step it cannot take.
-type PendingSolidity struct{}
+// The earlier stand-in classified nothing, which made every position unknown
+// and left the bot reporting itself sealed in on open ground. That was honest
+// and useless. This is the same honesty with the answer filled in: a block the
+// table does not know is still unclassified, because a block nobody has
+// described is not a block that has been shown to be safe.
+type Chunk47Solidity struct{}
 
-// Solid classifies nothing and says so.
-func (PendingSolidity) Solid(uint32) (bool, bool) { return false, false }
+// Solid reports whether a protocol 47 chunk state stops the bot.
+func (Chunk47Solidity) Solid(state uint32) (bool, bool) {
+	// A chunk state carries the block identifier above the metadata, and the
+	// metadata never changes whether a block blocks movement in this version:
+	// the material hangs off the block. So the shift is the whole lookup.
+	solid, known := blocksMovement[int(state>>4)]
+
+	return solid, known
+}

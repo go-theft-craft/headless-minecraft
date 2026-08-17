@@ -92,9 +92,6 @@ var ErrNotYet = errors.New("not available yet")
 // before it tries.
 func Missing() []string {
 	return []string{
-		"none: a map from a block state to whether it is solid, which no " +
-			"milestone owns; without it every position reads unknown, so the " +
-			"bot walks to the circle and then traps rather than orbits",
 		"none: gravity, collision, and the jump the design asks for; the " +
 			"action path reports a position and simulates no body, so this " +
 			"bot walks a flat world and nothing else",

@@ -14,7 +14,7 @@ import (
 // written stub could not prove that an unsent spawn reads as unknown rather
 // than as the origin.
 func silent() Observed {
-	return NewObserved(world.New().Snapshot(), PendingSolidity{})
+	return NewObserved(world.New().Snapshot(), unclassified{})
 }
 
 func TestTheBotGivesUpWhenTheWorldNeverSuppliesSpawn(t *testing.T) {

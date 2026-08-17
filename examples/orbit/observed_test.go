@@ -21,7 +21,7 @@ func TestSpawnIsTheBlockCentreAndNotItsCorner(t *testing.T) {
 	var c event.Collector
 	w.Environment().SpawnChanged(&c, world.BlockPos{X: 100, Y: 64, Z: -20}, "", 0, 0, false)
 
-	centre, known := NewObserved(w.Snapshot(), PendingSolidity{}).Spawn()
+	centre, known := NewObserved(w.Snapshot(), unclassified{}).Spawn()
 	if !known {
 		t.Fatal("the adapter did not see a spawn the world had recorded")
 	}
@@ -48,7 +48,7 @@ func TestAnEntityIsAliveUntilTheServerSaysOtherwise(t *testing.T) {
 	var c event.Collector
 	w.Entities().Spawned(&c, 42, "", "minecraft:zombie", 10, 64, 10, 0, 0)
 
-	adapter := NewObserved(w.Snapshot(), PendingSolidity{})
+	adapter := NewObserved(w.Snapshot(), unclassified{})
 
 	target, known := adapter.Entity(42)
 	if !known {
@@ -65,6 +65,12 @@ func TestAnEntityIsAliveUntilTheServerSaysOtherwise(t *testing.T) {
 		t.Error("the adapter answered for an entity it is not tracking")
 	}
 }
+
+// unclassified is a solidity source that knows nothing, which is what a block
+// the extracted table has never heard of looks like.
+type unclassified struct{}
+
+func (unclassified) Solid(uint32) (bool, bool) { return false, false }
 
 func TestAnUnclassifiableBlockIsUnknownRatherThanAir(t *testing.T) {
 	t.Parallel()
@@ -88,5 +94,57 @@ func TestSelfIsUnplacedUntilTheServerPlacesIt(t *testing.T) {
 	// different, and the orbit's first waypoint is chosen from this position.
 	if _, placed := observeSelf(world.New().Snapshot()); placed {
 		t.Error("read a position from a world that had applied nothing")
+	}
+}
+
+func TestTheExtractedTableAgreesWithTheGame(t *testing.T) {
+	t.Parallel()
+
+	// These are vanilla's own answers, and the ones the shortcuts get wrong.
+	// Treating every non-air state as solid detours the bot around a flower and
+	// drowns it in water it read as a wall; reading a bounding box instead of
+	// the material calls thin snow a wall, which it is not.
+	solidity := Chunk47Solidity{}
+	for name, c := range map[string]struct {
+		block int
+		solid bool
+	}{
+		"air":          {0, false},
+		"stone":        {1, true},
+		"grass":        {2, true},
+		"water":        {9, false},
+		"lava":         {11, false},
+		"tall grass":   {31, false},
+		"flower":       {37, false},
+		"slab":         {44, true},
+		"torch":        {50, false},
+		"snow layer":   {78, false},
+		"double plant": {175, false},
+	} {
+		// A chunk state carries metadata in the low four bits, and metadata
+		// never changes this answer in a version where the material hangs off
+		// the block. Check a state with metadata set to prove the shift.
+		for _, meta := range []uint32{0, 5} {
+			state := uint32(c.block)<<4 | meta
+			got, known := solidity.Solid(state)
+			if !known {
+				t.Errorf("%s (state %d) is not classified", name, state)
+
+				continue
+			}
+			if got != c.solid {
+				t.Errorf("%s (state %d) solid=%v, want %v", name, state, got, c.solid)
+			}
+		}
+	}
+}
+
+func TestAnUnknownBlockIsNotAssumedWalkable(t *testing.T) {
+	t.Parallel()
+
+	// A modded block, or one a later version added, is not a block that has
+	// been shown to be safe to walk into.
+	if _, known := (Chunk47Solidity{}).Solid(4000 << 4); known {
+		t.Error("a block the table has never heard of claimed to be classified")
 	}
 }

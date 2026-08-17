@@ -16,17 +16,13 @@
 // and the entities it may fight. Accepting it changed nothing in the core, which
 // is what the seam was for.
 //
-// Two things still stop a revolution, and the program says both before it
-// connects. The actions are owed by milestones — movement is M8.8, attack is
-// M9.6, and respawn has no primitive planned — so [Pending] stands in for
-// [Actuator] and names the milestone rather than failing silently. Block
-// solidity is owed by nobody: the library reports the block state the server
-// sent and models no block semantics, so nothing maps a state to whether it
-// stops the bot. [PendingSolidity] classifies nothing and every position
-// therefore reads [Unknown], so the bypass search accepts no offset and the bot
-// will report itself trapped as soon as it can move at all. The design argues
-// that case; the short version is that both available approximations are wrong
-// in ways an automated check would not catch.
+// Solidity is answered too. The library reports the block state the server sent
+// and models no block semantics, which is right, so [Chunk47Solidity] reads a
+// table extracted from the game itself: vanilla decides passability with
+// !blockMaterial.blocksMovement() and its ground navigator uses that same
+// predicate, so this does too.
+//
+// What is still owed is attack, which is M9.6.
 //
 // The seam is [World], [Solidity], and [Actuator], and it is deliberately
 // narrow: each is one type to write when what it needs exists.
