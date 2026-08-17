@@ -4,29 +4,47 @@
 
 **Goal:** Verify every gameplay mechanic — items, movement, digging, building, attack, containers, crafting — against captured vanilla behaviour, starting with the capture tool that makes the verification possible.
 
-**Architecture:** M9 subdivides by mechanic because the simulation packages and the conformance fixtures are already organised that way and each mechanic is independently verifiable against a vanilla server. M9.1 builds the oracle: a new repository holding a protocol 47 proxy that sits between a real client and a real server, records both directions through `minecraft-protocol`'s capture format, and replays a recording deterministically. Every later stage is judged against traces that tool produces.
+**Architecture:** M9 subdivides by mechanic because the simulation packages and the conformance fixtures are already organised that way and each mechanic is independently verifiable against a vanilla server. M9.1 builds the oracle: a protocol 47 proxy that sits between a real client and a real server, records both directions through `minecraft-protocol`'s capture format, and replays a recording deterministically. Every later stage is judged against traces that tool produces.
 
-**Tech Stack:** Go 1.26.6 from `openserbia/go-flake`, Devbox, Task, `minecraft-protocol` v0.2.0 (`capture`, `replay`, `router`, `login`, `source`), `minecraft-simulation`'s kernel, and a pinned vanilla 1.8.9 server.
+**Tech Stack:** Go 1.26.6 from `openserbia/go-flake`, Devbox, Task, `relay` v0.2.0 (proxy transport, `Sink`, hooks), `minecraft-protocol` v0.2.0 (`capture`, `replay`, `router`, `login`, `source`), `minecraft-simulation`'s kernel, and a pinned vanilla 1.8.9 server.
+
+**Revised 2026-08-17.** M9.1 was written to create a new capture repository,
+because when the sequencing design was approved no protocol-agnostic proxy
+existed. `relay` v0.2.0 now does, with listeners, an accept loop, per-direction
+pumps, a session registry, hooks, and a `Sink` carrying both decoded messages
+and raw chunks — every piece Task 2 was going to hand-roll. Its
+`examples/minecraft` already supplies the framer, the per-direction codec, and
+a status-ping prober. M9.1 therefore grows that consumer into the oracle
+instead of standing up a second repository and a second module path. What
+remains is the work `relay` deliberately does not do: terminate the login on
+both sides, write the capture format, extract traces, and gate on replay.
 
 ## Global Constraints
 
-- Work in the repository each task names. M9.1 creates a new one; M9.2 through
+- Work in the repository each task names. M9.1 lands in `relay`; M9.2 through
   M9.8 land in `minecraft-simulation` with consumer changes in
   `headless-minecraft` and `server`.
 - Run project commands as `devbox run -- task <name>`.
 - Leave changes uncommitted unless explicitly requested.
-- The capture repository speaks Java protocol 47 through `minecraft-protocol`.
-  It is not built on the legacy proxy: that proxy speaks a different protocol
-  family — one-byte packet identifiers, no VarInt framing, UCS-2 strings, and
-  encryption in one direction only — and cannot capture Java Edition traces
-  without being rewritten into a different program.
+- Recording is a `Sink`, not a logger, and it belongs to the proxy rather than
+  to either endpoint. `server` keeps its operational `slog` output and gains no
+  packet log: put the proxy in front of it when a packet log is wanted, and the
+  same tool that captures vanilla behaviour also captures ours, in the same
+  format, replayable the same way. A recorder built into one endpoint would
+  only ever see that endpoint's view.
+- The capture consumer speaks Java protocol 47 through `minecraft-protocol` and
+  runs on `relay`'s transport. It is not built on the legacy proxy: that proxy
+  speaks a different protocol family — one-byte packet identifiers, no VarInt
+  framing, UCS-2 strings, and encryption in one direction only — and cannot
+  capture Java Edition traces without being rewritten into a different program.
 - Do not name the legacy proxy's project, its protocol, or its codename in any
   public repository, in any file, or in any commit message. Refer to it by role.
 - Capture records what happened. It never synthesises a packet, never repairs a
   malformed one, and never reorders. A recording that cannot be replayed is a
   finding, not something to smooth over.
 - Recordings hold player UUIDs, usernames, and chat. They are local runtime
-  data, never committed. Add the recording directory to `.gitignore` in Task 1.
+  data, never committed. Add the recording directory to `relay`'s `.gitignore`
+  in Task 1.
 - Never record a login key exchange in the clear. `minecraft-protocol` M5 found
   this exact defect and fixed it; the capture sink inherits the fix and Task 5
   proves it still holds through a proxy.
@@ -35,55 +53,44 @@
 
 ---
 
-## Stage M9.1: the capture repository
+## Stage M9.1: the capture consumer
 
-**Dependency:** `minecraft-protocol` M5, which is complete. M9.1 does **not**
-depend on M8: capture is a protocol-level problem and needs no kernel.
+**Dependency:** `minecraft-protocol` M5 and `relay` v0.2.0, both complete. M9.1
+does **not** depend on M8: capture is a protocol-level problem and needs no
+kernel.
 
 **Gate:** a captured trace replays deterministically from its recording.
 
-### Task 1: Repository skeleton
+**Where it lands.** `relay/examples/minecraft`, the module that already holds
+the framer, the codec, and the prober, extended with a capture package and a
+`--capture` flag on `mcrelay`. Nothing goes into `relay`'s core: the core is
+dependency-free by construction and none of this is protocol-agnostic.
+
+**Two uses, one tool.** In front of a pinned vanilla 1.8.9 server the proxy
+produces the oracle traces M9.2 onwards are judged against. In front of our own
+`server` it is the packet log that `server` therefore never has to grow — same
+binary, same format, same replay. The second use is not the milestone's gate,
+but it is why the recorder belongs in the proxy rather than in either endpoint.
+
+### Task 1: The capture seam
 
 **Files:**
-- Create: `../minecraft-capture/go.mod`
-- Create: `../minecraft-capture/devbox.json`
-- Create: `../minecraft-capture/Taskfile.yml`
-- Create: `../minecraft-capture/.gitignore`
-- Create: `../minecraft-capture/doc.go`
-- Create: `../minecraft-capture/LICENSE`
+- Create: `relay/examples/minecraft/capture/doc.go`
+- Modify: `relay/.gitignore`
 
 **Interfaces:**
-- Consumes: nothing.
-- Produces: module `github.com/go-theft-craft/minecraft-capture`, and the
-  `devbox run -- task verify` entry point every later task runs.
+- Consumes: nothing yet.
+- Produces: the `capture` package inside the examples module, and the
+  `devbox run -- task test:examples` entry point every later task runs.
 
-**Settled 2026-08-17:** the name is `minecraft-capture`, and the module path is
-`github.com/go-theft-craft/minecraft-capture`. The repository is local only so
-far; nothing is pushed, so the module mirror has not yet made the path
-permanent.
+No repository bootstrap: `relay` already pins the toolchain through
+`openserbia/go-flake`, and `examples/` is already the module where every
+third-party dependency lives. `minecraft-protocol` v0.2.0 is already required
+there, so the capture format needs no new dependency either.
 
-- [x] **Step 1: Create the module**
+- [x] **Step 1: Ignore recordings**
 
-```bash
-mkdir -p ../minecraft-capture && cd ../minecraft-capture
-go mod init github.com/go-theft-craft/minecraft-capture
-go get github.com/go-theft-craft/minecraft-protocol@v0.2.0
-```
-
-- [x] **Step 2: Copy the toolchain pin**
-
-Copy `devbox.json` and `devbox.lock` from `minecraft-protocol` unchanged. The
-Go toolchain is pinned through `openserbia/go-flake` and every repository in
-this project uses the same pin; a capture tool that builds on a different Go
-than the library it records is a variable nobody wants when a trace diverges.
-
-- [x] **Step 3: Write the Taskfile**
-
-Copy `Taskfile.yml` from `headless-minecraft` and delete the tasks whose tools
-this repository does not have yet. Keep `deps`, `fmt`, `fmt:check`, `lint`,
-`test`, `build`, `secrets`, `vuln`, and `verify`.
-
-- [x] **Step 4: Ignore recordings**
+Append to `relay/.gitignore`:
 
 ```gitignore
 # Recordings hold player UUIDs, usernames, and chat. Local runtime data only.
@@ -91,451 +98,341 @@ this repository does not have yet. Keep `deps`, `fmt`, `fmt:check`, `lint`,
 *.mccap
 ```
 
-- [x] **Step 5: Verify**
+- [x] **Step 2: Write the package documentation**
+
+State in `capture/doc.go` what the oracle is for and what it must never do:
+never synthesise a packet, never repair a malformed one, never reorder. A
+recording that cannot replay is a finding.
+
+- [x] **Step 3: Verify**
 
 Run: `devbox run -- task verify`
-Expected: PASS with no packages to test yet.
+Expected: PASS, unchanged from before the edit.
 
-- [ ] **Step 6: Commit**
-
-```bash
-git add . && git commit -m "chore: initialize the capture repository"
-```
-
-### Task 2: The transparent proxy
+### Task 2: Follow the protocol's own transitions
 
 **Files:**
-- Create: `../minecraft-capture/proxy/proxy.go`
-- Create: `../minecraft-capture/proxy/proxy_test.go`
-- Create: `../minecraft-capture/proxy/pump.go`
+- Modify: `relay/examples/minecraft/codec.go`
+- Modify: `relay/examples/minecraft/codec_test.go`
 
 **Interfaces:**
-- Consumes: `protocol.NewSession(Role, Limits)`, `protocol.Stream`,
-  `login.NewAcceptor`, `login.Offline`.
-- Produces:
+- Consumes: `protocol.Session.ProposeTransition`, `ValidateTransition`,
+  `ApplyTransition`.
+- Produces: a codec that stays in step with the connection through login,
+  compression, and into play, so a recording carries packet identities rather
+  than a session's worth of opaque bytes.
 
-```go
-// Proxy accepts one client and relays it to one server, observing both
-// directions.
-type Proxy struct { /* unexported */ }
+**Revised 2026-08-17, on finding that login termination is not the blocker.**
+This task was written to terminate the client's login with the proxy's own
+keypair and open a second offline login upstream. Reading the code first showed
+that solves a problem M9.1 does not have. Vanilla only performs the key
+exchange in online mode — `login.Acceptor.Accept` runs it "if the login is
+online" — and M9.1 captures against an offline pinned server, which the plan
+already required and which the milestone cannot avoid: the plan's own note says
+an online upstream would reject the proxy's join anyway. Nothing encrypts, the
+`ErrEncrypted` latch never fires, and the key exchange the task budgeted for
+would have been dead code.
 
-type Config struct {
-    Listen    string        // host:port the client connects to
-    Upstream  string        // host:port of the real server
-    Observers []protocol.Observer
-    Limits    protocol.Limits
-}
+What actually stopped a capture from decoding was smaller and worse. The codec
+hand-wrote its transitions and covered exactly one: the handshake. It never
+followed login success into play and never applied the compression control, so
+against a real server every frame after the login decoded against the wrong
+state — and with vanilla's default threshold of 256 the compressed body was
+read as a packet ID, yielding a plausible-looking unknown packet rather than an
+error. A relay forwards all of it correctly and looks healthy. A capture taken
+through it is worthless.
 
-func New(cfg Config) (*Proxy, error)
-func (p *Proxy) Serve(ctx context.Context) error
-```
+The fix is to stop hand-writing the rules. `protocol.Session` already reports
+what a packet implies, and the triggers are version-specific in a way that
+makes hand-writing them a standing bug: protocol 47 moves to play on the
+clientbound login success, while 775 waits for a serverbound acknowledgement
+and passes through a configuration state that 47 does not have. Asking is
+shorter and correct on both.
 
-**The proxy runs offline mode only, on both sides.** A client encrypts to
-whatever it logged into, so the proxy terminates the client's login with its own
-keypair and opens a second, separate login to the upstream server. Online mode
-cannot survive that: the client's session token is bound to the server hash of
-the box it authenticated against, and the upstream would reject the proxy's
-join. State this in the package documentation rather than discovering it during
-a capture session.
+- [x] **Step 1: Write the failing tests**
 
-- [ ] **Step 1: Write the failing test**
+`TestCodecFollowsTheLoginIntoPlay`, pinned to protocol 47 because the packet
+that ends a login is version-specific, and `TestCodecFollowsSetCompression`,
+which is version-neutral because both protocols set compression with the same
+clientbound login packet. Both drive a `serverPeer` that commits its own
+transitions after each packet it encodes, so the bytes under test are the ones
+a real endpoint would send rather than ones a test built to suit the codec.
 
-```go
-func TestTheProxyRelaysBothDirections(t *testing.T) {
-    t.Parallel()
+Use a threshold of zero. Vanilla's 256 leaves small packets uncompressed and
+lets an unapplied control pass by luck.
 
-    upstream := fixture.NewServer(t)      // echoes every packet it receives
-    p, err := proxy.New(proxy.Config{
-        Listen:   "127.0.0.1:0",
-        Upstream: upstream.Addr(),
-        Limits:   mustLimits(t),
-    })
-    if err != nil {
-        t.Fatalf("New: %v", err)
-    }
+- [x] **Step 2: Run them to verify they fail**
 
-    go func() { _ = p.Serve(t.Context()) }()
+Run: `devbox run -- task test:examples`
+Expected: FAIL. `packet state = "login", want play`, and a descriptor of
+`{ID:19 Name:}` — 0x13 is the first byte of the zlib envelope being read as a
+packet ID, which is the silent-corruption mode this task exists to close.
 
-    client := fixture.NewClient(t, p.Addr())
-    client.Login("tester")
-    client.Send(handshakePacket(t))
+- [x] **Step 3: Delegate to the protocol**
 
-    if got := upstream.Received(); len(got) == 0 {
-        t.Fatal("upstream received nothing through the proxy")
-    }
-}
-```
+Replace the hand-written state machine with `ProposeTransition` on the session
+that decoded, then `ValidateTransition` and `ApplyTransition` on both. Both
+decoders take every transition: the pair tracks two directions of coding, not
+two conversations, so a login that ends puts both peers in play and a
+compression threshold covers every frame on the link. A proposal that errors is
+ignored rather than fatal — the relay's job is to forward.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 4: Keep the encryption latch**
 
-Run: `devbox run -- task test -- ./proxy`
-Expected: FAIL, `undefined: proxy.New`.
+The latch stays for the online case, where decoding genuinely cannot continue,
+and the opaque path stays tested. A build that can only capture would be a
+worse relay than the one that shipped.
 
-- [ ] **Step 3: Implement accept and dial**
+- [x] **Step 5: Run the tests**
 
-`Serve` listens, and for each accepted connection opens a `protocol.Stream` in
-the server role toward the client and a second stream in the client role toward
-upstream. Run `login.NewAcceptor` against the client half and `login.Negotiate`
-with `login.NewOffline` against the upstream half. Only after both reach play
-does the pump start.
-
-- [ ] **Step 4: Implement the pump**
-
-Two goroutines, one per direction, each reading a frame and writing it
-unchanged. Both close when either side closes. Never decode to relay: the proxy
-relays frames and decodes only for observation, so a packet this build cannot
-parse still reaches the other side and still gets recorded as raw bytes.
-
-- [ ] **Step 5: Run the test**
-
-Run: `devbox run -- task test -- ./proxy`
-Expected: PASS.
+Run: `devbox run -- task verify`
+Expected: PASS, core and examples both.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add proxy && git commit -m "feat(proxy): relay one client to one server"
+git add examples/minecraft && git commit -m "fix(minecraft): follow the protocol's transitions so captures decode"
 ```
+
+**Still open, and deliberately not done here.** Terminating both logins remains
+the only way to capture through an *online* server, and it is genuinely
+unsolved rather than merely undone. It is not on M9.1's path: the oracle needs
+a server whose behaviour is vanilla, not one whose accounts are verified.
 
 ### Task 3: Recording both directions
 
 **Files:**
-- Create: `../minecraft-capture/record/sink.go`
-- Create: `../minecraft-capture/record/sink_test.go`
-- Modify: `../minecraft-capture/proxy/proxy.go`
+- Create: `relay/examples/minecraft/capture/sink.go`
+- Create: `relay/examples/minecraft/capture/sink_test.go`
+- Create: `relay/examples/minecraft/multisink.go`
+- Create: `relay/examples/minecraft/multisink_test.go`
+- Modify: `relay/examples/minecraft/cmd/mcrelay/main.go`
+- Modify: `relay/examples/minecraft/proxy_test.go`
 
 **Interfaces:**
-- Consumes: `capture.NewFileSink(path, header, options...)`, `capture.Header`,
-  `capture.Record`, `protocol.Observation`.
-- Produces:
+- Consumes: `relay.Sink`, `relay.MessageRecord`, `capture.NewFileSink`,
+  `capture.Header`, `protocol.Observation`, `protocol.SensitiveFrames`.
+- Produces `capture.Recorder`, a `relay.Sink` writing one `.mccap` per session,
+  and `minecraft.MultiSink`, which composes it with the existing store.
 
-```go
-// Sink writes one recording holding both directions of one session.
-func NewSink(path string, upstream string) (*Sink, error)
-func (s *Sink) Observe(ctx context.Context, o protocol.Observation) error
-func (s *Sink) Close() error
-```
+**Three things the written plan had wrong, all found in the code.**
 
-- [ ] **Step 1: Write the failing test**
+`relay.Sink` is process-wide, not per-session: one sink serves every connection
+and hands back a session identifier. So the shape is a recorder owning many
+files, one per session, each with its own frame numbering and clock origin —
+not the `NewSink(path, upstream)` this task specified.
 
-```go
-func TestARecordingKeepsDirectionAndOrder(t *testing.T) {
-    t.Parallel()
+`RawChunk` is the wrong source, despite being what the task named. A chunk is a
+socket read and its boundaries fall wherever the kernel put them; recording
+chunks as frames yields a file that reads back but cannot replay. The right
+source is `Message`, which `Session.relay` calls for **every** frame, with a
+zero descriptor when decoding failed — so an unparseable frame is recorded with
+its bytes and no invented identity. `RawChunk` is implemented as a documented
+no-op.
 
-    path := filepath.Join(t.TempDir(), "session.mccap")
-    sink, err := record.NewSink(path, "example:25565")
-    if err != nil {
-        t.Fatalf("NewSink: %v", err)
-    }
+Redaction does not come for free. `minecraft-protocol` fixed the
+key-exchange-in-the-clear defect inside its own stream, but a proxy assembles
+observations by hand, so the recorder has to ask
+`protocol.SensitiveFrames` itself. It asks in the last state a decoded packet
+reported, so an opaque frame is judged in the state it arrived in rather than
+assumed harmless.
 
-    for _, o := range []protocol.Observation{
-        serverbound(t, "handshaking/set_protocol"),
-        clientbound(t, "login/success"),
-        serverbound(t, "play/position"),
-    } {
-        if err := sink.Observe(t.Context(), o); err != nil {
-            t.Fatalf("Observe: %v", err)
-        }
-    }
-    if err := sink.Close(); err != nil {
-        t.Fatalf("Close: %v", err)
-    }
+- [x] **Step 1: Write the failing tests**
 
-    records := readAll(t, path)
-    if len(records) != 3 {
-        t.Fatalf("recorded %d records, want 3", len(records))
-    }
-    if records[1].Direction == records[0].Direction {
-        t.Error("a clientbound record kept the serverbound direction")
-    }
-}
-```
+Direction and order, an undecodable frame surviving as a raw record, the header
+naming protocol and upstream, one recording per session, and the key exchange
+never landing in the clear. The redaction test asserts a record is *marked*
+redacted as well as absent from the bytes — otherwise it passes just as well
+when the frame was dropped.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run them to verify they fail**
 
-Run: `devbox run -- task test -- ./record`
-Expected: FAIL, `undefined: record.NewSink`.
+Run: `devbox run -- task test:examples -- ./minecraft/capture/`
+Expected: FAIL, `undefined: capture.Recorder`.
 
-- [ ] **Step 3: Implement the sink**
+- [x] **Step 3: Implement the recorder**
 
-Wrap `capture.NewFileSink` and stamp the header with the upstream address, the
-protocol ID, and the capture tool's version. Direction comes from the
-observation, not from which goroutine called: the pump has two, and attributing
-by caller would make a refactor silently mislabel a whole recording.
+Every frame writes a raw record carrying the complete frame, prefix rebuilt
+through the framer; a frame that decoded writes a packet record as well. That is
+the pair a real endpoint's stream emits. A write failure stops that recording
+and reports once: a recording missing a record in the middle is not evidence,
+and appending past the gap hides where it is.
 
-- [ ] **Step 4: Wire it into the proxy**
+- [x] **Step 4: Wire it into mcrelay**
 
-Add the sink to `Config.Observers`. The proxy already relays frames without
-decoding, so the sink sees every frame including the ones this build cannot
-parse.
+`-record <dir>` installs the recorder alongside the SQLite store through
+`MultiSink`. It is a directory rather than a file because there is one recording
+per session, and it is not `-capture` because that flag already means
+`CaptureRaw`. A sink that fails to open drops out for that session rather than
+failing the connection; every sink failing is reported.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
-Run: `devbox run -- task test -- ./record ./proxy`
-Expected: PASS.
+Run: `devbox run -- task verify`
+Expected: PASS. `TestEndToEndRecording` drives a real status exchange through
+the proxy and asserts the recording holds named packets — a file of the right
+size full of unidentified frames is the failure Task 2 existed to close.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add record proxy && git commit -m "feat(record): write both directions to one capture"
+git add examples/minecraft && git commit -m "feat(capture): record both directions to a replayable file"
 ```
 
 ### Task 4: Entity-trace extraction
 
 **Files:**
-- Create: `../minecraft-capture/trace/trace.go`
-- Create: `../minecraft-capture/trace/extract.go`
-- Create: `../minecraft-capture/trace/extract_test.go`
+- Create: `relay/examples/minecraft/trace/trace.go`
+- Create: `relay/examples/minecraft/trace/extract.go`
+- Create: `relay/examples/minecraft/trace/extract_test.go`
 
 **Interfaces:**
 - Consumes: `capture.Record`, the protocol 47 generated packet types.
-- Produces:
+- Produces `Vec3`, `Sample`, `Trace`, `Extract(descriptor, limits, records)` and
+  `ExtractFile(path)`.
 
-```go
-// Vec3 is a position or a velocity in blocks. It is declared here rather than
-// imported from minecraft-simulation: capture is an oracle and must not depend
-// on the thing it verifies, or a wrong constant in the kernel would be
-// reproduced identically on both sides of the comparison.
-type Vec3 struct{ X, Y, Z float64 }
+**Two deviations from the written interface.** `Sample` carries the recording's
+sequence number and elapsed time rather than a tick: a capture has no ticks in
+it, and dividing elapsed time by fifty milliseconds would be a guess dressed as
+a measurement. And `Extract` takes the descriptor and limits, because the
+recording names its own protocol in its header — `ExtractFile` is the
+convenience that reads both and calls through.
 
-// Trace is one entity's observed motion over one recording.
-type Trace struct {
-    EntityID int32
-    Family   string    // "player", "item", "arrow"
-    Samples  []Sample
-}
+- [x] **Step 1: Write the failing tests**
 
-// Sample is one observed position at one tick offset.
-type Sample struct {
-    Tick     uint64
-    Position Vec3     // absolute, with relative moves already accumulated
-    Velocity Vec3     // zero when the recording carried none
-    OnGround bool
-}
+Relative moves accumulating onto the last spawn; a teleport resetting rather
+than accumulating; an unknown entity being a finding; a reused entity ID
+starting a new trace; velocity not inventing a position; another protocol being
+refused. Records are built by encoding through a real server-role session, so a
+test cannot pass by agreeing with its own idea of the wire format.
 
-func Extract(records []capture.Record) ([]Trace, error)
-```
+- [x] **Step 2: Run them to verify they fail**
 
-Protocol 47 moves an entity with four packets — absolute teleport, relative
-move, relative move with look, and look — and sends positions as fixed point in
-thirty-seconds of a block. `Extract` accumulates relative moves onto the last
-absolute position and records the absolute result, because a consumer comparing
-a simulated trajectory needs positions, not deltas.
-
-- [ ] **Step 1: Write the failing test**
-
-```go
-func TestRelativeMovesAccumulateOntoTheLastTeleport(t *testing.T) {
-    t.Parallel()
-
-    traces, err := trace.Extract([]capture.Record{
-        spawnPlayer(t, 7, 100.0, 64.0, 200.0),
-        relativeMove(t, 7, 0.5, 0, 0.25),
-        relativeMove(t, 7, 0.5, 0, 0.25),
-    })
-    if err != nil {
-        t.Fatalf("Extract: %v", err)
-    }
-
-    if len(traces) != 1 {
-        t.Fatalf("extracted %d traces, want 1", len(traces))
-    }
-    last := traces[0].Samples[len(traces[0].Samples)-1]
-    if math.Abs(last.Position.X-101.0) > 1.0/32 {
-        t.Errorf("X accumulated to %.4f, want 101.0", last.Position.X)
-    }
-}
-
-func TestAnUnknownEntityIsAFindingNotASilentDrop(t *testing.T) {
-    t.Parallel()
-
-    // A relative move for an entity that never spawned means the recording is
-    // incomplete or the extractor is wrong. Both are worth an error: silently
-    // starting a trace at the origin invents a trajectory nobody observed.
-    if _, err := trace.Extract([]capture.Record{relativeMove(t, 99, 1, 0, 0)}); err == nil {
-        t.Fatal("extracted a move for an entity that never spawned")
-    }
-}
-```
-
-- [ ] **Step 2: Run it to verify it fails**
-
-Run: `devbox run -- task test -- ./trace`
+Run: `devbox run -- task test:examples -- ./minecraft/trace/`
 Expected: FAIL, `undefined: trace.Extract`.
 
-- [ ] **Step 3: Implement extraction**
+- [x] **Step 3: Implement extraction**
 
-Decode each record's packet, switch on its name, and maintain a map from entity
-ID to the trace being built. Fixed-point positions divide by 32. Runtime IDs are
-reused after a removal, so a spawn for an ID already present closes the previous
-trace and starts a new one rather than appending to it.
+Decode each clientbound packet record, switch on the generated type, and keep a
+map from entity ID to the trace being built. Fixed-point positions divide by 32
+and velocities by 8000. A spawn for an ID already present closes the previous
+trace: the server reuses runtime identifiers, and appending would splice two
+trajectories into one nobody followed.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
-Run: `devbox run -- task test -- ./trace`
+Run: `devbox run -- task test:examples -- ./minecraft/trace/`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add trace && git commit -m "feat(trace): extract absolute entity traces from a recording"
+git add examples/minecraft/trace && git commit -m "feat(trace): extract absolute entity traces from a recording"
 ```
 
 ### Task 5: The deterministic replay gate
 
 **Files:**
-- Create: `../minecraft-capture/replaycheck/check.go`
-- Create: `../minecraft-capture/replaycheck/check_test.go`
+- Create: `relay/examples/minecraft/replaycheck/check.go`
+- Create: `relay/examples/minecraft/replaycheck/check_test.go`
 
 **Interfaces:**
-- Consumes: `replay.Player`, `replay.WithMode`, `capture.NewDigester`.
-- Produces:
-
-```go
-// Check replays a recording and reports whether it reproduced itself.
-func Check(ctx context.Context, path string) (Result, error)
-
-type Result struct {
-    Digest      string
-    Divergences []replay.Divergence
-}
-```
+- Consumes: `replay.Player`, `replay.WithMode`, `replay.WithResolver`,
+  `capture.Reader.Trailer`.
+- Produces `Check(ctx, path) (Result, error)`, with `Result.OK` and
+  `Result.Explain`.
 
 This is M9.1's gate. A recording that does not replay to the same digest is not
 an oracle, and every later stage is judged against these files.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
-```go
-func TestARecordingReplaysToItsOwnDigest(t *testing.T) {
-    t.Parallel()
+A recording replays to its own digest, and twice to the same one.
 
-    path := recordFixtureSession(t)   // drives the proxy against a fixture server
+- [x] **Step 2: Run it to verify it fails**
 
-    first, err := replaycheck.Check(t.Context(), path)
-    if err != nil {
-        t.Fatalf("Check: %v", err)
-    }
-    if len(first.Divergences) != 0 {
-        t.Fatalf("replay diverged: %v", first.Divergences)
-    }
-
-    second, err := replaycheck.Check(t.Context(), path)
-    if err != nil {
-        t.Fatalf("Check: %v", err)
-    }
-    if first.Digest != second.Digest {
-        t.Errorf("two replays of one recording produced %s and %s", first.Digest, second.Digest)
-    }
-}
-```
-
-- [ ] **Step 2: Run it to verify it fails**
-
-Run: `devbox run -- task test -- ./replaycheck`
+Run: `devbox run -- task test:examples -- ./minecraft/replaycheck/`
 Expected: FAIL, `undefined: replaycheck.Check`.
 
-- [ ] **Step 3: Implement the check**
+- [x] **Step 3: Implement the check**
 
-Open the recording, run `replay.Player` in the mode that compares each replayed
-frame against the recorded one, and digest the result with `capture.Digester`.
-Report divergences rather than failing on the first: a recording that diverges
-in three places tells you more than one that stops at the first.
+Open the recording, run `replay.Player` in fast mode over it, and compare the
+digest it produces with the one the trailer carries. A file that cannot be read
+returns an error; a file that reads and disagrees returns a Result — a caller
+that cannot tell those apart reports the wrong thing.
 
-- [ ] **Step 4: Add the redaction test**
+- [x] **Step 4: Add the rejection test**
 
-```go
-func TestARecordingNeverHoldsTheKeyExchangeInTheClear(t *testing.T) {
-    t.Parallel()
+Not the corruption test this step originally specified. Every record carries a
+CRC, so a flipped byte fails the read long before the digest is consulted, and
+a test that flipped one would be testing the checksum. The case that actually
+happens is a proxy killed mid-session: records, no trailer, reads back
+perfectly, and is not evidence.
 
-    // minecraft-protocol M5 found exactly this defect: the raw frame record is
-    // written before the frame is decoded, so a packet-level redaction check
-    // cannot answer for it. Through a proxy there are two logins, so there are
-    // two chances to leak one.
-    path := recordFixtureSession(t)
+The redaction test stays at the sink, where `TestARecordingNeverHoldsTheKey
+ExchangeInTheClear` covers it. Through a proxy it would be vacuous: an offline
+login exchanges no keys, and the proxy cannot stand between an online one.
 
-    raw, err := os.ReadFile(path)
-    if err != nil {
-        t.Fatalf("ReadFile: %v", err)
-    }
-    for _, secret := range []string{"encryption_begin", "shared_secret"} {
-        if bytes.Contains(raw, []byte(secret)) {
-            t.Errorf("the recording holds %q", secret)
-        }
-    }
-}
-```
+- [x] **Step 5: Run the tests**
 
-- [ ] **Step 5: Run the tests**
-
-Run: `devbox run -- task test -- ./replaycheck`
+Run: `devbox run -- task test:examples -- ./minecraft/replaycheck/`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add replaycheck && git commit -m "feat(replaycheck): gate a recording on deterministic replay"
+git add examples/minecraft/replaycheck && git commit -m "feat(replaycheck): gate a recording on deterministic replay"
 ```
 
 ### Task 6: The command line
 
 **Files:**
-- Create: `../minecraft-capture/cmd/mccapture/main.go`
-- Create: `../minecraft-capture/cmd/mccapture/main_test.go`
-- Modify: `../minecraft-capture/Taskfile.yml`
-- Modify: `../minecraft-capture/README.md`
+- Modify: `relay/examples/minecraft/cmd/mcrelay/main.go`
+- Create: `relay/examples/minecraft/cmd/mcrelay/main_test.go`
+- Modify: `relay/examples/README.md`
+- Create: `relay/docs/verification/2026-08-17-capture-oracle.md`
 
 **Interfaces:**
-- Consumes: every package above.
-- Produces: `mccapture proxy`, `mccapture trace`, and `mccapture verify`.
+- Produces `mcrelay trace` and `mcrelay verify` alongside the relaying mode,
+  which `-record` now records.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
-```go
-func TestVerifyExitsNonZeroOnADivergentRecording(t *testing.T) {
-    t.Parallel()
+`verify` exits non-zero on a recording that cannot replay, and zero on one that
+can; `trace` writes trajectories whose last position is where the moves put it.
+Tests drive `dispatch(args, stdout, stderr) int` so the exit code is the thing
+under test.
 
-    path := corruptOneFrame(t, recordFixtureSession(t))
+- [x] **Step 2: Run them to verify they fail**
 
-    if code := run([]string{"verify", path}, io.Discard); code == 0 {
-        t.Error("verify exited zero on a recording that cannot replay")
-    }
-}
-```
-
-- [ ] **Step 2: Run it to verify it fails**
-
-Run: `devbox run -- task test -- ./cmd/mccapture`
+Run: `devbox run -- task test:examples -- ./minecraft/cmd/...`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement the commands**
+- [x] **Step 3: Implement the commands**
 
-`proxy --listen --upstream --out` records a session. `trace --in --out` writes
-extracted traces as JSON. `verify --in` runs the replay gate. Non-interactive,
-documented exit codes, no prompts: this runs in CI and under an agent.
+Subcommand dispatch ahead of the relay flags, each mode owning its own
+`FlagSet` and usage text. Non-interactive, documented exit codes, no prompts.
 
-- [ ] **Step 4: Run the tests and the full gate**
+- [x] **Step 4: Run the tests and the full gate**
 
 Run: `devbox run -- task verify`
-Expected: PASS.
+Expected: PASS, core and examples.
 
 - [ ] **Step 5: Capture one real session**
 
-Run the proxy between a real 1.8.9 client and a pinned offline vanilla 1.8.9
-server. Walk, sprint, jump, fall, drop an item, and shoot an arrow. Then run
-`mccapture verify` on the recording.
+**Not run — this needs a real client and a pinned vanilla server, which no
+automated step can stand in for.** The procedure is written out in
+`relay/docs/verification/2026-08-17-capture-oracle.md`, including the flag that
+is easy to miss: `-protocol java/1.8.9`, because the default is 775 and a 47
+session recorded under a 775 header will not replay.
 
-Expected: zero divergences. This is the first evidence the oracle works, and no
-automated test substitutes for it — every test above uses a fixture server whose
-packets this repository generated.
-
-Record the result in `docs/verification/`, including the server build, the
-client version, and the digest.
+Until this runs, M9.1's gate is met against a stub upstream whose packets this
+repository generated, which is exactly the agreement an oracle cannot rely on.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add . && git commit -m "feat(cmd): add the mccapture command line"
+git add . && git commit -m "feat(mcrelay): add trace extraction and the replay gate"
 ```
 
 ---
