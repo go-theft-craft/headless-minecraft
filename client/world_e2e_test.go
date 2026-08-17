@@ -176,10 +176,15 @@ func TestEndToEndFillsTheStoresBeforeEmptyingThem(t *testing.T) {
 	}
 	t.Parallel()
 
-	// The same script, watched as it happens rather than after the fact: the
-	// spawn events must describe a world that actually held the entities, and
-	// a snapshot taken at a spawn's revision must show it.
-	addr, stop := fixture.Start(t, fixture.Script{ThroughReady: true, ThenWorld: true})
+	// The same script with its second wave withheld, so what the stores held
+	// at the spawn can be read without racing the wave that empties them.
+	//
+	// It used to be read from a subscriber the moment the second spawn was
+	// published, which asserted that this reader won a race against the loop
+	// that was already applying the destroy wave. It usually did. Under load it
+	// did not, and it reported an empty world rather than a reader that fell
+	// behind — the failure looked like the thing the test exists to catch.
+	addr, stop := fixture.Start(t, fixture.Script{ThroughReady: true, ThenWorldArrival: true})
 	defer stop()
 
 	w := world.New()
@@ -190,49 +195,176 @@ func TestEndToEndFillsTheStoresBeforeEmptyingThem(t *testing.T) {
 		t.Fatalf("Subscribe: %v", err)
 	}
 
-	// Read the snapshot the moment the second spawn is seen, before the destroy
-	// wave has been applied.
-	//
 	// The reader starts before Connect. A subscription is bounded and a
 	// subscriber that falls behind is closed rather than blocked, so a reader
 	// that only started once Connect returned could have the whole script
-	// published into its buffer while it waited — and under load, be dropped
-	// before it ever saw the spawn it is waiting for.
-	type observation struct {
-		tracked int
-		seen    bool
-	}
-	watched := make(chan observation, 1)
+	// published into its buffer while it waited.
+	watched := make(chan uint64, 1)
 	go func() {
 		for published := range entities.C() {
-			if published.Name() != event.NameEntitySpawned {
-				continue
-			}
 			if spawned, ok := published.(event.EntitySpawned); ok && spawned.EntityID == 8 {
-				watched <- observation{tracked: len(w.Snapshot().Entities.Tracked), seen: true}
+				watched <- spawned.Revision()
 
 				return
 			}
 		}
-		watched <- observation{}
+		watched <- 0
 	}()
 
 	if err := bot.Connect(t.Context()); err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
 
-	got := <-watched
+	at := <-watched
+	// Separated from the count, so a dropped subscription reports itself as one
+	// rather than as a world that held nothing.
+	if at == 0 {
+		t.Fatal("the spawn of entity 8 never arrived; the subscription ended first")
+	}
+
+	// Nothing takes the entities away in this script, so the world still holds
+	// them however far behind this reader is.
+	snapshot := w.Snapshot()
 	if err := bot.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 	drain(entities)
 
-	// Separated from the count, so a dropped subscription reports itself as one
-	// rather than as a world that held nothing.
-	if !got.seen {
-		t.Fatal("the spawn of entity 8 never arrived; the subscription ended first")
+	if snapshot.Revision < at {
+		t.Fatalf("the snapshot is at revision %d, before the spawn's %d", snapshot.Revision, at)
 	}
-	if got.tracked != 2 {
-		t.Errorf("the world held %d entities at the second spawn, want 2", got.tracked)
+	if got := len(snapshot.Entities.Tracked); got != 2 {
+		t.Errorf("the world held %d entities after both spawns, want 2", got)
+	}
+}
+
+func observeToWithGrace(t *testing.T, addr string, w *world.World, grace time.Duration) *client.Client {
+	t.Helper()
+
+	provider, err := auth.Offline("observer")
+	if err != nil {
+		t.Fatalf("Offline: %v", err)
+	}
+	authz, err := safety.Authorize(addr, safety.ScopeObserve)
+	if err != nil {
+		t.Fatalf("Authorize: %v", err)
+	}
+
+	bot, err := client.New(
+		client.WithAddress(addr),
+		client.WithAuth(provider),
+		client.WithVersion(java.Java1_8()),
+		client.WithAuthorization(authz),
+		client.WithConnectTimeout(5*time.Second),
+		client.WithWorld(w),
+		client.WithObservationGrace(grace),
+	)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	return bot
+}
+
+func TestEndToEndReportsAPlacedSessionThatLoadsNoChunk(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end lane needs a loopback socket")
+	}
+	t.Parallel()
+
+	// The session works: it logs in, it is placed, and packets keep arriving.
+	// It just never carries terrain, which is what a vanilla 1.8.9 server did
+	// to an adapter that reduced only map_chunk — and what nothing reported.
+	addr, stop := fixture.Start(t, fixture.Script{ThroughReady: true, ThenWithoutTerrain: true})
+	defer stop()
+
+	w := world.New()
+	bot := observeToWithGrace(t, addr, w, time.Nanosecond)
+
+	session, err := bot.Subscribe(event.DomainSession, 512)
+	if err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	if err := bot.Connect(t.Context()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	// Bounded, so a guard that never fires fails as itself rather than as a
+	// test binary timing out.
+	var reported event.ObservationMissing
+	deadline := time.After(5 * time.Second)
+	for reported.Observation == "" {
+		select {
+		case published, open := <-session.C():
+			if !open {
+				t.Fatal("the subscription ended before the session reported anything")
+			}
+			if missing, ok := published.(event.ObservationMissing); ok {
+				reported = missing
+			}
+		case <-deadline:
+			t.Fatal("the session was placed, loaded no chunk, and reported nothing")
+		}
+	}
+	if err := bot.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	rest := drain(session)
+
+	if reported.Observation != event.NameWorldChunkLoaded {
+		t.Fatalf("the session never reported missing terrain, got %q", reported.Observation)
+	}
+	if reported.Revision() == 0 {
+		t.Error("the report names no revision")
+	}
+	// Once per connection: a warning repeated every batch is a warning nobody
+	// reads.
+	if again := count(rest, event.NameSessionObservationMissing); again != 0 {
+		t.Errorf("the report was published %d more times", again)
+	}
+}
+
+func TestEndToEndSaysNothingWhenTerrainArrives(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end lane needs a loopback socket")
+	}
+	t.Parallel()
+
+	// The same impatient grace against a session that does load a chunk. A
+	// guard that fires here would be worse than no guard: a consumer learns to
+	// ignore it and then ignores the real one.
+	addr, stop := fixture.Start(t, fixture.Script{ThroughReady: true, ThenWorld: true})
+	defer stop()
+
+	w := world.New()
+	bot := observeToWithGrace(t, addr, w, time.Nanosecond)
+
+	everything, err := bot.Subscribe(event.DomainSession|event.DomainWorld, 512)
+	if err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	if err := bot.Connect(t.Context()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	var events []event.Event
+	for published := range everything.C() {
+		events = append(events, published)
+		if published.Name() == event.NameWorldChunkUnloaded {
+			break
+		}
+	}
+	if err := bot.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	events = append(events, drain(everything)...)
+
+	if count(events, event.NameWorldChunkLoaded) == 0 {
+		t.Fatal("the script loaded no chunk, so the guard was never tested")
+	}
+	if said := count(events, event.NameSessionObservationMissing); said != 0 {
+		t.Errorf("the guard fired %d times on a session that loaded terrain", said)
 	}
 }

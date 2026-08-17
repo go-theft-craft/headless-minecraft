@@ -416,6 +416,49 @@ be tested and argued with rather than chosen silently during Task 8. A modded
 server that trips them will say so through the drop counters, which is the point
 of having counters.
 
+
+## Decision 12: a world that observes nothing is an error, and a play session without terrain says so
+
+Added 2026-08-17, after three defects found in one day turned out to share a
+shape. A client whose installed world was fed by no reducers, a bot reading its
+own position back from server-sent state, and an adapter that never reduced the
+packet carrying the join-time world: each one connected, ran, reported nothing,
+and was found by a person watching a bot stand still. Tests passed throughout.
+The common failure is not a bug class but a reporting one — the library knew
+enough to say something and said nothing.
+
+**A world installed with no reducers is refused at construction.** The seam is
+satisfied by interface assertion, so an adapter that spells `Reducers` as a
+package-level function rather than a method compiles, passes its own tests, and
+installs a world that counts batches and observes nothing. That is exactly what
+shipped. `New` now returns `ErrInvalidClient` when `WithWorld` is given and the
+profile's adapter either does not satisfy the assertion or returns an empty
+list. No consumer asks for observed state and wants none of it, so the case that
+used to be documented as legal is the error it always was. This one is checked
+at construction because it is a static fact about the configuration: it needs no
+clock, no network, and no session.
+
+**A play session that observes no terrain publishes `session.observation_missing`.**
+This one cannot be static. Whether a server sends chunks is a fact about the
+session, and it is only knowable by waiting. So the client watches: once the
+server places the player, if no `world.chunk_loaded` has been observed after a
+grace period, it publishes once and logs a warning. The grace is
+`WithObservationGrace`, defaulting to ten seconds.
+
+It reports rather than fails, for two reasons. Nothing in either protocol
+obliges a server to send terrain, so a session without it is suspect rather than
+invalid — and a library that ends a connection over its own heuristic is worse
+than one that says what it sees. The check also rides on inbound traffic rather
+than a timer, because the loop is one goroutine and a timer would need a second:
+it runs when a batch closes. Keepalives make that reliable in practice on both
+protocols, and a connection so dead that no packet arrives at all is a failure
+the loop already reports.
+
+`session.observation_missing` is the one name in the taxonomy that no packet
+carries — it reports a packet's absence, which is the thing no packet can say.
+The session domain goes from 14 named events to 15, and the taxonomy from 76 to
+77.
+
 ## Exit criteria
 
 | | Criterion |
@@ -428,6 +471,8 @@ of having counters.
 | 6 | Every declared event name has an implementation, minus anything the chat deferral removed and recorded |
 | 7 | Registry data received in configuration reaches the registry reducer on both the first pass and a play-to-configuration return |
 | 8 | Loading and releasing 1000 chunks and 1000 entities returns the stores to empty |
+| 9 | A world installed against an adapter that supplies no reducers is refused by `New`, and the adapter's reducer is proven to run rather than merely to be registered |
+| 10 | A session that reaches play and loads no chunk publishes `session.observation_missing` once, and one that loads a chunk publishes none |
 
 ## Plan amendments this design requires
 

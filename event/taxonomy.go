@@ -26,6 +26,9 @@ const (
 	NameSessionCookieRequested       Name = "session.cookie_requested"
 	NameSessionCookieStored          Name = "session.cookie_stored"
 	NameSessionCustomPayloadReceived Name = "session.custom_payload_received"
+	// NameSessionObservationMissing is the one name here that no packet
+	// carries: it reports a packet that never arrived. See ObservationMissing.
+	NameSessionObservationMissing Name = "session.observation_missing"
 	// NameSessionPacketReceived and NameSessionPacketSent report DomainRaw rather than
 	// DomainSession. Raw delivery is a selector, not a taxonomy entry: the
 	// names exist so a log line can identify them, and a subscriber opts into
@@ -133,6 +136,7 @@ var domains = map[Name]Domain{
 	NameSessionResourcePackOffered: DomainSession, NameSessionResourcePackRevoked: DomainSession,
 	NameSessionServerMetadataChanged: DomainSession, NameSessionCookieRequested: DomainSession,
 	NameSessionCookieStored: DomainSession, NameSessionCustomPayloadReceived: DomainSession,
+	NameSessionObservationMissing: DomainSession,
 
 	NamePlayerSpawned: DomainPlayer, NamePlayerMoved: DomainPlayer,
 	NamePlayerHealthChanged: DomainPlayer, NamePlayerDamaged: DomainPlayer,

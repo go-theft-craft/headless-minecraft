@@ -49,7 +49,7 @@ func TestTaxonomyCoversEveryDeclaredDomain(t *testing.T) {
 	// The design fixes these counts. A change here is a taxonomy change and
 	// must be a deliberate edit to the design, not a drive-by addition.
 	want := map[event.Domain]int{
-		event.DomainSession:    14,
+		event.DomainSession:    15,
 		event.DomainPlayer:     12,
 		event.DomainWorld:      13,
 		event.DomainEntities:   13,

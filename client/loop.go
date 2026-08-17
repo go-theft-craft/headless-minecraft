@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	protocol "github.com/go-theft-craft/minecraft-protocol"
 
@@ -18,6 +19,51 @@ import (
 // no state: the world that bumps one per batch is M7, and it stamps from
 // there. Zero is the value no revision ever takes.
 const unrevised = 0
+
+// terrainWatch reports a session that reached play and never observed terrain.
+//
+// A client that connects, is placed, answers keepalives, and loads no chunk
+// looks healthy from every angle the library otherwise reports on, and answers
+// "not loaded" for every block a consumer asks about. That is the shape of the
+// M7 defect: nothing failed, terrain events simply never fired, and a person
+// watching a bot stand still was the only detector.
+//
+// It reports rather than fails. Nothing in either protocol obliges a server to
+// send terrain, so a session without it is suspect rather than invalid.
+//
+// The check rides on inbound batches rather than a timer: the loop is one
+// goroutine, and a timer would need a second one to say something the loop can
+// say for itself. Keepalives keep batches arriving on both protocols, and a
+// connection quiet enough to defeat this is one the loop already reports on.
+type terrainWatch struct {
+	grace   time.Duration
+	readyAt time.Time
+	seen    bool
+	said    bool
+}
+
+// observe folds one batch's events in and reports whether the client should
+// now say that terrain never arrived.
+func (w *terrainWatch) observe(now time.Time, events []event.Event) (time.Duration, bool) {
+	if w.seen || w.said || w.readyAt.IsZero() {
+		return 0, false
+	}
+	for _, published := range events {
+		if published.Name() == event.NameWorldChunkLoaded {
+			w.seen = true
+
+			return 0, false
+		}
+	}
+
+	since := now.Sub(w.readyAt)
+	if since < w.grace {
+		return 0, false
+	}
+	w.said = true
+
+	return since, true
+}
 
 // receiver is the loop's inbound source. A stream satisfies it directly; a
 // test satisfies it with a slice.
@@ -77,6 +123,13 @@ func (c *Client) runLoop(
 	ready chan<- version.ReadyState,
 ) error {
 	readySent := false
+	// Only with a world: without one the client observes no terrain by
+	// construction, and reporting that would be reporting the consumer's own
+	// choice back at them.
+	watch := &terrainWatch{grace: c.observationGrace}
+	if c.world == nil {
+		watch = nil
+	}
 
 	for {
 		packet, err := r.Receive(ctx)
@@ -145,10 +198,17 @@ func (c *Client) runLoop(
 
 		// Publish before signalling ready, so a subscriber that was waiting
 		// on Connect has already seen everything the placing batch produced.
-		c.events.publish(collector.Events(revision))
+		published := collector.Events(revision)
+		c.events.publish(published)
+		c.watchTerrain(watch, published, revision)
 
 		if state.Ready && !readySent {
 			readySent = true
+			if watch != nil {
+				// The clock starts where the promise does: a server has no
+				// reason to send terrain before it has placed the player.
+				watch.readyAt = time.Now()
+			}
 			// Before the announcement, so a subscriber that acts on Ready and a
 			// caller that returns from Connect both find the client willing.
 			c.enterPlay()
@@ -188,6 +248,35 @@ func (c *Client) send(
 	}
 
 	return nil
+}
+
+// watchTerrain publishes the report that a placed session has loaded no chunk.
+//
+// It is published on its own rather than folded into the batch that triggered
+// it: it describes the whole session up to this revision, not what this batch
+// carried, and the batch has already gone out.
+func (c *Client) watchTerrain(watch *terrainWatch, published []event.Event, revision uint64) {
+	if watch == nil {
+		return
+	}
+	since, missing := watch.observe(time.Now(), published)
+	if !missing {
+		return
+	}
+
+	c.logger.Warn(
+		"the session was placed and has loaded no chunk; every block lookup will report the chunk as not loaded",
+		"since", since,
+		"observation", event.NameWorldChunkLoaded,
+	)
+
+	var announcement event.Collector
+	event.Emit(&announcement, event.ObservationMissing{
+		Observation: event.NameWorldChunkLoaded,
+		Since:       since,
+	})
+
+	c.events.publish(announcement.Events(revision))
 }
 
 // publishReady announces the one point in a connection where the server will

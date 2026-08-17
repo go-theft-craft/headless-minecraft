@@ -44,6 +44,15 @@ type Script struct {
 	// login and the shared login.Acceptor is written against the v1_8
 	// generated types, which is the same limit M6.3 recorded.
 	ThenWorld bool
+	// ThenWithoutTerrain sends a placed session that never carries a chunk:
+	// weather, time, and health arrive, and no terrain does. It is what a
+	// vanilla 1.8.9 server looked like to an adapter that reduced only
+	// map_chunk, and what the observation guard has to notice.
+	ThenWithoutTerrain bool
+	// ThenWorldArrival sends only ThenWorld's first wave and never takes it
+	// away, so a test can read the filled stores without racing the wave that
+	// empties them.
+	ThenWorldArrival bool
 }
 
 // serverKey is generated once per test binary. Generating an RSA key costs
@@ -181,8 +190,14 @@ func play(ctx context.Context, stream *protocol.Stream, conn net.Conn, script Sc
 		return err
 	}
 
-	if script.ThenWorld {
-		if err := world(ctx, stream); err != nil {
+	if script.ThenWorld || script.ThenWorldArrival {
+		if err := world(ctx, stream, script.ThenWorld); err != nil {
+			return err
+		}
+	}
+
+	if script.ThenWithoutTerrain {
+		if err := withoutTerrain(ctx, stream); err != nil {
 			return err
 		}
 	}
@@ -221,7 +236,7 @@ func play(ctx context.Context, stream *protocol.Stream, conn net.Conn, script Sc
 // Every packet is a separate write, and protocol 47 has no bundle delimiter,
 // so the client sees one batch per packet and one revision per batch. That is
 // the property the lane exists to check.
-func world(ctx context.Context, stream *protocol.Stream) error {
+func world(ctx context.Context, stream *protocol.Stream, leave bool) error {
 	// A column of one section, every block the same state, so a block lookup
 	// has an answer that could not have come from a zero value.
 	section := make([]byte, 8192)
@@ -255,6 +270,10 @@ func world(ctx context.Context, stream *protocol.Stream) error {
 		}
 	}
 
+	if !leave {
+		return nil
+	}
+
 	leaving := []struct {
 		name  string
 		value playPacket
@@ -265,6 +284,28 @@ func world(ctx context.Context, stream *protocol.Stream) error {
 		{"map_chunk", &gen.PlayClientboundMapChunk{X: 0, Z: 0, GroundUp: true}},
 	}
 	for _, packet := range leaving {
+		if err := write(ctx, stream, packet.name, packet.value); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// withoutTerrain sends a session that runs and carries no terrain.
+//
+// Each packet is its own batch on protocol 47, so the guard is offered several
+// chances to notice, which is what a real session's keepalives give it.
+func withoutTerrain(ctx context.Context, stream *protocol.Stream) error {
+	arriving := []struct {
+		name  string
+		value playPacket
+	}{
+		{"game_state_change", &gen.PlayClientboundGameStateChange{Reason: 2}},
+		{"update_time", &gen.PlayClientboundUpdateTime{Age: 100, Time: 100}},
+		{"update_health", &gen.PlayClientboundUpdateHealth{Health: 20, Food: 20}},
+	}
+	for _, packet := range arriving {
 		if err := write(ctx, stream, packet.name, packet.value); err != nil {
 			return err
 		}

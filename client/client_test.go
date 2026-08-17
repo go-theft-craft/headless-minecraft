@@ -3,6 +3,7 @@ package client_test
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,17 +30,46 @@ func (stubProtocol) NewSession(protocol.Role, protocol.Limits) (protocol.Session
 	return nil, nil
 }
 
-type stubAdapter struct{ id string }
+// noReducerAdapter is a complete adapter that cannot feed a world.
+//
+// It is the shape the M7 defect had: the seam is satisfied by interface
+// assertion, so an adapter whose Reducers is a package-level function rather
+// than a method compiles, passes its own tests, and observes nothing.
+type noReducerAdapter struct{ id string }
 
-func (s stubAdapter) ProtocolID() string                     { return s.id }
-func (stubAdapter) LoginTerminalState() protocol.State       { return "" }
-func (stubAdapter) Handshake(string, uint16) protocol.Packet { return protocol.Packet{} }
+func (a noReducerAdapter) ProtocolID() string                     { return a.id }
+func (noReducerAdapter) LoginTerminalState() protocol.State       { return "" }
+func (noReducerAdapter) Handshake(string, uint16) protocol.Packet { return protocol.Packet{} }
 
-func (stubAdapter) EncodeAction(version.Action) (protocol.Packet, error) {
+func (noReducerAdapter) EncodeAction(version.Action) (protocol.Packet, error) {
 	return protocol.Packet{}, nil
 }
 
-func (stubAdapter) Handlers() map[string]version.Handler { return nil }
+func (noReducerAdapter) Handlers() map[string]version.Handler { return nil }
+
+// emptyReducerAdapter answers the assertion and then supplies nothing, which
+// leaves a world just as blind.
+type emptyReducerAdapter struct{ noReducerAdapter }
+
+func (emptyReducerAdapter) Reducers(*world.World) []world.Reducer { return nil }
+
+// stubAdapter is a working adapter: it supplies one reducer, which records
+// that it ran.
+type stubAdapter struct {
+	noReducerAdapter
+
+	reduced *atomic.Bool
+}
+
+func (a stubAdapter) Reducers(*world.World) []world.Reducer {
+	return []world.Reducer{world.Func(func(*world.Context, version.Batch, *event.Collector) error {
+		if a.reduced != nil {
+			a.reduced.Store(true)
+		}
+
+		return nil
+	})}
+}
 
 type stubReadiness struct{}
 
@@ -58,7 +88,7 @@ func stubProfile(t *testing.T) version.WireProfile {
 	return version.WireProfile{
 		ID:        "java/1.8.9",
 		Protocol:  stubProtocol{id: "java/1.8.9"},
-		Adapter:   stubAdapter{id: "java/1.8.9"},
+		Adapter:   stubAdapter{noReducerAdapter: noReducerAdapter{id: "java/1.8.9"}},
 		Limits:    limits,
 		Readiness: stubReadiness{},
 		Collector: new(event.Collector),
@@ -269,17 +299,19 @@ func TestWorldReportsTheInstalledWorld(t *testing.T) {
 	t.Parallel()
 
 	w := world.New()
-	var c event.Collector
-	if _, err := w.Apply(version.Batch{State: "play"}, &c); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-
 	options := append(testOptions(t), client.WithWorld(w))
 	bot, err := client.New(options...)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	defer func() { _ = bot.Close() }()
+
+	// After New, not before: New registers the adapter's reducers, and a world
+	// that has already applied a batch refuses one.
+	var c event.Collector
+	if _, err := w.Apply(version.Batch{State: "play"}, &c); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
 
 	if got := bot.World().Revision; got != 1 {
 		t.Errorf("client reports revision %d, want the world's 1", got)
@@ -291,9 +323,18 @@ func TestAnInstalledWorldGetsTheAdaptersReducers(t *testing.T) {
 
 	// The order the options were passed must not matter: reducers are
 	// registered once the profile and the world are both known.
+	var reduced atomic.Bool
+	profile := stubProfile(t)
+	profile.Adapter = stubAdapter{
+		noReducerAdapter: noReducerAdapter{id: "java/1.8.9"},
+		reduced:          &reduced,
+	}
+
 	w := world.New()
 	options := []client.Option{client.WithWorld(w)}
 	options = append(options, testOptions(t)...)
+	// Last wins, so the profile carrying the recorder goes after testOptions'.
+	options = append(options, client.WithVersion(profile))
 
 	bot, err := client.New(options...)
 	if err != nil {
@@ -301,11 +342,65 @@ func TestAnInstalledWorldGetsTheAdaptersReducers(t *testing.T) {
 	}
 	defer func() { _ = bot.Close() }()
 
-	// The stub adapter supplies none, so registration is still open. A real
-	// profile's reducers are covered in the adapter packages.
-	if err := w.Register(world.Func(func(*world.Context, version.Batch, *event.Collector) error {
-		return nil
-	})); err != nil {
-		t.Errorf("Register after New: %v", err)
+	// Registration alone proves nothing: the M7 defect registered an empty
+	// list and every test still passed. What proves it is the reducer running.
+	var c event.Collector
+	if _, err := w.Apply(version.Batch{State: "play"}, &c); err != nil {
+		t.Fatalf("Apply: %v", err)
 	}
+	if !reduced.Load() {
+		t.Error("the adapter's reducer never ran against the installed world")
+	}
+}
+
+func TestAWorldWithAnAdapterThatSuppliesNoReducersIsRefused(t *testing.T) {
+	t.Parallel()
+
+	// Asking for observed state and getting a world that observes nothing is
+	// the failure this guard exists for: it reported nothing for a whole
+	// milestone, because the seam is satisfied by assertion rather than by the
+	// compiler.
+	for _, test := range []struct {
+		name    string
+		adapter version.Adapter
+	}{
+		{name: "no Reducers method", adapter: noReducerAdapter{id: "java/1.8.9"}},
+		{
+			name:    "Reducers returns none",
+			adapter: emptyReducerAdapter{noReducerAdapter{id: "java/1.8.9"}},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			profile := stubProfile(t)
+			profile.Adapter = test.adapter
+
+			options := append(
+				testOptions(t),
+				client.WithVersion(profile),
+				client.WithWorld(world.New()),
+			)
+			_, err := client.New(options...)
+			if !errors.Is(err, client.ErrInvalidClient) {
+				t.Fatalf("got %v, want ErrInvalidClient", err)
+			}
+		})
+	}
+}
+
+func TestAClientWithNoWorldStillAcceptsAnAdapterWithoutReducers(t *testing.T) {
+	t.Parallel()
+
+	// The guard is about a promise the client made. Without WithWorld it made
+	// none, and an adapter that only watches traffic stays legal.
+	profile := stubProfile(t)
+	profile.Adapter = noReducerAdapter{id: "java/1.8.9"}
+
+	options := append(testOptions(t), client.WithVersion(profile))
+	bot, err := client.New(options...)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = bot.Close() }()
 }

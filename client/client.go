@@ -19,6 +19,11 @@ import (
 const (
 	defaultConnectTimeout = 30 * time.Second
 	defaultBundleLimit    = 4096
+	// defaultObservationGrace is how long after the server places the player
+	// the client waits for terrain before saying it never arrived. It is long
+	// enough that a loaded server streaming a large view distance finishes
+	// first, and short enough that a person does not have to wonder.
+	defaultObservationGrace = 10 * time.Second
 )
 
 // ErrInvalidClient reports a configuration rejected before any network work.
@@ -38,6 +43,9 @@ type Client struct {
 	logger         *slog.Logger
 	connectTimeout time.Duration
 	bundleLimit    int
+	// observationGrace bounds how long a placed session may observe no
+	// terrain before the client reports it. See terrainWatch.
+	observationGrace time.Duration
 
 	events fanout
 	world  *world.World
@@ -149,6 +157,24 @@ func WithBundleLimit(n int) Option {
 	}
 }
 
+// WithObservationGrace bounds how long a placed session may observe no terrain
+// before the client publishes event.ObservationMissing and logs a warning.
+//
+// It applies only when a world is installed, and it reports once per
+// connection: a session that loads no chunk is suspect rather than invalid, so
+// nothing here ends the connection over it. Raise it for a server that streams
+// a large view distance slowly.
+func WithObservationGrace(d time.Duration) Option {
+	return func(c *Client) error {
+		if d <= 0 {
+			return fmt.Errorf("%w: observation grace must be positive, got %v", ErrInvalidClient, d)
+		}
+		c.observationGrace = d
+
+		return nil
+	}
+}
+
 // reducerSource is an adapter that can build the world's reducers.
 //
 // The client asserts for it rather than the version package declaring it,
@@ -189,12 +215,13 @@ func (c *Client) World() world.Snapshot {
 // It performs no network work and no authentication.
 func New(options ...Option) (*Client, error) {
 	c := &Client{
-		logger:         slog.New(slog.DiscardHandler),
-		recovery:       safety.Strict(),
-		connectTimeout: defaultConnectTimeout,
-		bundleLimit:    defaultBundleLimit,
-		loop:           make(chan struct{}),
-		done:           make(chan struct{}),
+		logger:           slog.New(slog.DiscardHandler),
+		recovery:         safety.Strict(),
+		connectTimeout:   defaultConnectTimeout,
+		bundleLimit:      defaultBundleLimit,
+		observationGrace: defaultObservationGrace,
+		loop:             make(chan struct{}),
+		done:             make(chan struct{}),
 	}
 
 	for _, option := range options {
@@ -239,19 +266,38 @@ func New(options ...Option) (*Client, error) {
 // It runs after every option, not inside WithWorld, because it needs the
 // profile: an option that read another option's value would make the order
 // they were passed in matter.
+//
+// A world with no reducers is refused rather than accepted. This seam is
+// satisfied by interface assertion, so an adapter that misspells the method or
+// declares it as a package-level function still compiles, still passes its own
+// tests, and installs a world that counts batches and observes nothing — which
+// is what shipped in M7 and what nothing reported. There is no consumer who
+// asks for observed state and wants none of it, so the case that used to be
+// legal is now the error it always was.
 func (c *Client) registerReducers() error {
 	if c.world == nil {
 		return nil
 	}
 
-	// An adapter with no reducers is legal: it observes nothing, and the
-	// world still counts batches.
 	source, ok := c.profile.Adapter.(reducerSource)
 	if !ok {
-		return nil
+		return fmt.Errorf(
+			"%w: the %s adapter supplies no reducers, so an installed world would observe nothing",
+			ErrInvalidClient,
+			c.profile.Protocol.ID(),
+		)
 	}
 
-	for _, reducer := range source.Reducers(c.world) {
+	reducers := source.Reducers(c.world)
+	if len(reducers) == 0 {
+		return fmt.Errorf(
+			"%w: the %s adapter returned no reducers, so an installed world would observe nothing",
+			ErrInvalidClient,
+			c.profile.Protocol.ID(),
+		)
+	}
+
+	for _, reducer := range reducers {
 		if err := c.world.Register(reducer); err != nil {
 			return fmt.Errorf("%w: %w", ErrInvalidClient, err)
 		}

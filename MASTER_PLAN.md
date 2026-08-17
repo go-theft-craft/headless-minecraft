@@ -392,7 +392,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M8.8 | One kernel driven by client prediction and server authority, gated on zero corrections from vanilla | `minecraft-simulation`, `headless-minecraft`, `server` | Planned, plan written | M8.4, M6, M7 | [M8.8 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) |
 | M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic, each verified against both 1.8.9 and 26.1.2 | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.1b planned; M9.3–M9.8 plans drafted ahead of their prerequisites, each with a reconcile-first task; M9.2 awaits M8.4 | M9.1 on M5 and `relay` v0.2.0; M9.1b on M9.1 and M4; M9.2–M9.8 on M8.8, M9.1, and M9.1b | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite), [M9.1b–M10 cross-version plan](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps, [M10 plan](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) |
-| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | Planned | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) (M11.1 written; M11.2–M11.7 await their own design) |
+| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | M11.1 complete; M11.2–M11.7 planned | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) (M11.1 written; M11.2–M11.7 await their own design) |
 
 ## What is complete
 
@@ -1116,11 +1116,24 @@ something the approved documents asserted:
   than storing guesses, because every following column starts where this one
   ends. The stride is covered by a test that reads a block out of the *second*
   column, which is the only assertion a wrong stride fails.
-- [ ] Guard the class of failure this belongs to. Three defects in one day were
+- [x] Guard the class of failure this belongs to. Three defects in one day were
   silent successes: a client with no world installed, a bot reading its own
   position back from server-sent state, and this. Each reported nothing, and each
   was found by a person watching a bot stand still. A session that reaches play
   and loads no chunk is not a working session, and something should say so.
+  Closed 2026-08-17 by design Decision 12, in two halves that split on what is
+  knowable when. **A world with no reducers is now refused by `New`**, because
+  that is a static fact about the configuration and needs no session to see;
+  the comment that used to call it legal is gone. **A placed session that has
+  loaded no chunk after a grace period publishes `session.observation_missing`
+  and logs a warning**, because whether a server sends terrain is only knowable
+  by waiting. The second reports rather than fails: no protocol obliges a
+  server to send terrain, and a library that hangs up on its own heuristic is
+  worse than one that says what it sees. The check rides on inbound batches
+  rather than a timer, since the loop is one goroutine and keepalives keep
+  batches arriving. `session.observation_missing` is the only name in the
+  taxonomy that no packet carries — it reports a packet's absence, which is the
+  one thing no packet can say.
 - [x] Observe the spawn position. Found on 2026-08-17 while binding
   [`examples/orbit`](docs/superpowers/specs/2026-08-16-orbit-example-design.md)
   to the world M7 delivered: no reducer touched the spawn-position packet, so the
@@ -1370,8 +1383,36 @@ The three worth carrying furthest:
   load, which turns an external edit into a recorded event instead of silent
   corruption.
 
-- [ ] M11.1 Framework shape: `server.New` and options, `cmd/server` moves to
-  `examples/`, seams declared, plain resource counters.
+- [x] M11.1 Framework shape: `server.New` and options, `cmd/server` moves to
+  `examples/`, seams declared, plain resource counters. Done on 2026-08-17.
+  - The observation sink cost nothing measurable on the interoperability lane:
+    three runs with a sink installed averaged 0.93s against 0.91s without, on a
+    lane whose runtime is dominated by starting Node. So Task 4's "install a
+    sink only when an observer exists" guard is a precaution rather than a
+    load-bearing optimization, and a future milestone may drop it without
+    having to re-measure first.
+  - Both narrowings held. `Store` covers the world only and nothing needed
+    player persistence in it sooner: the two per-player calls sit behind an
+    unexported interface that the connection and the save loop share, and the
+    connection took that interface in place of the concrete store. One thing
+    the plan did not anticipate: chest persistence landed after it was written,
+    and its two methods went on `Store` rather than the concrete path, because
+    an external store that silently dropped chests would be the worse
+    narrowing.
+  - The external-import check passed on the first try, with one wrinkle worth
+    recording for anyone repeating it: a check module needs its own `require`
+    and `go.sum` entry for `minecraft-protocol`, because a `replace`d parent
+    contributes its dependencies but not its sums. `go mod tidy` in the check
+    module resolves it from the shared module cache.
+  - One deviation from the plan's tests. It asked both that delivery to an
+    observer never block the caller and that a sample be visible the moment
+    `Observe` returns, which no single call can satisfy. Delivery is
+    asynchronous through a bounded queue that drops when full, and the
+    visibility test waits for the sample instead of assuming it.
+  - `TestDisconnectSendsAPlayDisconnectPacket` in `internal/server/conn` is
+    flaky, roughly 2 runs in 10, and it was already flaky before this milestone
+    started (verified against the pre-M11.1 tree). It is unrelated to the
+    framework work and still open.
 - [ ] M11.2 World model and chunk ownership: interned block states, per-version
   adapters, immutable sections.
 - [ ] M11.3 Storage: `WorldStore` and `SideStore`, native format research,

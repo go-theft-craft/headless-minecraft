@@ -86,6 +86,7 @@ func TestEverySessionNameHasAnEventThatReportsIt(t *testing.T) {
 		event.CookieRequested{},
 		event.CookieStored{},
 		event.CustomPayloadReceived{},
+		event.ObservationMissing{},
 	}
 
 	seen := make(map[event.Name]bool, len(implemented))

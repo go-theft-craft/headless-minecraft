@@ -177,6 +177,32 @@ type CustomPayloadReceived struct {
 func (CustomPayloadReceived) Name() Name     { return NameSessionCustomPayloadReceived }
 func (CustomPayloadReceived) Domain() Domain { return DomainSession }
 
+// ObservationMissing reports that the session reached play and something a
+// working session always observes has not arrived.
+//
+// It is not a protocol event. Every other name in the taxonomy is derived from
+// a packet; this one is derived from a packet's absence, which is the thing no
+// packet can say. It is here because three defects found in one day were all
+// silent successes — a client whose world was fed by nothing, a bot reading
+// its own position back from the server, and an adapter that never reduced the
+// packet carrying the join-time world — and each was found by a person
+// watching a bot stand still rather than by anything the library said.
+//
+// It reports rather than fails. Nothing in either protocol obliges a server to
+// send terrain, so a session without it is suspect rather than invalid, and
+// the consumer decides. It is emitted once per connection per observation.
+type ObservationMissing struct {
+	Stamp
+
+	// Observation is the event that was expected and did not arrive.
+	Observation Name
+	// Since is how long the client had been in play when it gave up waiting.
+	Since time.Duration
+}
+
+func (ObservationMissing) Name() Name     { return NameSessionObservationMissing }
+func (ObservationMissing) Domain() Domain { return DomainSession }
+
 // PacketReceived carries one decoded inbound packet. It is delivered only to
 // subscribers that selected DomainRaw.
 //
