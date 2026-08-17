@@ -137,9 +137,9 @@ login failed until the player learned that a capture holds both directions and
 a session decodes one. Every synthetic fixture held a single direction, so
 nothing before the live capture could have shown it.
 
-**M6.1: server play-state migration is Client checks pending.** Every
-automated gate is green and the manual play-state client check has not been run.
-The server's play state is off its own protocol 47 packet structs and onto
+**M6.1: server play-state migration is complete.** Every automated gate is
+green and the vanilla-client play session ran on 2026-08-17 with **zero decode
+errors**. The server's play state is off its own protocol 47 packet structs and onto
 `minecraft-protocol`'s generated types: the local packet package and its code
 generation are deleted, and the server now owns no wire code at all. Every
 packet is a generated `minecraft-protocol` type, consumed from the released and
@@ -152,12 +152,32 @@ new `task test:race`, `task test:interop`, and `task build` all pass. The play
 read path no longer decodes packets twice; 13 hand-written `java.Unmarshal`
 calls and 8 hand-rolled parsers are gone.
 
-The one gate left is the vanilla-client play session. The strict generated
-decode has been proven against the pinned Node loopback interop lane, **not**
-against a real client — that is exactly the half M3 left on local structs, and
-the check that has not been run. Its prepared record is
-[here](../server/docs/verification/2026-08-15-m6-1-client-check.md); M6.1 is not
-Complete until that session runs with its decode-error count recorded.
+The last gate was the vanilla-client play session, and it passed. All fourteen
+scenarios were played — join, move, break, place, chest, 2x2 and 3x3 crafting,
+shift-clicking the output, damage, death, respawn, chat, a command with tab
+completion, and disconnect — and the generated codec rejected nothing. That
+covers the half M3 left on local structs, so protocol 47's serverbound surface
+is now proven against a real client end to end rather than against the pinned
+Node interop lane alone. The record is
+[here](../server/docs/verification/2026-08-15-m6-1-client-check.md).
+
+What the session found instead was gameplay, and one finding generalizes past
+chests: **a block state this server invents that the client cannot resolve is
+not a wrong block, it is no block at all.** A 1.8 client looks each chunk
+section value up in its registry of valid states and falls back to air, so
+storing a chest with metadata 0 — not one of the four horizontal facings —
+drew air, and only the client's own placement prediction ever made one visible.
+Anything M11 does with block state has to respect that the valid states are a
+sparse set, not `id<<4 | anything`. Chests, containers, contact damage, and the
+vanilla placement and facing rules were built during the session; the
+[record](../server/docs/verification/2026-08-15-m6-1-client-check.md) lists the
+rest of what it turned up.
+
+Worth carrying separately: the vanilla behaviour was settled by reading the
+deobfuscated 1.8.9 client that `minecraft-reference` already keeps, and doing
+that first rather than reasoning from memory would have saved most of the hunt.
+The reference jars are the cheapest source of truth this project has for
+client-visible behaviour.
 
 **M6.3: the headless connection is complete.** All fourteen tasks landed and
 every automated gate is green: `task lint`, `task test` under `-race`, the new
@@ -265,7 +285,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Complete | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
 | M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 player movement slice with canonical replay and server/client adapters; items and arrows moved to M9 | `minecraft-simulation` | Planned | M4, M7 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
 | M8.1 | Extract Java 1.8.9 physics constants from a verified Mojang server jar and publish them as a pinned, generated Go package | `minecraft-reference`, `minecraft-protocol` | Complete | — | [Physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) |
-| M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic | `minecraft-simulation`, a new capture repository, `headless-minecraft`, `server` | Planned | M8.8 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite) |
+| M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.2–M9.8 planned | M9.1 on M5 and `relay` v0.2.0; M9.2–M9.8 on M8.8 and M9.1 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite) |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps, [M10 plan](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) |
 | M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | Planned | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) (M11.1 written; M11.2–M11.7 await their own design) |
 
@@ -727,15 +747,15 @@ something the approved documents asserted:
   found on the fix path. The matcher and the crafting click paths now have
   tests against the real registry, and the `conn` test harness supplies real
   game data rather than leaving it nil.
-- [~] Complete server play-state migration to `minecraft-protocol` (M6.1):
+- [x] Complete server play-state migration to `minecraft-protocol` (M6.1):
   replace the local packet structs in `pkg/gamedata/versions/pc_1_8` with
   generated types and delete the server's remaining codegen. M3 left play on
   those structs deliberately, decoding them with the shared reflect codec.
-  **Client checks pending:** the migration and every automated gate are done —
-  the package and its codegen are deleted, the server owns no wire code, the
-  parity fixtures are unchanged, and lint, test, race, interop, and build are
-  green — but the vanilla-client play session has not been run. See the
-  [prepared record](../server/docs/verification/2026-08-15-m6-1-client-check.md).
+  **Done.** The package and its codegen are deleted, the server owns no wire
+  code, the parity fixtures are unchanged, lint, test, race, interop, and build
+  are green, and the vanilla-client play session ran on 2026-08-17 across all
+  fourteen scenarios with zero decode errors. See the
+  [record](../server/docs/verification/2026-08-15-m6-1-client-check.md).
 - [ ] Migrate proxy wire imports while keeping the legacy protocol private to `proxy`.
 - [x] Finish headless lifecycle, authentication, event subscriptions, and
   bounded stream ownership (M6.3). Offline authentication only; Microsoft
@@ -969,9 +989,17 @@ Three changes to the original plan, all recorded in the sequencing design:
 - **M8.4 is gated on fixtures.** The zero-corrections test against a live
   vanilla server needs M6 and M7, which the movement code itself does not. That
   gate moves to M8.8, where the client adapter exists anyway.
-- **Capture needs a new repository.** The existing legacy proxy speaks a
-  different protocol family and cannot be extended into a protocol 47 capture
-  tool. M9.1 is a new repository, not the small subcommand originally budgeted.
+- **Capture is proxy-shaped, and `relay` is the proxy.** The existing legacy
+  proxy speaks a different protocol family and cannot be extended into a
+  protocol 47 capture tool. M9.1 was therefore scoped as a new repository until
+  `relay` v0.2.0 landed with the transport, the session registry, and a `Sink`
+  carrying raw chunks. Revised 2026-08-17: M9.1 is a consumer in
+  `relay/examples/minecraft`, and the only genuinely new work is terminating the
+  login on both sides, which `relay` deliberately declines to do.
+- **Recording belongs to the proxy, not to an endpoint.** `server` keeps its
+  operational `slog` output and grows no packet log. Run the proxy in front of
+  it when a packet log is wanted; the same binary that captures vanilla
+  behaviour captures ours, in one format, replayable one way.
 
 | Stage | Depends on | Exit criterion |
 | --- | --- | --- |
@@ -1022,8 +1050,14 @@ affect later stages:
   collision, movement, canonical result digest, and replay.
 - [ ] Prove the same simulation through server and headless adapters, gated on
   zero corrections from a live vanilla 1.8.9 server (M8.8).
-- [ ] Build the protocol 47 capture repository, then verify dropped items and
-  arrows against its traces (M9.1 and M9.2).
+- [x] Build the protocol 47 capture consumer on `relay`: recording sink, trace
+  extraction, replay gate, and `mcrelay trace` / `mcrelay verify` (M9.1). Every
+  automated gate is green against a stub upstream.
+- [ ] Run M9.1's live check: one real 1.8.9 client through the proxy to a pinned
+  offline vanilla server, verified and traced. Procedure in
+  `../relay/docs/verification/2026-08-17-capture-oracle.md`. Until it runs, the
+  oracle is only known to agree with our own encoder.
+- [ ] Verify dropped items and arrows against captured traces (M9.2).
 - [ ] Add movement scenarios: walk, sprint, sneak, jump, fall, collide,
   correction, teleport, and disconnect mid-action.
 - [ ] Add attack scenarios: target selection, reach validation, cooldown or
