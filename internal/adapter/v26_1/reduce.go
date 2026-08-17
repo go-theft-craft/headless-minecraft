@@ -342,39 +342,101 @@ func entityType(kind int32) string { return "java/26.1:entity/" + strconv.Itoa(i
 
 // chunkReducer decodes the packets that describe terrain.
 //
-// **Sections are stored as received and not decoded.** Protocol 775 sends each
-// section as a paletted container, and the paletted container's encoding has
-// changed across recent versions in ways this repository cannot check: the
-// shared protocol module treats `chunkData` as an opaque byte array, nothing
-// here generates or validates the section format, and no captured 26.1 chunk
-// exists in this repository to test a decoder against. A decoder written from
-// memory would return wrong blocks silently, and M8's collision and M9's
-// digging would then be built on them.
+// Sections are split here and decoded lazily, from the format the 26.1.2
+// server's own serializer writes and against a column captured from a real
+// Paper 26.1 server. See section.go, which holds both the layout and why
+// neither the source nor the capture was sufficient alone.
 //
-// So the world keeps the bytes, reports block lookups in a 775 section as
-// undecodable, and everything that does not need block access — chunk load and
-// unload, block changes, block entities, light — works. Implementing the
-// decoder needs one captured 26.1 chunk as a fixture, which `mcproto capture`
-// can record.
+// **Where a column's sections sit is not in the column.** The blob is a run of
+// sections with no origin: the lowest one is the dimension's minimum build
+// height divided by sixteen, which is -4 in the overworld and 0 in the nether.
+// That number arrives in configuration, inside the dimension type registry's
+// NBT, and the player's own dimension arrives with the login. So this reducer
+// watches three packets it otherwise has no interest in, and reads them in
+// wire order like everything else: a login in the same batch as a chunk is
+// seen first because the server sent it first.
+//
+// Until the floor is known a column is stored whole and undecoded, which is
+// what this adapter did for every column before any of this existed. A block
+// lookup in it reports ErrSectionNotDecodable rather than air.
 func chunkReducer(chunks *world.Chunks) world.Func {
+	floor := &columnFloor{}
+
 	return func(_ *world.Context, batch version.Batch, c *event.Collector) error {
 		for _, packet := range batch.Packets {
-			reduceChunkPacket(chunks, packet, c)
+			reduceChunkPacket(chunks, floor, packet, c)
 		}
 
 		return nil
 	}
 }
 
-func reduceChunkPacket(chunks *world.Chunks, packet protocol.Packet, c *event.Collector) {
+// columnFloor remembers where the sections of a column begin.
+//
+// It holds the whole dimension type registry rather than only the current
+// dimension, because the registry arrives in configuration and the dimension
+// changes in play: a client that walked into the nether after learning the
+// overworld's floor would otherwise place every section sixty-four blocks too
+// low, which is a wrong answer rather than a missing one.
+type columnFloor struct {
+	// minY is the minimum build height per dimension type, indexed by the
+	// registry position the server sent it at.
+	minY  []int32
+	known []bool
+	// section is the current dimension's lowest section index.
+	section int
+	placed  bool
+}
+
+// dimensionsReceived records the floors the dimension type registry declares.
+func (f *columnFloor) dimensionsReceived(entries []gen.ConfigurationClientboundRegistryDataEntriesItem) {
+	f.minY = make([]int32, len(entries))
+	f.known = make([]bool, len(entries))
+	for i, entry := range entries {
+		if entry.Value == nil {
+			continue
+		}
+		// Absent is not zero: zero is the nether's real floor.
+		f.minY[i], f.known[i] = entry.Value.Int("min_y")
+	}
+	f.placed = false
+}
+
+// entered records the dimension the player is now in.
+func (f *columnFloor) entered(dimension int32) {
+	f.placed = false
+	if dimension < 0 || int(dimension) >= len(f.minY) || !f.known[dimension] {
+		return
+	}
+	f.section = int(f.minY[dimension]) >> 4
+	f.placed = true
+}
+
+func reduceChunkPacket(
+	chunks *world.Chunks,
+	floor *columnFloor,
+	packet protocol.Packet,
+	c *event.Collector,
+) {
 	switch value := packet.Value.(type) {
+	case *gen.ConfigurationClientboundRegistryData:
+		if value.ID == dimensionTypeRegistry {
+			floor.dimensionsReceived(value.Entries)
+		}
+
+	case *gen.PlayClientboundLogin:
+		floor.entered(value.WorldState.Dimension)
+
+	case *gen.PlayClientboundRespawn:
+		floor.entered(value.WorldState.Dimension)
+
 	case *gen.PlayClientboundMapChunk:
-		// One section entry carrying the whole column's bytes: the column is
-		// not split, because splitting it means parsing the format this
-		// client does not yet read.
-		chunks.Loaded(c, world.ChunkPos{X: value.X, Z: value.Z}, []world.SectionData{
-			{Y: 0, Raw: value.ChunkData},
-		}, nil)
+		chunks.Loaded(
+			c,
+			world.ChunkPos{X: value.X, Z: value.Z},
+			columnSections(floor, value.ChunkData),
+			nil,
+		)
 
 	case *gen.PlayClientboundUnloadChunk:
 		chunks.Unloaded(c, world.ChunkPos{X: value.ChunkX, Z: value.ChunkZ})

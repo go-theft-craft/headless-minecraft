@@ -459,6 +459,58 @@ carries — it reports a packet's absence, which is the thing no packet can say.
 The session domain goes from 14 named events to 15, and the taxonomy from 76 to
 77.
 
+## Decision 13: the 775 section format comes from the server's source, and a column's floor comes from the registry
+
+Added 2026-08-17, closing the deferral this design recorded. Decision 4 kept 775
+sections as opaque bytes because the paletted container's encoding could not be
+checked here: nothing generates it, and no captured 26.1 chunk existed. The
+milestone recorded that one captured chunk would unblock it. That was wrong in
+an instructive way — the chunk was necessary and not sufficient.
+
+**A capture says what the bytes are; only the source says what they mean.**
+Four format hypotheses were tried against a real captured column — with and
+without a block count, with and without a long-array length prefix — and all
+four desynced within a few sections. The 26.1 layout is not the one a reader of
+earlier versions writes down: a section carries `nonEmptyBlockCount` *and* a
+`fluidCount`, and the long array has no count because vanilla writes it with
+`writeFixedSizeLongArray`. That came from `LevelChunkSection.write` in the
+26.1.2 server, decompiled locally by `mcreference`. **The reference workspace is
+part of this repository's verification path, not only the simulation's.**
+
+**The check is the server's own arithmetic, not the decoder's.** Each section
+declares how many of its blocks are not air. Nothing in the decode path reads
+it — that is a block semantic and `world` does not own those — so it is an
+independent statement, written by the server that packed the bytes, about what
+the section holds. All 24 sections of the captured column agree: 98,304 blocks,
+block for block. A decoder that misreads the bit width, the palette, or the
+packing does not survive that.
+
+At runtime the guard is different, because the counts are not usable there: a
+section holding `cave_air` would disagree without being wrong. What holds
+instead is that a column's sections must consume its blob **exactly**. Every
+misread layout leaves the cursor short or past, and this is the only signal
+available before wrong blocks reach a consumer.
+
+**A column does not say where it starts.** The blob is a run of sections with no
+origin. Its lowest section is the dimension's minimum build height over sixteen
+— -4 in the overworld and 0 in the nether — which arrives in configuration
+inside the dimension type registry's NBT, while the player's own dimension
+arrives with the login. So the chunk reducer watches the registry, the login,
+and the respawn as well as the chunk, and reads them in wire order like
+everything else, which is what makes a login bundled with the first columns work.
+
+That needed `NetworkNBT.Int` in `minecraft-protocol`: both NBT types were
+retained losslessly and exposed only as bytes, so `min_y` existed on the wire
+and nowhere a consumer could reach it. Reading it here would have meant a second
+NBT walker in a repository that already depends on one — the same argument that
+put block solidity in that repository.
+
+**Until the floor is known, nothing is decoded.** The column is kept whole and a
+block lookup reports `ErrSectionNotDecodable`, which is what this adapter always
+did. Guessing the floor is the one option not taken: it fails by 64 blocks in
+the overworld while still answering every lookup, which is the failure this
+milestone spent a day learning to refuse.
+
 ## Exit criteria
 
 | | Criterion |
@@ -473,6 +525,8 @@ The session domain goes from 14 named events to 15, and the taxonomy from 76 to
 | 8 | Loading and releasing 1000 chunks and 1000 entities returns the stores to empty |
 | 9 | A world installed against an adapter that supplies no reducers is refused by `New`, and the adapter's reducer is proven to run rather than merely to be registered |
 | 10 | A session that reaches play and loads no chunk publishes `session.observation_missing` once, and one that loads a chunk publishes none |
+| 11 | Every section of a captured 26.1 column decodes to the non-air block count the server declared for it, and a column that does not consume its blob exactly is refused |
+| 12 | A column is placed at the floor its dimension declares, moves when the player changes dimension, and stays undecoded when no floor is known |
 
 ## Plan amendments this design requires
 

@@ -1,6 +1,6 @@
 # Go Theft Craft master plan
 
-Last reviewed: 2026-08-16
+Last reviewed: 2026-08-17
 
 This file is the cross-repository source of truth for what remains. Detailed
 designs and implementation plans remain in their owning repositories. Update
@@ -194,7 +194,9 @@ milestone depends on it, and the `auth.Provider` seam it plugs into is already i
 place, so picking it up later costs nothing that starting it now would save. What
 postponing it costs is access to online-mode servers — every check from here runs
 against offline mode, including M8's and M9's vanilla lanes. Take it up when a
-real online-mode server is the thing being tested, not before.
+real online-mode server is the thing being tested, not before. That moment now
+has a name: M10's online-mode lane, listed in its checklist, is what finally
+picks M6.4 up.
 
 **M6.3: the headless connection is complete.** All fourteen tasks landed and
 every automated gate is green: `task lint`, `task test` under `-race`, the new
@@ -310,7 +312,12 @@ constants.
 **M8.8 has two prerequisites nobody had written down.** The headless client's
 send path is unexported, because M7's scope was observation, so there is no way
 to tell a server where the player went; an outbound version-neutral action seam
-is that plan's first task and a real API addition. And with M6.4 postponed, the
+is that plan's first task and a real API addition. **Since met:** `Client.Do`
+landed in `headless-minecraft` with move, look, move-look, ground, and respawn
+intents, serialized against the read loop and refused before the server places
+the player. M8.8's first task is done ahead of it, and its plan should be
+reconciled against the API that actually landed rather than the one it
+sketched. The second prerequisite stands: with M6.4 postponed, the
 gate runs in offline mode only — fine for a local vanilla server, but the result
 says nothing about online mode and the plan requires it to say so. The plan also
 defines a correction before counting one, since a vanilla server sends every
@@ -366,11 +373,13 @@ tests written from a careful reading:
   plan described this rule; without it a body walking at any angle other than
   square on diverges within four ticks.
 
-Two divergences are recorded rather than fixed, and both are M9's or M8.8's.
+Two divergences are recorded rather than fixed, and each now has an owner.
 The vertical clamp is not a rule of the tick at all: the game calls the landing
 behaviour of the block under the body's feet, whose default zeroes the vertical
 motion and whose slime override negates it. There is no per-block landing hook
-yet, so slime stays out of the differential worlds. And the sneak edge-guard
+yet, so slime stays out of the differential worlds; the hook is assigned to
+M9.3, whose movement scenarios are the first gate a slime block can fail — 1.8
+has slime blocks, so both versions' lanes will see it. And the sneak edge-guard
 that stops a crouching player walking off a ledge is gated on
 `instanceof EntityPlayer`, so neither the harness's stub nor our collision
 applies it — a real player at a real server will, which M8.8 will see.
@@ -408,7 +417,7 @@ flowchart LR
     M5["M5 Routing, capture/replay, mcproto<br/>Complete"]
     M6["M6 Complete consumer migrations<br/>Complete (M6.4 postponed)"]
     M7["M7 Observed client world state<br/>Complete"]
-    M8["M8 Deterministic simulation slice<br/>M8.1–M8.2 complete"]
+    M8["M8 Deterministic simulation slice<br/>M8.1–M8.4 complete"]
     M9["M9 Movement, attack, inventory, craft"]
     M10["M10 Conformance and stable v1"]
     M11["M11 Server framework<br/>M11.1–M11.7"]
@@ -445,7 +454,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M8.8 | One kernel driven by client prediction and server authority, gated on zero corrections from vanilla | `minecraft-simulation`, `headless-minecraft`, `server` | Planned, plan written | M8.4, M6, M7 | [M8.8 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) |
 | M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic, each verified against both 1.8.9 and 26.1.2 | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.1b planned; M9.3–M9.8 plans drafted ahead of their prerequisites, each with a reconcile-first task; M9.2 unblocked by M8.4 and awaiting M8.8 | M9.1 on M5 and `relay` v0.2.0; M9.1b on M9.1 and M4; M9.2–M9.8 on M8.8, M9.1, and M9.1b | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite), [M9.1b–M10 cross-version plan](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps, [M10 plan](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) |
-| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | M11.1 complete; M11.2–M11.7 planned | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) (M11.1 written; M11.2–M11.7 await their own design) |
+| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | M11.1 complete; M11.2–M11.7 designed, plans not yet written | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md) and its six sub-milestone designs, [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) (M11.1 written; M11.2–M11.7 need plans from their designs) |
 
 ## What is complete
 
@@ -980,6 +989,30 @@ something the approved documents asserted:
   in a 775 section report `ErrSectionNotDecodable`. **What unblocks it is one
   captured 26.1 chunk as a fixture**, which `mcproto capture` can record — the
   same route M4 used to close its vanilla-client check.
+  **Closed 2026-08-17, and the fixture was not the only thing missing.** Two
+  more were, and each would have produced wrong blocks rather than an error:
+  - **The layout is not the one memory supplies.** A 26.1 section carries two
+    counts, not one — `nonEmptyBlockCount` and a `fluidCount` that did not
+    exist before — and its long array has no length prefix, because vanilla
+    writes it with `writeFixedSizeLongArray`. Four format hypotheses were tried
+    against the capture and all four desynced. What settled it was the 26.1.2
+    server's own `LevelChunkSection.write`, decompiled locally by `mcreference`.
+    **A capture says what the bytes are; only the source says what they mean.**
+  - **A column does not say where it starts.** The blob is a run of sections
+    with no origin, and the lowest one is the dimension's `min_y` over sixteen
+    — -4 in the overworld, 0 in the nether. That number is in the dimension
+    type registry's NBT, and `java.NetworkNBT` was opaque, so the value existed
+    on the wire and nowhere a consumer could reach. Closed by `NetworkNBT.Int`
+    in `minecraft-protocol`, per the same call that gave that repository block
+    solidity. Until the floor is known the column is kept whole and undecoded,
+    which is what this adapter always did.
+
+  The decode is checked against the server's own arithmetic rather than against
+  itself: every section declares how many of its blocks are not air, nothing in
+  the decode path reads that number, and all 24 sections of the captured column
+  agree — 98,304 blocks, block for block. The runtime guard is that a column's
+  sections must consume the blob exactly, because every misread layout leaves
+  the cursor short or past.
 - **Each protocol attributes the half the other does not.** Protocol 775 sends a
   damage event naming the entity responsible and the entity that dealt it, and
   its death event carries only a player and a message — the killer field is
@@ -1198,8 +1231,8 @@ something the approved documents asserted:
   server re-sends it when the player's respawn point moves, and there is no
   separate immovable world landmark on the wire. Second time an orbit
   required-surface row marked "Designed" turned out to be a hole.
-- [ ] Decide who owns a map from a block state to whether it is solid. No
-  milestone does. `world` stores state IDs as sent and refuses block semantics by
+- [x] Decide who owns a map from a block state to whether it is solid. No
+  milestone did. `world` stores state IDs as sent and refuses block semantics by
   design, which is right, but nothing downstream supplies them either, so
   [`examples/orbit`](docs/superpowers/specs/2026-08-16-orbit-example-design.md)
   can see the whole world and still cannot tell a wall from air: every position
@@ -1212,7 +1245,9 @@ something the approved documents asserted:
   names packets can name blocks — and it keeps `world`'s refusal to interpret
   intact, keeps one table serving both protocols, and keeps every consumer from
   writing its own. `headless-minecraft` keeps the `Solidity` port and satisfies
-  it from there rather than defining the mapping itself.
+  it from there rather than defining the mapping itself. The decision is now
+  implemented, not just made: `examples/orbit` answers its `Solidity` port
+  through `Chunk47Solidity`, reading the table extracted from the game.
 
 ### M8–M9 — Simulation and gameplay
 
@@ -1228,9 +1263,9 @@ newer and wins.
 ```mermaid
 flowchart LR
     A["M8.1 Ground-truth pipeline<br/>Complete"]
-    B["M8.2 Geometry + collision<br/>Planned"]
-    C["M8.3 Kernel contracts"]
-    D["M8.4 v1_8 player"]
+    B["M8.2 Geometry + collision<br/>Complete"]
+    C["M8.3 Kernel contracts<br/>Complete"]
+    D["M8.4 v1_8 player<br/>Complete"]
     F["M8.6 Replay + determinism"]
     G["M8.7 v26_1 profile"]
     H["M8.8 Consumer integration"]
@@ -1347,9 +1382,17 @@ because each one changes what a stage costs:
 - [x] Complete M8.1: `mcreference dump`, pinned `physics.json` with Mojang
   provenance, and generated `physics.go`.
 - [ ] Update `minecraft-simulation` to consume the released
-  `minecraft-reference` tool instead of `main`.
-- [ ] Complete reviewed vanilla behavior catalogs and independent fixtures for
-  Java 1.8.9 and 26.1.2.
+  `minecraft-reference` tool instead of `main`. Lingering since M8.1 with no
+  owner; folded into M8.6 as its first housekeeping task, since that is the
+  next milestone to touch the repository.
+- Retired: reviewed vanilla behavior catalogs for Java 1.8.9 and 26.1.2. M8.4
+  measured what a careful catalog is worth — two of M8.2's eight prose
+  statements about vanilla were wrong, and no fixture written from the same
+  prose would have caught either — and replaced the approach with fixtures the
+  game generates through `internal/oracle`. The oracle and the capture lanes
+  are the catalog now; prose stays where a mechanic needs explaining, never as
+  a gate. Retired the way M8.5 was, explicitly and with the reason, rather than
+  left pending.
 - [x] Complete M8.2: `geom`, `world`, and `collision`, with the three exit
   properties and a differential harness that agrees with a real 1.8.9 server
   bit for bit across 2,872 whole moves.
@@ -1467,17 +1510,17 @@ The three worth carrying furthest:
     started (verified against the pre-M11.1 tree). It is unrelated to the
     framework work and still open.
 - [ ] M11.2 World model and chunk ownership: interned block states, per-version
-  adapters, immutable sections.
+  adapters, immutable sections. [Design](../server/docs/superpowers/specs/2026-08-17-m11-2-world-model-design.md), 2026-08-17.
 - [ ] M11.3 Storage: `WorldStore` and `SideStore`, native format research,
-  vanilla Anvil adapter, snapshot saving.
+  vanilla Anvil adapter, snapshot saving. [Design](../server/docs/superpowers/specs/2026-08-17-m11-3-storage-design.md), 2026-08-17.
 - [ ] M11.4 World generation: parameters, named world types, version-neutral
-  output. No separate repository.
+  output. No separate repository. [Design](../server/docs/superpowers/specs/2026-08-17-m11-4-world-generation-design.md), 2026-08-17.
 - [ ] M11.5 Provenance: item and block identity, the ID index, the audit log and
-  its queries, reconciliation on load.
+  its queries, reconciliation on load. [Design](../server/docs/superpowers/specs/2026-08-17-m11-5-provenance-design.md), 2026-08-17.
 - [ ] M11.6 Observability: one `Observer` interface, per-player, per-feature,
-  and per-chunk attribution.
+  and per-chunk attribution. [Design](../server/docs/superpowers/specs/2026-08-17-m11-6-observability-design.md), 2026-08-17.
 - [ ] M11.7 Commands: `Command`, `Set`, `vanilla.Stubs()`, brigadier rendering
-  on protocol 775 and tab-complete on 47.
+  on protocol 775 and tab-complete on 47. [Design](../server/docs/superpowers/specs/2026-08-17-m11-7-commands-design.md), 2026-08-17.
 
 ## Document index
 
@@ -1496,6 +1539,12 @@ The three worth carrying furthest:
 - [Headless connection design](docs/superpowers/specs/2026-08-15-headless-connection-design.md) — subdivides M6 into M6.1–M6.4 and fixes the 73-name event taxonomy
 - [Observed world state design](docs/superpowers/specs/2026-08-16-observed-world-state-design.md) — M7; draft for review. Puts two prerequisites back on M6.3: the revision on `Event`, and a client loop that owns the configuration phase
 - [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md) — adds M11 and subdivides it into M11.1–M11.7
+- [M11.2 world model and chunk ownership design](../server/docs/superpowers/specs/2026-08-17-m11-2-world-model-design.md) — interned states, immutable sections, the override map retired
+- [M11.3 storage design](../server/docs/superpowers/specs/2026-08-17-m11-3-storage-design.md) — bidirectional Anvil, incremental snapshot saving, the native-format question answered "not yet"
+- [M11.4 world generation design](../server/docs/superpowers/specs/2026-08-17-m11-4-world-generation-design.md) — typed parameters, a named-type registry, a determinism contract
+- [M11.5 provenance design](../server/docs/superpowers/specs/2026-08-17-m11-5-provenance-design.md) — 24/40 item IDs, the index as the write path, a stated query budget
+- [M11.6 observability design](../server/docs/superpowers/specs/2026-08-17-m11-6-observability-design.md) — closed label set, per-feature spans, per-region attribution
+- [M11.7 commands design](../server/docs/superpowers/specs/2026-08-17-m11-7-commands-design.md) — one signature driving execution, completion, and brigadier
 
 ### Focused implementation plans
 
