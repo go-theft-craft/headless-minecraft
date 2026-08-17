@@ -390,7 +390,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M8.6 | Canonical recording and replay, and a six-target determinism matrix | `minecraft-simulation` | Planned, plan written; runner obstacle identified | M8.3 for encoding, M8.4 for the matrix | [M8.6 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-6-replay-and-determinism.md) |
 | M8.7 | `profile/java/v26_1` for the player, plus a 26.1.2 physics dumper and dataset | `minecraft-reference`, `minecraft-protocol`, `minecraft-simulation` | Planned, plan written; starts with an oracle feasibility task | M8.4, M4 | [M8.7 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-7-v26-1-player-movement.md) |
 | M8.8 | One kernel driven by client prediction and server authority, gated on zero corrections from vanilla | `minecraft-simulation`, `headless-minecraft`, `server` | Planned, plan written | M8.4, M6, M7 | [M8.8 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) |
-| M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.2–M9.8 planned | M9.1 on M5 and `relay` v0.2.0; M9.2–M9.8 on M8.8 and M9.1 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite) |
+| M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic, each verified against both 1.8.9 and 26.1.2 | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.1b planned; M9.3–M9.8 plans drafted ahead of their prerequisites, each with a reconcile-first task; M9.2 awaits M8.4 | M9.1 on M5 and `relay` v0.2.0; M9.1b on M9.1 and M4; M9.2–M9.8 on M8.8, M9.1, and M9.1b | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite), [M9.1b–M10 cross-version plan](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps, [M10 plan](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) |
 | M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | Planned | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) (M11.1 written; M11.2–M11.7 await their own design) |
 
@@ -1175,13 +1175,14 @@ independently verifiable against a vanilla server.
 | Stage | Deliverable | Exit criterion |
 | --- | --- | --- |
 | M9.1 | Entity-trace capture in a new protocol 47 proxy repository | A captured trace replays deterministically from its recording |
-| M9.2 | Dropped item and arrow rules, both profiles | Captured traces replay within one thirty-second of a block |
-| M9.3 | Movement scenarios | Correction, teleport, and disconnect mid-action behave as vanilla |
-| M9.4 | Digging and block breaking | Break times match vanilla for tool, block, and effect combinations |
-| M9.5 | Building and placement | Placement legality and resulting block state match vanilla |
-| M9.6 | Attack, damage, knockback | Reach validation, cooldown timing, damage, and death match vanilla |
-| M9.7 | Containers and inventory | Window open and close, slot synchronization, and rejected moves match vanilla |
-| M9.8 | Crafting | Recipe matching and result stacks match vanilla, including the 2x2 grid |
+| M9.1b | The same capture oracle on protocol 775, against a pinned 26.1.2 server | A 775 trace replays deterministically, and the replay tolerance is derived from 775's position encoding rather than 1.8's |
+| M9.2 | Dropped item and arrow rules, both profiles | Captured traces replay within tolerance on 1.8.9 and 26.1.2 |
+| M9.3 | Movement scenarios | Correction, teleport, and disconnect mid-action behave as vanilla on 1.8.9 and 26.1.2 |
+| M9.4 | Digging and block breaking | Break times match vanilla for tool, block, and effect combinations on 1.8.9 and 26.1.2 |
+| M9.5 | Building and placement | Placement legality and resulting block state match vanilla on 1.8.9 and 26.1.2 |
+| M9.6 | Attack, damage, knockback | Reach validation, cooldown timing, damage, and death match vanilla on 1.8.9 and 26.1.2 |
+| M9.7 | Containers and inventory | Window open and close, slot synchronization, and rejected moves match vanilla on 1.8.9 and 26.1.2 |
+| M9.8 | Crafting | Recipe matching and result stacks match vanilla on 1.8.9 and 26.1.2, including the 2x2 grid |
 
 Three constraints discovered while running M8.1, recorded here because they
 affect later stages:
@@ -1196,6 +1197,45 @@ affect later stages:
 - Captured traces verify trajectories to roughly one thirty-second of a block,
   not exactly, because Java Edition 1.8 transmits positions as fixed point.
   This catches wrong constants and wrong axis order, not last-place drift.
+  That number is a 1.8 artifact, not a project-wide tolerance: protocol 775
+  sends positions as doubles, so the 26.1.2 lane needs its own figure derived
+  from its own encoding. Reusing one thirty-second there would pass a kernel
+  that is wrong by three orders of magnitude more than the wire can hide.
+
+Two further constraints belong to the cross-version gates above:
+
+- **The capture oracle is protocol 47 only.** M9.1 builds a proxy that speaks
+  47, in front of a pinned 1.8.9 server, and every stage from M9.2 on is judged
+  against traces it produces. Nothing verifies 26.1.2 behavior until a 775
+  capture lane exists. M9.1b is that lane, and it gates M9.2 onward just as
+  M9.1 does.
+- **Some mechanics have no 1.8.9 counterpart, and that is a finding, not a
+  failure.** The attack cooldown M9.6 names is a 1.9 addition; 1.8.9 has none.
+  A per-version gate must be allowed to say "this behavior does not exist in
+  this version" and record why, rather than forcing a shared expectation onto
+  two games that disagree.
+
+Drafting the M9.3–M9.8 stage plans surfaced three more, worth carrying here
+because each one changes what a stage costs:
+
+- **The 26.1 window dataset is an alias of Java 1.16.1.**
+  `generated/java/v26_1/windows.go` says so in its own doc comment: upstream
+  publishes no windows dataset for Java 26.1, so the pinned tree resolves the
+  alias, and "a window here may name slots and properties the running server no
+  longer has." M9.7 may therefore be building on slot layouts a decade out of
+  date. Its plan opens with an audit whose failure is the deliverable, and
+  M9.7 must be re-estimated after it.
+- **The two versions classify blocks by incompatible material vocabularies.**
+  1.8.9's stone is material `"rock"` and 26.1.2's is `"mineable/pickaxe"`, and
+  26.1.2 encodes tool correctness as a family of `incorrect_for_<tier>_tool`
+  materials that 1.8.9 has no counterpart for. A shared break-time lookup keyed
+  by material name would miss on every 26.1 block, so M9.4's classification is
+  version-owned out of necessity rather than symmetry.
+- **M9.6 no longer owns damage attribution.** It landed:
+  `event/damage.go` carries the damage type, the responsible entity, the entity
+  that dealt it, and a position, and documents that protocol 47 sends none of
+  them. What M9.6 still owns is the respawn primitive, which does not exist
+  because no outbound action path exists until M8.8.
 
 - [x] Complete M8.1: `mcreference dump`, pinned `physics.json` with Mojang
   provenance, and generated `physics.go`.
@@ -1219,7 +1259,14 @@ affect later stages:
   offline vanilla server, verified and traced. Procedure in
   `../relay/docs/verification/2026-08-17-capture-oracle.md`. Until it runs, the
   oracle is only known to agree with our own encoder.
-- [ ] Verify dropped items and arrows against captured traces (M9.2).
+- [ ] Extend the capture oracle to protocol 775 against a pinned vanilla 26.1.2
+  server, derive that version's replay tolerance from its own position
+  encoding, and build the two-version gate harness M9.2–M9.8 share (M9.1b).
+  Plan in
+  `docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md`.
+  Until it lands, "match vanilla" in the M9 stages means 1.8.9 alone.
+- [ ] Verify dropped items and arrows against captured traces on both versions
+  (M9.2).
 - [ ] Add movement scenarios: walk, sprint, sneak, jump, fall, collide,
   correction, teleport, and disconnect mid-action.
 - [ ] Add attack scenarios: target selection, reach validation, cooldown or
@@ -1337,6 +1384,16 @@ The three worth carrying furthest:
 - [Constructed components, world state, and operations](docs/superpowers/plans/2026-08-13-world-state-actions.md) — pending
 - [Minecraft reference extraction](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md) — reference tool extracted and released; simulation research catalog pending
 - [Minecraft simulation foundation](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) — repository foundation complete; implementation pending
+- [M9 gameplay mechanics](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) — M9.1 written and built. Revised 2026-08-17: every gate from M9.2 on is a two-version gate, and M9.3–M9.8 now have drafted stage plans
+- [M9.3 movement scenarios](docs/superpowers/plans/2026-08-17-m9-3-movement-scenarios.md) — drafted ahead of its prerequisites; Task 0 reconciles the M8.3/M8.4/M8.8 symbols it names
+- [M9.4 digging and block breaking](docs/superpowers/plans/2026-08-17-m9-4-digging-block-breaking.md) — drafted; found that the two versions' block-material vocabularies are incompatible
+- [M9.5 building and placement](docs/superpowers/plans/2026-08-17-m9-5-building-and-placement.md) — drafted; the resulting-state rule is version-owned because 1.8.9 addresses states by metadata and 26.1.2 by a flat range
+- [M9.6 attack, damage, and knockback](docs/superpowers/plans/2026-08-17-m9-6-attack-damage-knockback.md) — drafted; owns the respawn primitive, and demonstrates the harness's `Absent` outcome on the attack cooldown
+- [M9.7 containers and inventory](docs/superpowers/plans/2026-08-17-m9-7-containers-and-inventory.md) — drafted; opens with an audit task because the 26.1 window dataset is an alias of Java 1.16.1
+- [M9.8 crafting](docs/superpowers/plans/2026-08-17-m9-8-crafting.md) — drafted; closes M9, and requires every stage's lanes to be accounted for before it does
+- [M9.1b and M10 cross-version conformance](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) — planned. The protocol 775 capture oracle, per-version replay tolerances, the two-version gate harness, and the M10 matrix rows that close the 1.8-only gap
+- [M10 conformance and releases](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) — planned; its Tasks 1 and 2 are amended by the cross-version plan above
+- [M11 server framework](docs/superpowers/plans/2026-08-16-m11-server-framework.md) — planned
 
 ### Umbrella plans
 

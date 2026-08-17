@@ -4,9 +4,9 @@
 
 **Goal:** Verify every gameplay mechanic — items, movement, digging, building, attack, containers, crafting — against captured vanilla behaviour, starting with the capture tool that makes the verification possible.
 
-**Architecture:** M9 subdivides by mechanic because the simulation packages and the conformance fixtures are already organised that way and each mechanic is independently verifiable against a vanilla server. M9.1 builds the oracle: a protocol 47 proxy that sits between a real client and a real server, records both directions through `minecraft-protocol`'s capture format, and replays a recording deterministically. Every later stage is judged against traces that tool produces.
+**Architecture:** M9 subdivides by mechanic because the simulation packages and the conformance fixtures are already organised that way and each mechanic is independently verifiable against a vanilla server. M9.1 builds the oracle: a protocol 47 proxy that sits between a real client and a real server, records both directions through `minecraft-protocol`'s capture format, and replays a recording deterministically. M9.1b extends that oracle to protocol 775 against a pinned 26.1.2 server. Every later stage is judged against traces those tools produce, on both versions.
 
-**Tech Stack:** Go 1.26.6 from `openserbia/go-flake`, Devbox, Task, `relay` v0.2.0 (proxy transport, `Sink`, hooks), `minecraft-protocol` v0.2.0 (`capture`, `replay`, `router`, `login`, `source`), `minecraft-simulation`'s kernel, and a pinned vanilla 1.8.9 server.
+**Tech Stack:** Go 1.26.6 from `openserbia/go-flake`, Devbox, Task, `relay` v0.2.0 (proxy transport, `Sink`, hooks), `minecraft-protocol` v0.2.0 (`capture`, `replay`, `router`, `login`, `source`), `minecraft-simulation`'s kernel, a pinned vanilla 1.8.9 server, and a pinned vanilla 26.1.2 server.
 
 **Revised 2026-08-17.** M9.1 was written to create a new capture repository,
 because when the sequencing design was approved no protocol-agnostic proxy
@@ -32,8 +32,10 @@ both sides, write the capture format, extract traces, and gate on replay.
   same tool that captures vanilla behaviour also captures ours, in the same
   format, replayable the same way. A recorder built into one endpoint would
   only ever see that endpoint's view.
-- The capture consumer speaks Java protocol 47 through `minecraft-protocol` and
-  runs on `relay`'s transport. It is not built on the legacy proxy: that proxy
+- The capture consumer speaks Java protocol 47 and, from M9.1b, protocol 775
+  through `minecraft-protocol`, and runs on `relay`'s transport. Every M9 gate
+  from M9.2 on is a two-version gate, so a mechanic is not verified until it
+  has been checked against both a 1.8.9 and a 26.1.2 server. It is not built on the legacy proxy: that proxy
   speaks a different protocol family — one-byte packet identifiers, no VarInt
   framing, UCS-2 strings, and encryption in one direction only — and cannot
   capture Java Edition traces without being rewritten into a different program.
@@ -439,6 +441,24 @@ git add . && git commit -m "feat(mcrelay): add trace extraction and the replay g
 
 ## Stages awaiting their prerequisite
 
+**Revised 2026-08-17. M9.3 through M9.8 now have written plans, against the
+caveat below.** They were written ahead of their prerequisites at the maintainer's
+request. Each one opens with a "Before executing this plan: reconcile it" section
+listing every symbol it names that is **specified but not yet built**, cited to
+the M8.3, M8.4, M8.7, M8.8, M9.1b, or M9.3 plan that specifies it, and each one
+makes reconciling that list Task 0. Treat them as drafts against a moving target,
+not as approved plans: the risk the paragraphs below describe has not gone away,
+it has been made explicit and pushed into each plan's first task.
+
+- [M9.3 movement scenarios](2026-08-17-m9-3-movement-scenarios.md)
+- [M9.4 digging and block breaking](2026-08-17-m9-4-digging-block-breaking.md)
+- [M9.5 building and placement](2026-08-17-m9-5-building-and-placement.md)
+- [M9.6 attack, damage, and knockback](2026-08-17-m9-6-attack-damage-knockback.md)
+- [M9.7 containers and inventory](2026-08-17-m9-7-containers-and-inventory.md)
+- [M9.8 crafting](2026-08-17-m9-8-crafting.md)
+
+The original reasoning, which still governs how these plans should be read:
+
 The remaining stages are not written out as tasks here, and that is a decision
 rather than an omission. The
 [sequencing design](../../../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md)
@@ -454,17 +474,42 @@ already paid for once, in the shared-protocol extraction plan that named a
 directory nobody could find.
 
 Each stage below states what it delivers, what must exist first, and its gate.
-Write its plan when its prerequisite lands.
+The "write its plan after" column is now "reconcile its plan after": the plan
+exists, and what its prerequisite supplies is the real names for the symbols it
+had to name in advance.
 
-| Stage | Delivers | Write its plan after | Gate |
+Writing them ahead of time did surface things worth having early, which is the
+argument for having done it. Four, recorded here so they are not lost if a plan
+is rewritten:
+
+- **The 26.1 window dataset is an alias of Java 1.16.1**, and
+  `generated/java/v26_1/windows.go` says so in its own doc comment. M9.7 may be
+  building on slot layouts a decade out of date, so its plan opens with an audit
+  task whose failure is the deliverable — the same shape as M8.7's Task 1.
+- **The two versions classify blocks by incompatible material vocabularies.**
+  1.8.9's stone is material `"rock"`; 26.1.2's is `"mineable/pickaxe"`, and
+  26.1.2 encodes tool correctness as `incorrect_for_<tier>_tool` materials that
+  1.8.9 has no counterpart for. M9.4's classification is version-owned for this
+  reason, not for symmetry.
+- **The master plan's claim that M9.6 owns damage attribution is stale.**
+  `event/damage.go` already carries cause, direct cause, damage type, and
+  position, and already documents that protocol 47 sends none of it. What M9.6
+  still owns is the respawn primitive.
+- **The attack cooldown is the model case for the M9.1b harness's `Absent`
+  outcome.** It arrived in 1.9, so the 1.8.9 lane declares it absent with a
+  reason rather than passing silently, and M9.6's plan uses it to demonstrate
+  the mechanism the other stages reuse.
+
+| Stage | Delivers | Reconcile its plan after | Gate |
 | --- | --- | --- | --- |
-| M9.2 | Dropped item and arrow rules, both profiles | M9.1 and M8.4 | Captured traces replay within one thirty-second of a block |
-| M9.3 | Movement scenarios | M8.8 | Correction, teleport, and disconnect mid-action behave as vanilla |
-| M9.4 | Digging and block breaking | M9.3 | Break times match vanilla across tool, block, and effect combinations |
-| M9.5 | Building and placement | M9.4 | Placement legality and resulting block state match vanilla |
-| M9.6 | Attack, damage, knockback | M9.3 | Reach validation, cooldown timing, damage, and death match vanilla |
-| M9.7 | Containers and inventory | M9.5 | Window open and close, slot synchronisation, and rejected moves match vanilla |
-| M9.8 | Crafting | M9.7 | Recipe matching and result stacks match vanilla, including the 2x2 grid |
+| M9.1b | The capture oracle on protocol 775, against a pinned 26.1.2 server | M9.1's live check | A 775 trace replays deterministically, and the replay tolerance is derived from 775's own position encoding |
+| M9.2 | Dropped item and arrow rules, both profiles | M9.1b and M8.4 | Captured traces replay within tolerance on 1.8.9 and 26.1.2 |
+| M9.3 | Movement scenarios | M8.8 | Correction, teleport, and disconnect mid-action behave as vanilla on both versions |
+| M9.4 | Digging and block breaking | M9.3 | Break times match vanilla across tool, block, and effect combinations on both versions |
+| M9.5 | Building and placement | M9.4 | Placement legality and resulting block state match vanilla on both versions |
+| M9.6 | Attack, damage, knockback | M9.3 | Reach validation, damage, and death match vanilla on both versions; cooldown timing on 26.1.2, recorded as absent on 1.8.9 |
+| M9.7 | Containers and inventory | M9.5 | Window open and close, slot synchronisation, and rejected moves match vanilla on both versions |
+| M9.8 | Crafting | M9.7 | Recipe matching and result stacks match vanilla on both versions, including the 2x2 grid |
 
 Three findings from other milestones belong to stages in this table, recorded
 here so they are not rediscovered:
@@ -472,7 +517,10 @@ here so they are not rediscovered:
 - **One thirty-second of a block is the resolution, not a tolerance chosen for
   comfort.** Java Edition 1.8 transmits positions as fixed point, so a captured
   trace verifies to that precision and no further. It catches wrong constants
-  and wrong axis order, not last-place drift. M9.2 inherits this.
+  and wrong axis order, not last-place drift. M9.2 inherits this for its 1.8.9
+  lane only: protocol 775 sends positions as doubles, so its tolerance must be
+  derived separately in M9.1b. Carrying one thirty-second across would make the
+  modern lane accept errors the wire is precise enough to expose.
 - **`headless-minecraft` needs a respawn primitive and damage attribution.**
   Its interaction primitive list has no respawn, and its taxonomy has no event
   naming who dealt damage. M9.6 owns both, and
@@ -488,6 +536,18 @@ here so they are not rediscovered:
 **The capture repository is new work, not a subcommand.** The parent design
 budgeted 400 lines on the assumption that an existing proxy could be extended.
 It cannot. Re-estimate M9 before scheduling it.
+
+**The oracle is protocol 47 only, and every later gate depends on it.** M9.1
+builds one proxy, speaking one protocol, in front of one 1.8.9 server. As
+written before this revision, M9.3 through M9.8 said "match vanilla" without
+naming a version, which in practice meant 1.8.9 alone — the project would have
+shipped seven verified mechanics and no evidence about the version most servers
+actually run. M9.1b closes that, but it is unscoped work, not a flag on an
+existing tool: 775's login handshake, its configuration state, and its packet
+set differ enough that the codec pinning in M9.1's tests is explicitly
+protocol-47-specific. Re-estimate M9 with M9.1b in it. If M9.1b is cut, say so
+in the master plan and mark M9.3 through M9.8 as single-version gates rather
+than letting "match vanilla" imply more coverage than was bought.
 
 **Offline mode limits what can be captured.** The proxy terminates one login and
 opens another, which online mode cannot survive. Any behaviour that differs
