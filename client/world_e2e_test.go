@@ -190,29 +190,49 @@ func TestEndToEndFillsTheStoresBeforeEmptyingThem(t *testing.T) {
 		t.Fatalf("Subscribe: %v", err)
 	}
 
+	// Read the snapshot the moment the second spawn is seen, before the destroy
+	// wave has been applied.
+	//
+	// The reader starts before Connect. A subscription is bounded and a
+	// subscriber that falls behind is closed rather than blocked, so a reader
+	// that only started once Connect returned could have the whole script
+	// published into its buffer while it waited — and under load, be dropped
+	// before it ever saw the spawn it is waiting for.
+	type observation struct {
+		tracked int
+		seen    bool
+	}
+	watched := make(chan observation, 1)
+	go func() {
+		for published := range entities.C() {
+			if published.Name() != event.NameEntitySpawned {
+				continue
+			}
+			if spawned, ok := published.(event.EntitySpawned); ok && spawned.EntityID == 8 {
+				watched <- observation{tracked: len(w.Snapshot().Entities.Tracked), seen: true}
+
+				return
+			}
+		}
+		watched <- observation{}
+	}()
+
 	if err := bot.Connect(t.Context()); err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
 
-	// Read the snapshot the moment the second spawn is seen, before the
-	// destroy wave has been applied.
-	var tracked int
-	for published := range entities.C() {
-		if published.Name() != event.NameEntitySpawned {
-			continue
-		}
-		if spawned, ok := published.(event.EntitySpawned); ok && spawned.EntityID == 8 {
-			tracked = len(w.Snapshot().Entities.Tracked)
-
-			break
-		}
-	}
+	got := <-watched
 	if err := bot.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 	drain(entities)
 
-	if tracked != 2 {
-		t.Errorf("the world held %d entities at the second spawn, want 2", tracked)
+	// Separated from the count, so a dropped subscription reports itself as one
+	// rather than as a world that held nothing.
+	if !got.seen {
+		t.Fatal("the spawn of entity 8 never arrived; the subscription ended first")
+	}
+	if got.tracked != 2 {
+		t.Errorf("the world held %d entities at the second spawn, want 2", got.tracked)
 	}
 }

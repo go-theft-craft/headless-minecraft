@@ -12,8 +12,10 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"errors"
+	"io"
 	"net"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -95,11 +97,27 @@ func serve(ctx context.Context, t *testing.T, listener net.Listener, script Scri
 	}
 	defer func() { _ = stream.Close() }()
 
-	if err := play(ctx, stream, conn, script); err != nil && ctx.Err() == nil {
+	if err := play(ctx, stream, conn, script); err != nil && ctx.Err() == nil && !hungUp(err) {
 		t.Errorf("fixture: %v", err)
 	}
 
 	<-ctx.Done()
+}
+
+// hungUp reports whether a script write failed because the client went away
+// rather than because the fixture is broken.
+//
+// A test that has seen what it was waiting for closes its client immediately,
+// which is legitimate and races the rest of the script. Reporting the leftover
+// writes as fixture faults made a passing test fail under load, and the message
+// it failed with described the fixture rather than the test.
+func hungUp(err error) bool {
+	return errors.Is(err, protocol.ErrStreamClosed) ||
+		errors.Is(err, protocol.ErrStreamClosing) ||
+		errors.Is(err, io.EOF) ||
+		errors.Is(err, net.ErrClosed) ||
+		errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, syscall.ECONNRESET)
 }
 
 // serveStream completes the handshake and the login exchange, leaving the
