@@ -97,14 +97,24 @@ func TestSelfIsUnplacedUntilTheServerPlacesIt(t *testing.T) {
 	}
 }
 
-func TestTheExtractedTableAgreesWithTheGame(t *testing.T) {
+func TestTheMeasuredTableAgreesWithTheGame(t *testing.T) {
 	t.Parallel()
 
 	// These are vanilla's own answers, and the ones the shortcuts get wrong.
 	// Treating every non-air state as solid detours the bot around a flower and
 	// drowns it in water it read as a wall; reading a bounding box instead of
 	// the material calls thin snow a wall, which it is not.
-	solidity := Chunk47Solidity{}
+	//
+	// The table moved into the library and this test did not, because what it
+	// pins is not where the numbers live: it is that the bot walking a protocol
+	// 47 world gets vanilla's answer for the blocks a bot actually meets.
+	solidity, err := NewSolidity(true)
+	if err != nil {
+		t.Fatalf("NewSolidity: %v", err)
+	}
+	if !solidity.Measured() {
+		t.Fatal("protocol 47 reports no measurement")
+	}
 	for name, c := range map[string]struct {
 		block int
 		solid bool
@@ -144,7 +154,30 @@ func TestAnUnknownBlockIsNotAssumedWalkable(t *testing.T) {
 
 	// A modded block, or one a later version added, is not a block that has
 	// been shown to be safe to walk into.
-	if _, known := (Chunk47Solidity{}).Solid(4000 << 4); known {
+	solidity, err := NewSolidity(true)
+	if err != nil {
+		t.Fatalf("NewSolidity: %v", err)
+	}
+	if _, known := solidity.Solid(4000 << 4); known {
 		t.Error("a block the table has never heard of claimed to be classified")
+	}
+}
+
+// TestAnUnmeasuredVersionClassifiesNothing pins the honest failure. Nobody has
+// measured the current version's jar, so its bot can see the world and cannot
+// tell a wall from air — and says so, rather than reading an absent measurement
+// as open ground and walking into the first hill it meets.
+func TestAnUnmeasuredVersionClassifiesNothing(t *testing.T) {
+	t.Parallel()
+
+	solidity, err := NewSolidity(false)
+	if err != nil {
+		t.Fatalf("NewSolidity: %v", err)
+	}
+	if solidity.Measured() {
+		t.Fatal("the current version reports a measurement it does not have")
+	}
+	if _, known := solidity.Solid(1); known {
+		t.Error("an unmeasured version classified a state")
 	}
 }

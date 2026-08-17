@@ -46,6 +46,24 @@ func run(logger *slog.Logger, address, username string, legacy, dryRun bool) int
 		return 0
 	}
 
+	// Before the network, because a bot that cannot classify a block cannot
+	// walk, and that is worth knowing at startup rather than after ninety
+	// seconds of standing still. Only the version someone has measured has the
+	// answer; the other connects, observes, and refuses every step.
+	solidity, err := NewSolidity(legacy)
+	if err != nil {
+		logger.Error("solidity", slog.Any("error", err))
+
+		return 1
+	}
+	if !solidity.Measured() {
+		logger.Warn(
+			"no block measurement for this version: the bot will see the world, "+
+				"classify nothing in it, and refuse to move",
+			slog.Bool("legacy", legacy),
+		)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -83,7 +101,7 @@ func run(logger *slog.Logger, address, username string, legacy, dryRun bool) int
 
 	logger.Info("connected", slog.String("address", address))
 
-	code, err := drive(ctx, logger, bot, events)
+	code, err := drive(ctx, logger, bot, events, solidity)
 	if err != nil {
 		logger.Error("run", slog.Any("error", err))
 	}
@@ -166,6 +184,7 @@ func drive(
 	logger *slog.Logger,
 	source connection,
 	events *client.Subscription,
+	solidity Solidity,
 ) (int, error) {
 	bounds := DefaultBounds()
 	core := NewBot(bounds)
@@ -236,7 +255,7 @@ func drive(
 			}
 			pending.Revision = snapshot.Revision
 
-			action := core.Advance(pending, NewObserved(snapshot, Chunk47Solidity{}))
+			action := core.Advance(pending, NewObserved(snapshot, solidity))
 			narrate(logger, core, action, &last)
 			// Edge-triggered facts are consumed by the tick that saw them.
 			// Leaving Died set would make the core respawn on every tick after

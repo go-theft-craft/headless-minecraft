@@ -1,6 +1,12 @@
 package main
 
 import (
+	"fmt"
+
+	"github.com/go-theft-craft/minecraft-protocol/data"
+	gen1_8 "github.com/go-theft-craft/minecraft-protocol/generated/java/v1_8"
+	gen26_1 "github.com/go-theft-craft/minecraft-protocol/generated/java/v26_1"
+
 	"github.com/go-theft-craft/headless-minecraft/world"
 )
 
@@ -15,11 +21,11 @@ import (
 
 // Solidity answers whether a block state stops the bot.
 //
-// It is its own port because it is the one thing M7 does not supply and cannot:
-// the world package stores state IDs as the server sent them and deliberately
-// models no block semantics, so nothing in the library maps a state to "solid".
-// Splitting it out means the day a block registry lands, one type is written
-// and Observed does not change.
+// It is its own port because the world package stores state IDs as the server
+// sent them and deliberately models no block semantics. Splitting it out was a
+// bet that the day a block registry landed, one type would be written and
+// Observed would not change. That day came: MeasuredSolidity is that type, and
+// nothing else here moved.
 type Solidity interface {
 	// Solid reports whether a block state is solid. The second result is false
 	// when the mapping is unknown, which is not the same as "not solid" — the
@@ -123,26 +129,57 @@ func observeSelf(snapshot world.Snapshot) (Self, bool) {
 	}, true
 }
 
-// Chunk47Solidity answers solidity from the table extracted from the game.
+// MeasuredSolidity answers solidity from the library's measurement of the
+// game's own rule.
 //
-// It is the whole of vanilla's own rule. Block.isPassable in this version is
-// !blockMaterial.blocksMovement(), and the ground navigator that decides where
-// a mob may walk calls that same predicate; neither looks at a bounding box or
-// at whether the block fills its cell. So this looks up one boolean and stops.
+// The example held that table itself until 2026-08-17, which put block
+// semantics in whichever consumer happened to want them first and left the next
+// one to write its own. The library owns it now — one measurement, both
+// protocols, and the state encoding decoded where the version is already
+// known — so this type is the whole of what the example still owes: a port
+// implemented against a registry.
 //
-// The earlier stand-in classified nothing, which made every position unknown
-// and left the bot reporting itself sealed in on open ground. That was honest
-// and useless. This is the same honesty with the answer filled in: a block the
-// table does not know is still unclassified, because a block nobody has
-// described is not a block that has been shown to be safe.
-type Chunk47Solidity struct{}
+// A version nobody has measured yields a registry that is nil, and this
+// classifies nothing rather than guessing. That is the same honesty the earlier
+// stand-in had: a block nobody has described is not a block that has been shown
+// to be safe, and the bypass search refuses to walk through what it cannot
+// classify.
+type MeasuredSolidity struct {
+	movement data.BlockMovementRegistry
+}
 
-// Solid reports whether a protocol 47 chunk state stops the bot.
-func (Chunk47Solidity) Solid(state uint32) (bool, bool) {
-	// A chunk state carries the block identifier above the metadata, and the
-	// metadata never changes whether a block blocks movement in this version:
-	// the material hangs off the block. So the shift is the whole lookup.
-	solid, known := blocksMovement[int(state>>4)]
+// NewSolidity reads the measurement for the version profile the bot is
+// speaking.
+//
+// The version matters and getting it wrong is silent. Protocol 47 packs a chunk
+// state as the block identifier shifted left four; a flattened protocol does
+// not, so a 47 table asked about a 775 state answers about an unrelated block
+// every time, confidently. Loading the version's own data is what keeps that
+// impossible.
+func NewSolidity(legacy bool) (MeasuredSolidity, error) {
+	load := gen26_1.Data
+	if legacy {
+		load = gen1_8.Data
+	}
 
-	return solid, known
+	set, err := load()
+	if err != nil {
+		return MeasuredSolidity{}, fmt.Errorf("load game data: %w", err)
+	}
+
+	return MeasuredSolidity{movement: set.BlockMovement()}, nil
+}
+
+// Measured reports whether this version publishes the measurement at all. A
+// bot without it can still see the world and cannot walk through it, so the
+// example says so before connecting rather than after standing still.
+func (s MeasuredSolidity) Measured() bool { return s.movement != nil }
+
+// Solid reports whether a chunk block state stops the bot.
+func (s MeasuredSolidity) Solid(state uint32) (bool, bool) {
+	if s.movement == nil {
+		return false, false
+	}
+
+	return s.movement.ByState(data.BlockStateID(state))
 }

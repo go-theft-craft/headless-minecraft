@@ -457,7 +457,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M8.8 | One kernel driven by client prediction and server authority, gated on zero corrections from vanilla | `minecraft-simulation`, `headless-minecraft`, `server` | Planned, plan written | M8.4, M6, M7 | [M8.8 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) |
 | M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic, each verified against both 1.8.9 and 26.1.2 | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.1b planned; M9.3–M9.8 plans drafted ahead of their prerequisites, each with a reconcile-first task; M9.2 unblocked by M8.4 and awaiting M8.8 | M9.1 on M5 and `relay` v0.2.0; M9.1b on M9.1 and M4; M9.2–M9.8 on M8.8, M9.1, and M9.1b | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite), [M9.1b–M10 cross-version plan](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps, [M10 plan](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) |
-| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | M11.1 complete; M11.2–M11.7 designed and planned, unimplemented | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), six sub-milestone designs, and a plan for each, [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) |
+| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | M11.1 and M11.2 complete; M11.3–M11.7 designed and planned, unimplemented | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), six sub-milestone designs, and a plan for each, [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) |
 
 ## What is complete
 
@@ -1249,8 +1249,18 @@ something the approved documents asserted:
   intact, keeps one table serving both protocols, and keeps every consumer from
   writing its own. `headless-minecraft` keeps the `Solidity` port and satisfies
   it from there rather than defining the mapping itself. The decision is now
-  implemented, not just made: `examples/orbit` answers its `Solidity` port
-  through `Chunk47Solidity`, reading the table extracted from the game.
+  implemented where it was decided: `minecraft-protocol` publishes
+  `data.BlockMovementRegistry`, measured from the 1.8.9 server jar by
+  `mcreference blocks`, pinned by digest in the manifest's `extracted` block
+  beside the physics constants, and generated into `generated/java/v1_8` — 198
+  blocks, 149 of them solid. The generated registry decodes the state encoding,
+  which is where that knowledge belongs: 1.8.9 packs a state two ways and a
+  table keyed the wrong way answers every lookup about the wrong block. Absence
+  is modelled rather than flattened, so protocol 775 publishes nil until someone
+  measures that jar, and `examples/orbit` reports at startup that it will see
+  the world and refuse to move. What is left here is `MeasuredSolidity`, a port
+  implemented against the registry, which is the whole of what splitting the
+  port out was supposed to cost.
 
 ### M8–M9 — Simulation and gameplay
 
@@ -1545,10 +1555,58 @@ The three worth carrying furthest:
     started (verified against the pre-M11.1 tree). It is unrelated to the
     framework work and still open; M11.2 owns it, as the next milestone in that
     repository.
-- [ ] M11.2 World model and chunk ownership: interned block states, per-version
-  adapters, immutable sections. [Design](../server/docs/superpowers/specs/2026-08-17-m11-2-world-model-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-2-world-model.md), 2026-08-17.
-  Also inherits the flaky `TestDisconnectSendsAPlayDisconnectPacket` in
-  `internal/server/conn`, recorded by M11.1 and until now assigned to nobody.
+- [x] M11.2 World model and chunk ownership: interned block states, per-version
+  adapters, immutable sections. Done on 2026-08-17.
+  [Design](../server/docs/superpowers/specs/2026-08-17-m11-2-world-model-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-2-world-model.md), 2026-08-17.
+  - **The encode cache does what it exists for.** Encoding the 625 chunks a
+    player joining at view distance 12 is sent takes 15.4 ms cold and 5.8 ms
+    warm on a Ryzen 9 9950X: the second player to join the same world pays a
+    little over a third of what the first one did. Those 625 chunks hold 3,034
+    non-empty sections, comfortably inside the 4,096-entry bound, so a join at
+    the largest view distance the server offers never evicts its own work.
+    `BenchmarkEncodeJoinCold` and `BenchmarkEncodeJoinWarm` in `pkg/world/v47`
+    are the measurement.
+  - **Memory went up, and the design's expectation that the override map's
+    removal would offset it does not hold.** 625 resident chunks cost 49 MB,
+    which is 16,262 bytes per section — 4 bytes per block, against the 2 bytes
+    the old `uint16` sections used. The override map only offsets that on a
+    world players have edited heavily, and a freshly generated world has no
+    overrides to remove. `State` is a `uint32`, and Java 26.1 mints about
+    30,000 states, so a `uint16` handle would still fit both versions and would
+    give the 2 bytes back; that is a decision for whichever milestone owns
+    resident memory, not a change to make while the model is new.
+    `TestResidentWorldSize` reports the number.
+  - **Three tasks could not be split.** The plan sequenced the atomic chunk map
+    (Task 3), the generator conversion (Task 4), and the override map's removal
+    (Task 7) as separate commits, with Task 7 last on purpose. They landed
+    together, because the moment a generator writes handles the world must hold
+    chunks, and the moment the world holds chunks the override map has no
+    reader. Both safety nets still applied: the generator golden table, written
+    before anything moved, has not changed, and the protocol 47 byte fixtures
+    prove the wire has not either. What the plan got right is that the
+    ordering *within* that commit is what matters — the golden table and the
+    fixtures were both captured before a line of generator or encoder code
+    changed.
+  - **The two shims are as temporary as they claim, and one is worse than
+    advertised.** `foldOverrides` is fifteen lines. `extractOverrides` diffs
+    every resident chunk against a freshly generated one, so a save now
+    generates the whole resident world a second time — the plan costed it at
+    O(resident chunks × 65,536) reads but did not say it also pays for
+    regeneration. M11.3 should delete it early rather than late.
+  - **The 26.1 round-trip is worth what it cost.** It is the only check that
+    the model is neutral before a second server exists, and it caught nothing
+    on the first run, which is the point: the property-decomposition rules it
+    exercises (last property varies fastest, booleans order true before false)
+    were guesses until it passed over all 29,872 states. The vendor cost the
+    plan worried about turned out to be zero — `vendor/` is not tracked in this
+    repository.
+  - `TestDisconnectSendsAPlayDisconnectPacket` is **fixed**. It was not the
+    world model: `Disconnect` writes the kick reason through a stream whose
+    runtime was started with the connection's context, and the read loop's
+    teardown cancels that context. When the teardown won, it aborted the write
+    carrying the reason and the client saw a bare socket close. Both sides now
+    take one mutex. 100 consecutive runs pass, and 20 more under the race
+    detector.
 - [ ] M11.3 Storage: `WorldStore` and `SideStore`, native format research,
   vanilla Anvil adapter, snapshot saving. [Design](../server/docs/superpowers/specs/2026-08-17-m11-3-storage-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-3-storage.md), 2026-08-17.
 - [ ] M11.4 World generation: parameters, named world types, version-neutral

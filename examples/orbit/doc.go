@@ -16,11 +16,17 @@
 // and the entities it may fight. Accepting it changed nothing in the core, which
 // is what the seam was for.
 //
-// Solidity is answered too. The library reports the block state the server sent
-// and models no block semantics, which is right, so [Chunk47Solidity] reads a
-// table extracted from the game itself: vanilla decides passability with
+// Solidity is answered too, and no longer from here. The world package reports
+// the block state the server sent and models no block semantics, which is
+// right; the mapping from a state to "solid" belongs to minecraft-protocol,
+// which measures it from the game itself. [MeasuredSolidity] is the whole of
+// what this example does with it. Vanilla decides passability with
 // !blockMaterial.blocksMovement() and its ground navigator uses that same
-// predicate, so this does too.
+// predicate, so the measurement does too.
+//
+// Only protocol 47 has been measured. On the current protocol the bot sees the
+// world, classifies nothing in it, and refuses to move — which it reports on
+// startup rather than after standing still.
 //
 // What is still owed is attack, which is M9.6.
 //

@@ -101,16 +101,23 @@ The bot walked to its circle and then reported itself sealed in, on a flat world
 with nothing on it. Two causes, found in that order, and only the second was the
 one that mattered.
 
-**Block solidity, now answered from the game.** `Chunk47Solidity` reads a table
-extracted from the jar by `mcreference blocks`. The field is the material's
-`blocksMovement`, because that is the whole of what the game asks: `isPassable`
-in 1.8.9 is `!blockMaterial.blocksMovement()`, and the ground navigator that
-decides where a mob may walk calls that same predicate. Neither consults a
-bounding box nor whether the block fills its cell, so neither does this. The
-third-party block dataset the protocol repository already ships cannot answer it
-— it carries a bounding box and a material *name*, and its material registry is
-tool speeds — which is why the extraction is the source rather than a
-convenience.
+**Block solidity, now answered from the game, and now owned by the library.**
+The fact is the material's `blocksMovement`, because that is the whole of what
+the game asks: `isPassable` in 1.8.9 is `!blockMaterial.blocksMovement()`, and
+the ground navigator that decides where a mob may walk calls that same
+predicate. Neither consults a bounding box nor whether the block fills its cell,
+so neither does this. The third-party block dataset the protocol repository
+already ships cannot answer it — it carries a bounding box and a material
+*name*, and its material registry is tool speeds — which is why an extraction
+from the jar is the source rather than a convenience.
+
+The table lived in this example for one day. It is now
+`minecraft-protocol`'s `data.BlockMovementRegistry`, measured by `mcreference
+blocks` into an extracted dataset beside the physics constants and generated
+into the version package, where the state encoding is decoded by the version
+that already knows it. What remains here is `MeasuredSolidity`: a port
+implemented against that registry, and a startup warning for the version nobody
+has measured.
 
 **The world had no terrain in it at all.** Wiring solidity changed nothing,
 because the lookup never got as far as asking. The protocol 47 adapter reduces
@@ -330,12 +337,12 @@ the code.
 | 8 | Attack primitive with profile-supplied cooldown | `interaction` | M9.6 | Designed |
 | 9 | Entity position and health for target tracking | `world` | M7 | Position present. Health is not: a server sends another entity's health as an attribute or a metadata field and the world stores both as sent without interpreting either. `EntityView.Dead` answers the only question the bot asks of it, so the example reads that instead |
 | 10 | Breaker acknowledgement after a movement correction | `safety` | M9 | Designed — must be explicit in the example, with a budget |
-| 11 | A map from a block state to whether it is solid | `minecraft-protocol` | none yet | **Gap, but no longer an unowned one.** The bypass search needs `Solid bool` and the library exposes state IDs. `world` refuses block semantics by design and nothing else here supplies them, so every position reads `Unknown` and the bot traps instead of orbiting. Assigned to `minecraft-protocol` on 2026-08-17, where a state ID already means something; isolated behind the `Solidity` port so one type changes when that registry lands |
+| 11 | A map from a block state to whether it is solid | `minecraft-protocol` | none yet | Present for protocol 47. Assigned to `minecraft-protocol` on 2026-08-17 and implemented there the same day: `data.BlockMovementRegistry`, measured from the 1.8.9 server jar and generated into `generated/java/v1_8`. `world` still refuses block semantics, which is right, and `MeasuredSolidity` is the one type that changed here — which is what the port was split out for. Protocol 775 is unmeasured, so its registry is nil and its bot classifies nothing and says so |
 
-Items 4, 5, and the spawn half of item 2 are settled. Item 6 is still owed by
-M9. Item 11 now has an owner — `minecraft-protocol` — but no milestone, and it
-is still the last thing standing between this example and a complete
-revolution.
+Items 4, 5, 11, and the spawn half of item 2 are settled. Item 6 is still owed
+by M9. Item 11 closed on 2026-08-17 for protocol 47, where the bot now walks
+against the game's own answer; on protocol 775 it is the measurement, not the
+design, that is missing.
 
 Item 3 was present the whole time and still observed nothing against a real
 server: a vanilla 1.8.9 server sends the join-time world as `map_chunk_bulk`,
@@ -388,6 +395,9 @@ describe one.
   complete a revolution until something owns the mapping: `Solidity` classifies
   nothing, every position reads `Unknown`, and the bot will trap as soon as it
   can move.
+  Closed the same day it was written down: the mapping went to
+  `minecraft-protocol`, and this example reads it. The waiting cost one day, and
+  the port meant the fix was one type.
   That is a visible failure with a named cause, which is the outcome this example
   exists to produce. Isolating it behind its own port is what keeps the fix to
   one type.
