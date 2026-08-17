@@ -1228,3 +1228,67 @@ func TestTheSpawnPositionIsReducedWithoutADimensionOrAnAngle(t *testing.T) {
 		t.Error("protocol 47 reported a spawn angle it does not send")
 	}
 }
+
+func TestHealthReachingZeroIsADeath(t *testing.T) {
+	t.Parallel()
+
+	// A vanilla 1.8.9 server was observed killing a player and announcing it
+	// with nothing but this: seven hurt statuses, an enter-combat and an
+	// end-combat, health stepping to zero, and no entity status 3 and no
+	// entity-dead combat event. A client that waited for one of those stayed
+	// dead for the rest of the session, which is what the orbit example did on
+	// a live server.
+	w, events := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundUpdateHealth{Health: 0, Food: 20}),
+	})
+
+	if !w.Snapshot().Player.Dead {
+		t.Error("health reached zero and the player is not dead")
+	}
+
+	var died int
+	for _, e := range events {
+		if _, ok := e.(event.PlayerDied); ok {
+			died++
+		}
+	}
+	if died != 1 {
+		t.Errorf("published %d deaths, want 1", died)
+	}
+}
+
+func TestADeathIsPublishedOnceAcrossBothItsSignals(t *testing.T) {
+	t.Parallel()
+
+	// Health and the combat event are the same death when a server sends both,
+	// and a caller that respawns on each would send two.
+	_, events := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundUpdateHealth{Health: 0, Food: 20}),
+		play(&gen.PlayClientboundEntityStatus{EntityID: 1, EntityStatus: 3}),
+	})
+
+	var died int
+	for _, e := range events {
+		if _, ok := e.(event.PlayerDied); ok {
+			died++
+		}
+	}
+	if died != 1 {
+		t.Errorf("published %d deaths for one death, want 1", died)
+	}
+}
+
+func TestSurvivingDamageIsNotADeath(t *testing.T) {
+	t.Parallel()
+
+	w, _ := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundUpdateHealth{Health: 2, Food: 20}),
+	})
+
+	if w.Snapshot().Player.Dead {
+		t.Error("a player on two hearts was reported dead")
+	}
+}

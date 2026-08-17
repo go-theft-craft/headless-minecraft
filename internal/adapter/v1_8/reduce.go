@@ -75,6 +75,25 @@ func reducePlayerPacket(
 
 	case *gen.PlayClientboundUpdateHealth:
 		p.Health(c, value.Health, value.Food, value.FoodSaturation)
+		// Health reaching zero is a death on this protocol, and often the only
+		// announcement of one. A vanilla 1.8.9 server was observed killing a
+		// player and sending neither the entity status nor the combat event
+		// this adapter reads below: seven hurt statuses, an enter-combat and an
+		// end-combat, health stepping down to zero, and nothing that named a
+		// death. A client that waited for a death packet stayed dead forever.
+		//
+		// This is what the vanilla client of this era does too. It has no death
+		// packet to wait for either: it shows its death screen when the health
+		// it was sent reaches zero. Reading the same signal is following the
+		// protocol as implemented rather than inferring past it.
+		//
+		// The combat event below still runs and still attributes. Died is
+		// idempotent until a respawn, so whichever arrives first publishes; a
+		// killer named afterwards cannot revise an unattributed death, which is
+		// the cost of a protocol that does not always send one.
+		if value.Health <= 0 {
+			p.Died(c, 0, false)
+		}
 
 	case *gen.PlayClientboundExperience:
 		p.Experience(c, value.ExperienceBar, value.Level, value.TotalExperience)
