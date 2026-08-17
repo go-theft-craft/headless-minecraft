@@ -4,8 +4,9 @@
 // contract is version.Adapter, and a caller selects this one through
 // version/java.
 //
-// It owns the two parts 775 cannot borrow from 47: the bundle delimiter and
-// the teleport-confirming readiness rule. Its handlers are in handlers.go.
+// It owns the parts 775 cannot borrow from 47: the bundle delimiter, the
+// readiness rule, and the teleport confirmation every server-initiated position
+// is owed. Its handlers are in handlers.go.
 package v26_1
 
 import (
@@ -83,10 +84,17 @@ func (a adapter) Handlers() map[string]version.Handler {
 
 // readiness implements version.ReadinessRule for protocol 775.
 //
-// The server places the player with a position carrying a teleport ID, and
-// expects that ID back in a teleport confirmation. Protocol 47 has no such
-// packet and echoes a position-look instead, which is why the rule is
+// The server places the player with a position packet, and this rule reports
+// that the connection has reached the point where action packets are accepted.
+// Protocol 47 reaches the same point differently — it has no teleport
+// confirmation and echoes a position-look instead — which is why the rule is
 // version-owned.
+//
+// It does not send the teleport confirmation the placement calls for. That is
+// the position handler's, because the server sends the same packet again every
+// time it corrects the player and owes a confirmation each time, while this
+// rule answers a question that is settled once. Splitting them the other way is
+// what left corrections unconfirmed.
 type readiness struct {
 	seenLogin bool
 	ready     bool
@@ -102,7 +110,6 @@ func (r *readiness) Observe(batch version.Batch) (version.ReadyState, []protocol
 		return r.state, nil, nil
 	}
 
-	var reply []protocol.Packet
 	for _, p := range batch.Packets {
 		switch value := p.Value.(type) {
 		case *gen.PlayClientboundLogin:
@@ -115,25 +122,21 @@ func (r *readiness) Observe(batch version.Batch) (version.ReadyState, []protocol
 			if !r.seenLogin {
 				continue
 			}
+			// Only at spawn. A later position is a correction, which the
+			// world resolves against the position it already has; this is the
+			// one that has nothing to resolve against.
 			if relative := value.Flags; relative.X || relative.Y || relative.Z {
 				return version.ReadyState{}, nil, fmt.Errorf(
 					"%w: position flags are %+v", version.ErrRelativeSpawn, relative,
 				)
 			}
 
-			reply = append(reply, protocol.Packet{
-				State:     gen.StatePlay,
-				Direction: protocol.DirectionServerbound,
-				ID:        gen.PlayServerboundTeleportConfirm{}.PacketID(),
-				Name:      "teleport_confirm",
-				Value:     &gen.PlayServerboundTeleportConfirm{TeleportID: value.TeleportID},
-			})
 			r.ready = true
 			r.state.Ready = true
 		}
 	}
 
-	return r.state, reply, nil
+	return r.state, nil, nil
 }
 
 // gameModeNumber maps protocol 775's game-mode name to the number protocol 47

@@ -496,3 +496,68 @@ func TestProtocol775StopsAtConfiguration(t *testing.T) {
 		t.Errorf("terminal state is %q, want configuration", got)
 	}
 }
+
+// TestEveryPositionIsConfirmed is the regression for the defect that let the
+// orbit example walk nowhere against a vanilla 26.1.2 server.
+//
+// The server places and corrects the player with the same packet, each
+// carrying a teleport ID, and discards the client's movement until that ID
+// comes back. Confirming only the first one is not a partial fix: it is
+// accepted at spawn and ignored from the first correction onward, which looks
+// healthy from the client's side because nothing errors — the bot simply never
+// arrives anywhere.
+//
+// The second and third cases are the point. A test that sends one position
+// passes against the code that had the bug.
+func TestEveryPositionIsConfirmed(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range []int32{9, 10, 11} {
+		queued := answers(t, clientbound("position",
+			&gen.PlayClientboundPosition{TeleportID: id, X: 1, Y: 2, Z: 3}))
+		if len(queued) != 1 {
+			t.Fatalf("teleport %d queued %d answers, want 1", id, len(queued))
+		}
+
+		confirm, ok := queued[0].Value.(*gen.PlayServerboundTeleportConfirm)
+		if !ok {
+			t.Fatalf("answer is %T, want *PlayServerboundTeleportConfirm", queued[0].Value)
+		}
+		if confirm.TeleportID != id {
+			t.Errorf("confirmation carries teleport ID %d, want %d", confirm.TeleportID, id)
+		}
+		if queued[0].Name != "teleport_confirm" {
+			t.Errorf("confirmation is named %q, want teleport_confirm", queued[0].Name)
+		}
+		if queued[0].State != gen.StatePlay {
+			t.Errorf("confirmation is addressed to %q, want play", queued[0].State)
+		}
+		if queued[0].Direction != protocol.DirectionServerbound {
+			t.Errorf("confirmation is %v, want serverbound", queued[0].Direction)
+		}
+	}
+}
+
+// TestARelativeCorrectionIsStillConfirmed pins that the handler does not read
+// the flags.
+//
+// Whether a correction's coordinates are absolute or relative decides how the
+// world resolves the position, and the world decides it. The confirmation
+// echoes an ID, and a server waiting on one discards movement either way, so a
+// handler that answered only absolute positions would reintroduce the same
+// silence for a server that corrects relatively.
+func TestARelativeCorrectionIsStillConfirmed(t *testing.T) {
+	t.Parallel()
+
+	queued := answers(t, clientbound("position", &gen.PlayClientboundPosition{
+		TeleportID: 4,
+		Flags:      gen.PlayClientboundPositionFlagsFlags{X: true, Y: true, Z: true},
+	}))
+	if len(queued) != 1 {
+		t.Fatalf("queued %d answers, want 1", len(queued))
+	}
+	confirm, ok := queued[0].Value.(*gen.PlayServerboundTeleportConfirm)
+	if !ok || confirm.TeleportID != 4 {
+		t.Fatalf("answer is %T, want a confirmation for teleport 4", queued[0].Value)
+	}
+}

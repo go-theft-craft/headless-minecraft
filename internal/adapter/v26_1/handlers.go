@@ -28,6 +28,7 @@ func (f handlerFunc) Handle(ctx context.Context, p protocol.Packet) error { retu
 func (a adapter) handlers() map[string]handlerFunc {
 	return map[string]handlerFunc{
 		"keep_alive":             a.keepAlive,
+		"position":               a.position,
 		"custom_payload":         a.customPayload,
 		"kick_disconnect":        a.disconnect,
 		"disconnect":             a.disconnect,
@@ -69,6 +70,39 @@ func (a adapter) keepAlive(_ context.Context, p protocol.Packet) error {
 	// Elapsed stays zero: measuring it needs the round trip, which the loop
 	// owns, not the adapter.
 	event.Emit(a.collector, event.KeepAlivePonged{ID: id})
+
+	return nil
+}
+
+// position confirms a server-initiated teleport, every time one arrives.
+//
+// Protocol 775 places the player and corrects the player with the same packet,
+// and each one carries a teleport ID the server expects back. Until that
+// confirmation arrives the server discards everything the client says about
+// where it is. A client that confirms only the placement is therefore accepted
+// once and ignored from its first correction onward: it keeps walking in its
+// own reckoning, the server keeps it where it put it, and the gap widens until
+// the server reports the player moving impossibly fast and corrects it again.
+// Nothing in that sequence looks like an error from the client's side, which is
+// why it survived until a bot walked into it — the orbit example, against a
+// vanilla 26.1.2 server, corrected six times without covering a step.
+//
+// It is a handler rather than part of the readiness rule because it is not a
+// readiness question. Reaching play happens once; confirming a teleport is owed
+// for the life of the connection, which is the same reason keepalives are
+// answered here.
+//
+// The flags are not inspected. Whether the coordinates are absolute or relative
+// decides how the world resolves the position, and the world decides that; the
+// confirmation echoes an ID and is owed either way.
+func (a adapter) position(_ context.Context, p protocol.Packet) error {
+	value, ok := p.Value.(*gen.PlayClientboundPosition)
+	if !ok {
+		return nil
+	}
+
+	answer := &gen.PlayServerboundTeleportConfirm{TeleportID: value.TeleportID}
+	a.outbox.Add(serverbound(gen.StatePlay, "teleport_confirm", answer.PacketID(), answer))
 
 	return nil
 }

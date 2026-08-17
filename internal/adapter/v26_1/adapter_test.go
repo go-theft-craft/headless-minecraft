@@ -46,7 +46,15 @@ func TestBundleDelimiterIsTheGeneratedPacketName(t *testing.T) {
 	}
 }
 
-func TestReadinessConfirmsTheTeleport(t *testing.T) {
+// TestReadinessReportsPlayAndAnswersNothing pins where the split landed.
+//
+// The rule decides that the server will accept action packets. It does not
+// confirm the teleport the placing position carries, because the server sends
+// that same packet again for every correction and owes a confirmation each
+// time, while this rule is settled once and stops looking. Leaving the
+// confirmation here is what let corrections go unconfirmed, and a server that
+// is waiting on one discards every move the client sends.
+func TestReadinessReportsPlayAndAnswersNothing(t *testing.T) {
 	t.Parallel()
 
 	rule := adapter.Readiness()
@@ -77,19 +85,8 @@ func TestReadinessConfirmsTheTeleport(t *testing.T) {
 	if !state.Ready {
 		t.Fatal("rule did not report ready after login and position")
 	}
-	if len(reply) != 1 {
-		t.Fatalf("rule sent %d packets, want one teleport confirmation", len(reply))
-	}
-
-	confirm, ok := reply[0].Value.(*gen.PlayServerboundTeleportConfirm)
-	if !ok {
-		t.Fatalf("reply is %T, want *PlayServerboundTeleportConfirm", reply[0].Value)
-	}
-	if confirm.TeleportID != 9 {
-		t.Errorf("confirmation carries teleport ID %d, want 9", confirm.TeleportID)
-	}
-	if reply[0].Name != "teleport_confirm" || reply[0].Direction != protocol.DirectionServerbound {
-		t.Errorf("confirmation is addressed %q/%v", reply[0].Name, reply[0].Direction)
+	if len(reply) != 0 {
+		t.Fatalf("rule sent %d packets; the position handler owns the confirmation", len(reply))
 	}
 }
 
