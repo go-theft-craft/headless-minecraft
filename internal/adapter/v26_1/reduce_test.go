@@ -1032,3 +1032,94 @@ func TestRemovingAPlayerReleasesTheListEntry(t *testing.T) {
 		t.Errorf("player list is %+v, want empty", players)
 	}
 }
+
+func TestEveryUnknownValueSurvivesOneSession(t *testing.T) {
+	t.Parallel()
+
+	// M7 Task 9, and a MASTER_PLAN requirement in its own right. One session
+	// carrying five things no version models: a metadata index, a registry
+	// namespace, a menu type, a plugin channel, and an entity attribute. Each
+	// must be readable from the snapshot, addressable by its key, and as the
+	// server sent it.
+	w, events := configurationScript(
+		t,
+		configuration("registry_data", &gen.ConfigurationClientboundRegistryData{
+			ID:      "modded:reactor_type",
+			Entries: []gen.ConfigurationClientboundRegistryDataEntriesItem{{Key: "modded:fusion"}},
+		}),
+		configuration("custom_payload", &gen.ConfigurationClientboundCustomPayload{
+			Channel: "modded:handshake", Data: []byte{7, 7, 7},
+		}),
+	)
+
+	// The configuration half, before play was ever reached.
+	if _, ok := w.Snapshot().Registries.Get("modded:reactor_type"); !ok {
+		t.Error("an unknown registry namespace was dropped")
+	}
+	payload, ok := w.Snapshot().Payloads.Channels.Get("modded:handshake")
+	if !ok || len(payload) != 3 || payload[0] != 7 {
+		t.Errorf("payload is %v, %v", payload, ok)
+	}
+
+	// The play half.
+	w, playEvents := script(t, []protocol.Packet{
+		playLogin(1),
+		play(&gen.PlayClientboundOpenWindow{WindowID: 9, InventoryType: 4242}),
+		play(&gen.PlayClientboundEntityMetadata{
+			EntityID: 7,
+			Metadata: []gen.PlayClientboundEntityMetadataMetadataItem{
+				{
+					Key: 251, Type: "modded:flux",
+					Value: gen.PlayClientboundEntityMetadataMetadataItemValueSwitch{Byte: 42},
+				},
+			},
+		}),
+		play(&gen.PlayClientboundEntityUpdateAttributes{
+			EntityID: 7,
+			Properties: []gen.PlayClientboundEntityUpdateAttributesPropertiesItem{
+				{Key: "modded:flux_capacity", Value: 3.5},
+			},
+		}),
+	})
+	events = append(events, playEvents...)
+
+	snapshot := w.Snapshot()
+	menu, ok := snapshot.Containers.Get(9)
+	if !ok || menu.MenuType != "java/26.1:menu/4242" {
+		t.Errorf("an unmodelled menu type is %+v", menu)
+	}
+
+	entity, ok := snapshot.Entities.Get(7)
+	if !ok {
+		t.Fatal("the entity was not tracked")
+	}
+	metadata, ok := entity.Metadata[251]
+	if !ok || metadata.Type != "modded:flux" {
+		t.Errorf("an unknown metadata index is %+v", entity.Metadata)
+	}
+	// The value is kept as the protocol decoded it, not mapped onto a model
+	// that would have to grow for every mod.
+	if value, isSwitch := metadata.Value.(gen.PlayClientboundEntityMetadataMetadataItemValueSwitch); !isSwitch ||
+		value.Byte != 42 {
+		t.Errorf("the metadata value was not kept as sent: %#v", metadata.Value)
+	}
+	if entity.DroppedMetadata != 0 {
+		t.Errorf("a single unknown index was dropped: %d", entity.DroppedMetadata)
+	}
+	attribute, ok := entity.Attributes["modded:flux_capacity"]
+	if !ok || attribute.Value != 3.5 {
+		t.Errorf("an unknown attribute key is %+v", entity.Attributes)
+	}
+
+	// The negative: nothing was defaulted into a value the server never sent,
+	// and no event was published for a name the taxonomy does not declare.
+	declared := make(map[event.Name]bool, len(event.AllNames()))
+	for _, name := range event.AllNames() {
+		declared[name] = true
+	}
+	for _, published := range events {
+		if !declared[published.Name()] && published.Domain() != event.DomainRaw {
+			t.Errorf("published %q, which the taxonomy does not declare", published.Name())
+		}
+	}
+}

@@ -26,6 +26,8 @@ type Snapshot struct {
 	Containers ContainersView
 	// Registries is the vocabulary the server defined for this connection.
 	Registries RegistriesView
+	// Payloads is the last plugin message per channel, kept as bytes.
+	Payloads PayloadsView
 }
 
 // snapshot builds the snapshot. It runs under the world's lock, held by the
@@ -39,5 +41,6 @@ func (w *World) snapshot() Snapshot {
 		Environment: w.environment.view(),
 		Containers:  w.containers.view(),
 		Registries:  w.registries.view(),
+		Payloads:    w.payloads.view(),
 	}
 }

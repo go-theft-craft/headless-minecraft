@@ -30,6 +30,7 @@ func Reducers(w *world.World) []world.Reducer {
 		environmentReducer(w.Environment()),
 		containerReducer(w.Containers()),
 		registryReducer(w.Registries()),
+		payloadReducer(w.Payloads()),
 	}
 }
 
@@ -764,4 +765,21 @@ func reducePlayerList47(
 	}
 
 	registries.PlayerListChanged(c, changes, removed)
+}
+
+// payloadReducer keeps the last plugin message per channel.
+//
+// The adapter's handler already publishes session.custom_payload_received with
+// its own owned copy; this adds the state rather than a second event, so a
+// caller that was not subscribed when a message arrived can still read it.
+func payloadReducer(payloads *world.Payloads) world.Func {
+	return func(_ *world.Context, batch version.Batch, _ *event.Collector) error {
+		for _, packet := range batch.Packets {
+			if value, ok := packet.Value.(*gen.PlayClientboundCustomPayload); ok {
+				payloads.Received(value.Channel, value.Data)
+			}
+		}
+
+		return nil
+	}
 }

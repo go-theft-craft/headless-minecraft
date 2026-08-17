@@ -26,6 +26,7 @@ func Reducers(w *world.World) []world.Reducer {
 		environmentReducer(w.Environment()),
 		containerReducer(w.Containers()),
 		registryReducer(w.Registries()),
+		payloadReducer(w.Payloads()),
 	}
 }
 
@@ -731,4 +732,23 @@ func reducePlayerList775(
 	}
 
 	registries.PlayerListChanged(c, changes, nil)
+}
+
+// payloadReducer keeps the last plugin message per channel, in both
+// configuration and play: 775 sends custom payloads in each, and a message
+// that arrived before play is exactly the one a caller cannot have subscribed
+// in time for.
+func payloadReducer(payloads *world.Payloads) world.Func {
+	return func(_ *world.Context, batch version.Batch, _ *event.Collector) error {
+		for _, packet := range batch.Packets {
+			switch value := packet.Value.(type) {
+			case *gen.PlayClientboundCustomPayload:
+				payloads.Received(value.Channel, value.Data)
+			case *gen.ConfigurationClientboundCustomPayload:
+				payloads.Received(value.Channel, value.Data)
+			}
+		}
+
+		return nil
+	}
 }
