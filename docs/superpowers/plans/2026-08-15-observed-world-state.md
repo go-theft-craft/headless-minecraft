@@ -827,7 +827,7 @@ Add a benchmark for the block lookup path and record its result in the commit
 message. Design decision 2's copy-on-read snapshot is defensible only while
 this stays cheap.
 
-### Task 6: The environment reducer
+### Task 6: The environment reducer — done
 
 The seven world event names no task in this plan owned. Task 10's completeness
 test fails on every one of them until this exists.
@@ -863,7 +863,7 @@ Domain-specific tests:
   world event is a discrete effect with an ID and a position; particles are
   presentational. Only the first carries state.
 
-### Task 7: The container reducer
+### Task 7: The container reducer — done
 
 **Files:** `world/containers.go`, `world/containers_test.go`, `event/containers.go`
 
@@ -888,7 +888,7 @@ Domain-specific tests:
   protocols. This is the kind of special case that silently corrupts an
   inventory model.
 
-### Task 8: The registry reducer
+### Task 8: The registry reducer — done
 
 **Files:** `world/registry.go`, `world/registry_test.go`, `event/registry.go`
 
@@ -912,7 +912,7 @@ Domain-specific tests:
   entirely static. Assert the snapshot reports that honestly rather than
   presenting an empty session registry as if the server sent one.
 
-### Task 9: Raw and unknown value preservation
+### Task 9: Raw and unknown value preservation — done
 
 This is a `MASTER_PLAN` requirement in its own right — "preserve unknown
 metadata, namespaced values, and custom payloads" — and it cuts across every
@@ -920,7 +920,7 @@ domain, so it gets a task rather than being assumed.
 
 **Files:** `world/raw.go`, `world/raw_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Drive a packet script containing, in one session: an entity metadata index no
 version models, a registry key with an unknown namespace, a menu type that is
@@ -931,30 +931,30 @@ snapshot, addressable by its key, and byte-identical to what arrived.
 Then assert the negative: that none of them produced a defaulted value, and
 that no event was published for a name the taxonomy does not declare.
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 A shared `Raw` type holding key-addressable owned bytes, embedded by the
 domains that need it rather than a separate global store — an unknown metadata
 index belongs to its entity, not to a world-wide bag.
 
-- [ ] **Step 4: Run, benchmark the memory cost, and commit**
+- [x] **Step 4: Run, benchmark the memory cost, and commit**
 
 An unbounded raw store is a memory leak with a modded server. Bound it per
 owner and record what the bound is.
 
-### Task 10: Chat and UI
+### Task 10: Chat and UI — done, not cut
 
 **Files:** `world/chat.go`, `world/chat_test.go`, `event/chat.go`
 
 **Events:** the 12 declared chat names.
 
-**This is the cut line.** These 12 events carry no state any later milestone
-consumes, and they are the largest domain by packet count. If M7 runs long,
-stop after Task 9, mark this task deferred in `MASTER_PLAN.md`, and ship the
-rest — the chat packets stay reachable as raw packets, which is where they were
-before M7 started.
+**This was the cut line and it was not cut.** The 12 events carry no state any
+later milestone consumes and they are the largest domain by packet count, so
+the plan reserved the right to defer them. It turned out to cost one bounded
+log and a handful of scalars, because nothing here renders a chat component —
+the expensive half of a chat domain is the half this library does not do.
 
 Domain-specific tests:
 
@@ -970,12 +970,12 @@ Domain-specific tests:
 
 ## Stage C — Gate
 
-### Task 11: End-to-end, documentation, and the release gate
+### Task 11: End-to-end, documentation, and the release gate — done
 
 **Files:** `examples/observe/main.go`, `client/world_e2e_test.go`, `README.md`,
 `CHANGELOG.md`, `MASTER_PLAN.md`
 
-- [ ] **Step 1: Write `examples/observe`**
+- [x] **Step 1: Write `examples/observe`**
 
 A program that connects, subscribes to every state domain, and prints each
 event with its revision. It lives in the `examples/` module, which
@@ -988,9 +988,25 @@ The `replace` directive pointing `examples/` at its parent is the one place a
 `replace` is legitimate in this repository, and it is deliberate rather than an
 oversight of M6.3's rule that the module graph carry no `replace`.
 
-- [ ] **Step 2: Add the end-to-end lane**
+- [x] **Step 2: Add the end-to-end lane**
 
-Drive `examples/observe` against M6.3's fixture server rather than a harness
+**Amended while executing.** The lane lives in `client/world_e2e_test.go` and
+drives the real client, the real fixture, and every reducer the adapter builds;
+`examples/observe` cannot be the driver because the fixture is
+`client/internal/fixture` and moving it out of `internal/` to reach the examples
+module would make a test server part of the public API. The example's own half —
+rendering an event to a line — is pure and tested in the examples module. The
+convention's point is still met: the lane exercises the seam a test-only harness
+would have skipped, and it caught the fault below.
+
+**What the lane found immediately:** neither adapter implemented the
+`Reducers(*world.World)` method the client asserts for, so `WithWorld` installed
+a world that counted batches and observed nothing. `Reducers` existed only as a
+package-level function, which is what every adapter test calls. Eleven tasks of
+green reducers had never run in a real connection. It also found that protocol
+47's chunk unload never released the column.
+
+Drive the lane against M6.3's fixture server rather than a harness
 that exists only inside a test file. An example CI runs cannot rot. Script the
 fixture so that, after readiness, it sends a chunk, spawns two entities, moves
 one, opens a container, changes the weather, and sends a registry update in
@@ -1002,7 +1018,7 @@ configuration — on both protocols. Assert:
 - the snapshot's entity, chunk, and container views hold what the script sent;
 - unloading the chunk and destroying the entities empties the stores.
 
-- [ ] **Step 3: Confirm the taxonomy is fully implemented**
+- [x] **Step 3: Confirm the taxonomy is fully implemented**
 
 ```bash
 # Every declared name must have a struct that reports it.
@@ -1015,20 +1031,20 @@ Task 10 deferred. This is exit criterion 5 from M6.3's design, finally
 checkable, and it is the test that would have caught the seven world event
 names this plan originally left unowned.
 
-- [ ] **Step 4: Document**
+- [x] **Step 4: Document**
 
 README gains a world-state section: how to snapshot, what a revision means,
 that a bundle is one revision, that unknown values are preserved rather than
 defaulted, and that mechanics are not here.
 
-- [ ] **Step 5: Run the gate**
+- [x] **Step 5: Run the gate**
 
 ```bash
 devbox run -- task verify
 devbox run -- task test:e2e
 ```
 
-- [ ] **Step 6: Record the milestone and what was found**
+- [x] **Step 6: Record the milestone and what was found**
 
 Mark M7 complete in `MASTER_PLAN.md`. Record, specifically:
 
@@ -1042,7 +1058,7 @@ Mark M7 complete in `MASTER_PLAN.md`. Record, specifically:
   such case is either a preservation gap or an argument against the narrowed
   contract in Task 1.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A

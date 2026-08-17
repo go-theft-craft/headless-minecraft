@@ -401,11 +401,20 @@ func chunkReducer(chunks *world.Chunks) world.Func {
 func reduceChunkPacket(chunks *world.Chunks, packet protocol.Packet, c *event.Collector) {
 	switch value := packet.Value.(type) {
 	case *gen.PlayClientboundMapChunk:
-		sections, light := splitColumn47(value.BitMap, value.ChunkData)
-		if len(sections) == 0 && !value.GroundUp {
+		pos := world.ChunkPos{X: value.X, Z: value.Z}
+		// Protocol 47 has no unload packet. A ground-up column with an empty
+		// section bitmask is the unload, and reading it as a load of nothing
+		// leaves the column in the store forever.
+		if value.GroundUp && value.BitMap == 0 {
+			chunks.Unloaded(c, pos)
+
 			return
 		}
-		chunks.Loaded(c, world.ChunkPos{X: value.X, Z: value.Z}, sections, light)
+		sections, light := splitColumn47(value.BitMap, value.ChunkData)
+		if len(sections) == 0 {
+			return
+		}
+		chunks.Loaded(c, pos, sections, light)
 
 	case *gen.PlayClientboundBlockChange:
 		chunks.BlocksChanged(c, []world.BlockChange{{

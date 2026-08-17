@@ -262,7 +262,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M4 | Generate Java 26.1 data and protocol 775 codecs, retaining unknown source datasets | `minecraft-protocol` | Complete | M3 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-java-26-1-protocol-775-design.md), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) |
 | M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | Complete | M4 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md) (amended 2026-08-15), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) (amended 2026-08-15) |
 | M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Planned | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
-| M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Planned | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
+| M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Complete | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
 | M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 player movement slice with canonical replay and server/client adapters; items and arrows moved to M9 | `minecraft-simulation` | Planned | M4, M7 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
 | M8.1 | Extract Java 1.8.9 physics constants from a verified Mojang server jar and publish them as a pinned, generated Go package | `minecraft-reference`, `minecraft-protocol` | Complete | — | [Physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) |
 | M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic | `minecraft-simulation`, a new capture repository, `headless-minecraft`, `server` | Planned | M8.8 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite) |
@@ -291,6 +291,10 @@ there is capacity. Its only hard obligation to the rest of the plan is that
   status packets, the shared login acceptor, compression, legacy pings, and
   graceful disconnects.
 - [x] Standalone `minecraft-reference` workflow and release (`v1.0.1`).
+- [x] Observed world state: eight immutable domains at one revision per batch,
+  wire-ordered reducers on both protocols, bounded preservation of everything
+  the server sent that no version models, `examples/observe`, and the
+  observed-world end-to-end lane.
 - [x] Initial `minecraft-simulation` repository boundary (`854e7d9`).
 
 Repository foundation does not mean the headless client or simulation runtime
@@ -741,20 +745,22 @@ something the approved documents asserted:
   session domain in configuration and play. The end-to-end lane covers
   protocol 47 only: serving 775 needs a server-side login, and the shared
   `login.Acceptor` is written against the v1_8 generated types.
-- [~] Build immutable observed-world snapshots and wire-ordered reducers.
-  **M7 Tasks 1-5 are done:** the reducer spine with one revision per batch, the
-  client wiring, and the player, entity, and chunk domains, each on both
-  protocols. Tasks 6-11 — environment, containers, registry, raw preservation,
-  chat, and the gate — remain.
+- [x] Build immutable observed-world snapshots and wire-ordered reducers.
+  **M7 is complete.** All eleven tasks are done: the reducer spine with one
+  revision per batch, the client wiring, and eight domains — player, entities,
+  chunks, environment, containers, registries, raw payloads, and chat — each on
+  both protocols, plus `examples/observe` and the end-to-end lane. The chat
+  domain was the declared cut line and shipped rather than being deferred.
   M7's design review put two prerequisites back on M6.3. `Event` has to carry
   the snapshot revision, which M6.3's design promised and its plan dropped, and
   the client has to own the configuration phase rather than letting
   `login.Negotiate` consume it. Without the second one, registry data, feature
   flags, and the inbound resource-pack offer never reach a handler on the first
   pass, which breaks M7's registry domain and two of M6.3's own session events.
-- [ ] Preserve unknown metadata, namespaced values, and custom payloads.
+  Both landed before M7's domains.
+- [x] Preserve unknown metadata, namespaced values, and custom payloads.
 
-#### M7 — What observed world state has found so far
+#### M7 — What observed world state found
 
 - **The world holds state and events; the adapter holds decoding.** The design
   left this open and it governs every domain: `world.Player` and
@@ -798,7 +804,63 @@ something the approved documents asserted:
 - **The chunk benchmarks say copy-on-read is still right.** A block lookup on
   a decoded section is 39.5 ns, and a snapshot over 400 columns of two sections
   each is 33.6 µs — a pointer copy per section, as design decision 4 intended.
-  Decision 9's escape route stays unused.
+  The raw store agrees: 64 channels of 256 bytes snapshot in 6.7 µs and 22 KB.
+  Decision 9's escape route stays unused, and no domain needs a persistent map.
+
+- **Nothing in the client ever fed a world, and every test passed.** The client
+  asserts its adapter for a `Reducers(*world.World) []world.Reducer` method and
+  registers what it returns. Neither adapter had that method: `Reducers` existed
+  as a package-level function, which is what every adapter test calls directly.
+  So `WithWorld` installed a world that counted batches, advanced its revision,
+  and observed nothing — and eleven tasks of reducers, all green, never ran in a
+  real connection. **The end-to-end lane found it in the first minute it
+  existed.** This is the whole argument for the repository convention that an
+  end-to-end lane drives an example rather than a harness living inside a
+  `_test.go` file, and it is worth carrying into M9: a seam asserted by
+  interface satisfaction fails silently, so something has to exercise it.
+
+- **Protocol 47's chunk unload never released the column**, and the test named
+  for it never checked. 47 has no unload packet: a ground-up column with an
+  empty section bitmask is the unload, and the reducer read it as a load of
+  nothing, leaving the column in the store for the rest of the session.
+  `TestUnloadingIsDrivenByTheServer` asserted only that the earlier load had
+  worked. Found by the same lane, in the same run.
+
+- **The two protocols number the weather reasons oppositely.** On protocol 47,
+  game-state reason 1 ends rain and 2 begins it; 775's generated mapper names 1
+  `start_raining` and 2 `stop_raining`. Only the 775 side has a mapper to check
+  against, so the 47 constants are hand-written and the reversal is the kind of
+  thing that reads as correct in both files.
+
+- **Protocol 47 calls the border's diameter a radius**, and sends the length of
+  a side. Carrying the schema's name through would have halved the border for
+  anybody who believed it.
+
+- **Two facts ride events the taxonomy already declares**, because it declares
+  no name for either: game rules ride `world.simulation_settings_changed`, which
+  names the rules that changed, and a menu property rides
+  `container.slots_changed`, which names the property indices. Both are honest
+  groupings rather than new names, and both are worth revisiting if M9 wants to
+  select on them separately.
+
+- **No reducer ever wanted to return an error for server data.** Decision 3's
+  narrowed contract held across all eight domains: every unrecognized value is
+  preserved or dropped with a counter, and the only errors a reducer can return
+  are broken invariants in this package, of which none occurred.
+
+- **The raw-store bounds, all per owner:** 64 metadata indices and unbounded
+  attributes per entity, 256 plugin channels, 256 game rules, 16 clocks, 512
+  registries, 512 tag types, 10,000 listed players, 64 menus, 1,024 slots and
+  64 properties per menu, 8,192 recipes, 256 chat messages, 64 boss bars, 64
+  objectives with 1,024 scores each, and 256 teams. They are guesses, stated so
+  they can be argued with, and every one reports what it refused.
+
+- **The end-to-end lane covers protocol 47 only**, for M6.3's reason: serving
+  775 needs a server-side login and the shared `login.Acceptor` is written
+  against the v1_8 generated types. So "no generated codec rejected a packet" is
+  a statement about the fixture, not about a real 26.1 server. The 775 reducers
+  are covered by packet scripts against real generated values, and the first
+  real 775 traffic is still ahead.
 
 #### M6.3 — What the headless connection found
 

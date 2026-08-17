@@ -580,8 +580,11 @@ func TestAMultiBlockChangeAppliesEveryRecord(t *testing.T) {
 func TestUnloadingIsDrivenByTheServer(t *testing.T) {
 	t.Parallel()
 
-	// Protocol 47 unloads a chunk by sending it with no sections.
-	w, _ := script(
+	// Protocol 47 has no unload packet: a ground-up column with an empty
+	// section bitmask is the unload. Reading that as a load of nothing leaves
+	// the column in the store for the rest of the session, which is the memory
+	// bug a long-running bot will certainly hit.
+	w, events := script(
 		t,
 		[]protocol.Packet{
 			login(1),
@@ -589,9 +592,16 @@ func TestUnloadingIsDrivenByTheServer(t *testing.T) {
 				X: 0, Z: 0, GroundUp: true, BitMap: 0x0001, ChunkData: make([]byte, 8192),
 			}),
 		},
+		[]protocol.Packet{
+			play(&gen.PlayClientboundMapChunk{X: 0, Z: 0, GroundUp: true}),
+		},
 	)
-	if _, ok := w.Snapshot().Chunks.Get(world.ChunkPos{}); !ok {
-		t.Fatal("the chunk was not loaded")
+
+	if _, ok := w.Snapshot().Chunks.Get(world.ChunkPos{}); ok {
+		t.Error("the chunk survived its unload")
+	}
+	if !slices.Contains(names(events), event.NameWorldChunkUnloaded) {
+		t.Errorf("published %v, want an unload", names(events))
 	}
 }
 

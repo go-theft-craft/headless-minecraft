@@ -1,0 +1,218 @@
+package client_test
+
+import (
+	"testing"
+	"time"
+
+	"github.com/go-theft-craft/headless-minecraft/auth"
+	"github.com/go-theft-craft/headless-minecraft/client"
+	"github.com/go-theft-craft/headless-minecraft/client/internal/fixture"
+	"github.com/go-theft-craft/headless-minecraft/event"
+	"github.com/go-theft-craft/headless-minecraft/safety"
+	"github.com/go-theft-craft/headless-minecraft/version/java"
+	"github.com/go-theft-craft/headless-minecraft/world"
+)
+
+// The observed-world end-to-end lane. It drives a whole connection over a
+// loopback socket — real framing, real generated codecs, a real login, the
+// client's own loop, and every reducer the protocol 47 adapter builds — and
+// asserts the properties the whole design rests on.
+//
+// It covers protocol 47 only, for the reason the session lane records: serving
+// 775 needs a server-side login and the shared login.Acceptor is written
+// against the v1_8 generated types. The 775 reducers are covered by their
+// adapter's own packet scripts.
+
+func observeTo(t *testing.T, addr string, w *world.World) *client.Client {
+	t.Helper()
+
+	provider, err := auth.Offline("observer")
+	if err != nil {
+		t.Fatalf("Offline: %v", err)
+	}
+	authz, err := safety.Authorize(addr, safety.ScopeObserve)
+	if err != nil {
+		t.Fatalf("Authorize: %v", err)
+	}
+
+	bot, err := client.New(
+		client.WithAddress(addr),
+		client.WithAuth(provider),
+		client.WithVersion(java.Java1_8()),
+		client.WithAuthorization(authz),
+		client.WithConnectTimeout(5*time.Second),
+		client.WithWorld(w),
+	)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	return bot
+}
+
+func TestEndToEndObservesAWholeWorld(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end lane needs a loopback socket")
+	}
+	t.Parallel()
+
+	addr, stop := fixture.Start(t, fixture.Script{ThroughReady: true, ThenWorld: true})
+	defer stop()
+
+	w := world.New()
+	bot := observeTo(t, addr, w)
+
+	// Every state domain at once, which is what examples/observe subscribes
+	// to and what a consumer maintaining a world would.
+	states, err := bot.Subscribe(
+		event.DomainPlayer|event.DomainWorld|event.DomainEntities|
+			event.DomainContainers|event.DomainRegistry|event.DomainChat,
+		512,
+	)
+	if err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	if err := bot.Connect(t.Context()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	// Connect returns at readiness, which is before the script's two waves
+	// have arrived. Waiting for the last thing the script sends is what makes
+	// this a lane rather than a race: closing here would assert against
+	// whatever happened to have been applied.
+	var events []event.Event
+	for published := range states.C() {
+		events = append(events, published)
+		if published.Name() == event.NameWorldChunkUnloaded {
+			break
+		}
+	}
+	if err := bot.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	events = append(events, drain(states)...)
+
+	snapshot := w.Snapshot()
+
+	// Every event names a revision that exists, and no event names one the
+	// world has not reached. This is the property the design exists for: the
+	// snapshot at an event's revision shows what the event describes.
+	if snapshot.Revision == 0 {
+		t.Fatal("the world applied no batches")
+	}
+	for _, published := range events {
+		if published.Revision() == 0 {
+			t.Errorf("%s carries no revision", published.Name())
+		}
+		if published.Revision() > snapshot.Revision {
+			t.Errorf("%s names revision %d, past the world's %d",
+				published.Name(), published.Revision(), snapshot.Revision)
+		}
+	}
+
+	// Protocol 47 has no bundle delimiter, so the fixture's every packet is
+	// its own batch and revisions never repeat across two different names
+	// from two different packets. Revisions must not go backwards either way.
+	previous := uint64(0)
+	for _, published := range events {
+		if published.Revision() < previous {
+			t.Fatalf("%s went back to revision %d from %d",
+				published.Name(), published.Revision(), previous)
+		}
+		previous = published.Revision()
+	}
+
+	// The player half: the fixture logs in as entity 42 and places at 1,64,2.
+	player := snapshot.Player
+	if !player.Known || player.EntityID != 42 || !player.Placed {
+		t.Errorf("player is %+v", player)
+	}
+	if player.X != 1 || player.Y != 64 || player.Z != 2 {
+		t.Errorf("player is at %v,%v,%v, want 1,64,2", player.X, player.Y, player.Z)
+	}
+
+	// The environment half: the fixture's game-state change starts rain,
+	// which on protocol 47 is reason 2 and not reason 1.
+	if environment := snapshot.Environment; !environment.WeatherKnown || !environment.Raining {
+		t.Errorf("weather is %+v, want raining", environment)
+	}
+
+	// The second wave took the entities, the container, and the chunk away.
+	// A store that fills and never empties is the memory bug a week-long
+	// session hits.
+	if len(snapshot.Entities.Tracked) != 0 {
+		t.Errorf("entities are %+v, want released", snapshot.Entities.Tracked)
+	}
+	if _, open := snapshot.Containers.Get(3); open {
+		t.Error("the container is still open after a close")
+	}
+	if _, loaded := snapshot.Chunks.Get(world.ChunkPos{}); loaded {
+		t.Error("the chunk is still loaded after an unload")
+	}
+
+	// Every domain the script touched published, and the entity that moved
+	// published a move rather than only a spawn.
+	for _, name := range []event.Name{
+		event.NamePlayerSpawned,
+		event.NamePlayerMoved,
+		event.NameWorldChunkLoaded,
+		event.NameWorldWeatherChanged,
+		event.NameEntitySpawned,
+		event.NameEntityMoved,
+		event.NameEntityRemoved,
+		event.NameContainerOpened,
+		event.NameContainerClosed,
+	} {
+		if count(events, name) == 0 {
+			t.Errorf("no %s was published", name)
+		}
+	}
+}
+
+func TestEndToEndFillsTheStoresBeforeEmptyingThem(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end lane needs a loopback socket")
+	}
+	t.Parallel()
+
+	// The same script, watched as it happens rather than after the fact: the
+	// spawn events must describe a world that actually held the entities, and
+	// a snapshot taken at a spawn's revision must show it.
+	addr, stop := fixture.Start(t, fixture.Script{ThroughReady: true, ThenWorld: true})
+	defer stop()
+
+	w := world.New()
+	bot := observeTo(t, addr, w)
+
+	entities, err := bot.Subscribe(event.DomainEntities, 512)
+	if err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	if err := bot.Connect(t.Context()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	// Read the snapshot the moment the second spawn is seen, before the
+	// destroy wave has been applied.
+	var tracked int
+	for published := range entities.C() {
+		if published.Name() != event.NameEntitySpawned {
+			continue
+		}
+		if spawned, ok := published.(event.EntitySpawned); ok && spawned.EntityID == 8 {
+			tracked = len(w.Snapshot().Entities.Tracked)
+
+			break
+		}
+	}
+	if err := bot.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	drain(entities)
+
+	if tracked != 2 {
+		t.Errorf("the world held %d entities at the second spawn, want 2", tracked)
+	}
+}

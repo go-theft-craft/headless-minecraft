@@ -33,6 +33,15 @@ type Script struct {
 	ThenKick string
 	// ThenDropConn closes the transport without a disconnect packet.
 	ThenDropConn bool
+	// ThenWorld sends a world script after the client is placed: a chunk, two
+	// entities, a move, a container, and a weather change in one wave, then a
+	// second wave that takes all of it away. It is what the observed-world
+	// end-to-end lane asserts against.
+	//
+	// The fixture speaks protocol 47 only. Serving 775 needs a server-side
+	// login and the shared login.Acceptor is written against the v1_8
+	// generated types, which is the same limit M6.3 recorded.
+	ThenWorld bool
 }
 
 // serverKey is generated once per test binary. Generating an RSA key costs
@@ -154,6 +163,12 @@ func play(ctx context.Context, stream *protocol.Stream, conn net.Conn, script Sc
 		return err
 	}
 
+	if script.ThenWorld {
+		if err := world(ctx, stream); err != nil {
+			return err
+		}
+	}
+
 	if !script.ThenDropConn && script.ThenKick == "" {
 		return nil
 	}
@@ -180,6 +195,64 @@ func play(ctx context.Context, stream *protocol.Stream, conn net.Conn, script Sc
 	// what a real server does. Writing a kick first would send the reason
 	// twice and tell the client the session ended twice.
 	return stream.Shutdown(ctx, script.ThenKick)
+}
+
+// world sends the observed-world script in two waves, so the lane can assert
+// that a store fills and then empties again.
+//
+// Every packet is a separate write, and protocol 47 has no bundle delimiter,
+// so the client sees one batch per packet and one revision per batch. That is
+// the property the lane exists to check.
+func world(ctx context.Context, stream *protocol.Stream) error {
+	// A column of one section, every block the same state, so a block lookup
+	// has an answer that could not have come from a zero value.
+	section := make([]byte, 8192)
+	for i := range 4096 {
+		section[i*2] = 0x20
+	}
+
+	arriving := []struct {
+		name  string
+		value playPacket
+	}{
+		{"map_chunk", &gen.PlayClientboundMapChunk{
+			X: 0, Z: 0, GroundUp: true, BitMap: 0x0001, ChunkData: section,
+		}},
+		{"spawn_entity_living", &gen.PlayClientboundSpawnEntityLiving{
+			EntityID: 7, Type: 54, X: 32, Y: 2048, Z: 64,
+		}},
+		{"spawn_entity_living", &gen.PlayClientboundSpawnEntityLiving{
+			EntityID: 8, Type: 51, X: 64, Y: 2048, Z: 96,
+		}},
+		{"rel_entity_move", &gen.PlayClientboundRelEntityMove{EntityID: 7, DX: 32}},
+		{"open_window", &gen.PlayClientboundOpenWindow{
+			WindowID: 3, InventoryType: "minecraft:chest",
+			WindowTitle: `{"text":"Chest"}`, SlotCount: 27,
+		}},
+		{"game_state_change", &gen.PlayClientboundGameStateChange{Reason: 2}},
+	}
+	for _, packet := range arriving {
+		if err := write(ctx, stream, packet.name, packet.value); err != nil {
+			return err
+		}
+	}
+
+	leaving := []struct {
+		name  string
+		value playPacket
+	}{
+		{"entity_destroy", &gen.PlayClientboundEntityDestroy{EntityIds: []int32{7, 8}}},
+		{"close_window", &gen.PlayClientboundCloseWindow{WindowID: 3}},
+		// Protocol 47 unloads a column by sending it with no sections.
+		{"map_chunk", &gen.PlayClientboundMapChunk{X: 0, Z: 0, GroundUp: true}},
+	}
+	for _, packet := range leaving {
+		if err := write(ctx, stream, packet.name, packet.value); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 type playPacket interface {

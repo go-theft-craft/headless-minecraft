@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-theft-craft/headless-minecraft/event"
 	"github.com/go-theft-craft/headless-minecraft/version"
+	"github.com/go-theft-craft/headless-minecraft/world"
 )
 
 // BundleDelimiter is the packet that opens and closes a bundle. It toggles:
@@ -37,6 +38,15 @@ func New(collector *event.Collector, outbox *version.Outbox) version.Adapter {
 }
 
 func (adapter) ProtocolID() string { return ProtocolID }
+
+// Reducers gives an installed world this protocol's reducers.
+//
+// The client asserts the adapter for this method rather than version
+// declaring it, because world imports version and naming it there would make
+// the two packages import each other. Without the method the assertion fails
+// silently: the world still counts batches and observes nothing, which is the
+// fault the observed-world end-to-end lane was written to catch.
+func (adapter) Reducers(w *world.World) []world.Reducer { return Reducers(w) }
 
 // LoginTerminalState is configuration: the client takes the connection over
 // from the login negotiator there, so the registries, tags, feature flags,

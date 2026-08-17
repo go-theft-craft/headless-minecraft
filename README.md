@@ -5,9 +5,9 @@ servers. It speaks the Minecraft protocol directly; it does not launch or wrap
 Mojang's Java client.
 
 > [!IMPORTANT]
-> This project is pre-alpha. The client connects, logs in, reaches play, and
-> publishes session events; it does not yet observe world state or act in the
-> world. There is no published release.
+> This project is pre-alpha. The client connects, logs in, reaches play,
+> publishes events, and maintains observed world state; it does not yet act in
+> the world. There is no published release.
 
 ## Design goals
 
@@ -45,7 +45,7 @@ replace the component graph.
 | Endpoint-scoped authorization and strict recovery profile | In progress |
 | Injectable wire-protocol profile | In progress |
 | Java Edition login and play lifecycle, with session events | In progress |
-| Immutable world, entity, player, registry, and container snapshots | Planned |
+| Immutable world, entity, player, registry, and container snapshots | In progress |
 | Generic slots plus semantic inventory and menu drivers | Planned |
 | Replaceable movement, crafting, digging, and building components | Planned |
 | Modded body, physics, abilities, effects, and dynamic inventory rules | Planned |
@@ -109,10 +109,80 @@ API shape:
   read loop, so a consumer that stops draining its channel has the channel
   closed and `Err` set to `client.ErrOverflow`, rather than stalling the
   connection and its keepalives.
-- **Events describe what changed, not which packet arrived.** Observed world
-  state — chunks, entities, containers, the local player — is the next
-  milestone; today the session domain is populated and the rest of the taxonomy
-  is names.
+- **Events describe what changed, not which packet arrived.** Four packets move
+  an entity on protocol 47 and five on 775, and one `entity.moved` reports all
+  nine, so a subscriber written against the taxonomy keeps working when a
+  version changes which packet carries a fact.
+
+## Observed world state
+
+Install a world and the client applies each batch to it before publishing that
+batch's events:
+
+```go
+observed := world.New()
+
+bot, err := client.New(
+	client.WithAddress("localhost:25565"),
+	client.WithAuth(provider),
+	client.WithVersion(java.Current()),
+	client.WithAuthorization(authorization),
+	client.WithWorld(observed),
+)
+if err != nil {
+	return err
+}
+
+snapshot := observed.Snapshot()
+fmt.Println(snapshot.Player.X, len(snapshot.Entities.Tracked))
+```
+
+`examples/observe` is the whole surface in one program: it subscribes to every
+state domain and prints each event with the revision that produced it.
+
+**A snapshot is one instant.** Every domain in it — player, entities, chunks,
+environment, containers, registries, payloads, chat — was read at the same
+revision under the same lock, so eight domains read together describe one
+moment rather than eight moments that happen to be close.
+
+**A batch is one revision.** Protocol 775 bundles packets that must take effect
+together, so the revision counter moves once per batch and a reader never
+observes half a bundle. Every event carries the revision that produced it, and
+that revision already exists by the time a subscriber sees it: `Snapshot()` at
+an event's revision shows the state the event describes.
+
+**Unknown values are preserved, not defaulted.** A metadata index no version
+models, a registry key with an unknown namespace, a menu type that is not
+vanilla, an attribute this client has no name for, a plugin message on a
+channel nobody registered — each is kept as the server sent it and addressable
+by its key. That is what makes a modded server representable without
+mod-specific conditions in the reducers.
+
+**Where a protocol says nothing, the snapshot says so.** Entity 0 is a legal
+entity and damage type 0 is a legal damage type, so a value the server never
+sent is reported as absent rather than as zero. Protocol 47 sends no damage
+source, no state ID, no session registry, and no simulation settings, and the
+snapshot reports each as unsupplied rather than presenting an empty one as
+though the server had sent it.
+
+**Every peer-filled store is bounded, and what a bound refuses is counted.** A
+bot that runs for a week is the target, and a silent drop is a bug report
+nobody can act on.
+
+**Mechanics are not here.** The world holds what the server sent. A body model,
+physics, collision, and movement strategy are M8; actions, container drivers,
+and semantic slot layouts are M9. Nothing here predicts which menu a block
+opens or what a server would have sent.
+
+Two limits are worth knowing before building on this. Protocol 775 chunk
+sections are stored as received and not decoded — the paletted container format
+has changed across recent versions and no captured 26.1 chunk exists here to
+test a decoder against, so block lookups in a 775 section report
+`world.ErrSectionNotDecodable` while everything that does not need block access
+works. And no chat component is rendered anywhere: titles, chat messages,
+container titles, and disconnect reasons arrive as structured values, and
+turning one into a line of text is a presentation decision the library leaves
+to the caller.
 
 ## Authorization
 

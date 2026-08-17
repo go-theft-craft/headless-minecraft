@@ -6,7 +6,7 @@ The roadmap records dependency order, not release dates. Completed work remains 
 flowchart LR
     P0["P0: repository foundation<br/>complete"]
     P1["P1: lifecycle and auth<br/>in progress"]
-    P2["P2: observed world state"]
+    P2["P2: observed world state<br/>complete"]
     P3["P3: constructed components"]
     P4["P4: containers, inventory,<br/>and crafting"]
     P5["P5: movement, digging,<br/>and building"]
@@ -43,9 +43,16 @@ flowchart LR
 
 ## P2: observed world state
 
-- Publish immutable player, entity, chunk, registry, container, and environment snapshots.
-- Preserve unknown namespaced attributes, metadata, item data, and custom payloads.
-- Apply packet reducers in wire order before publishing events.
+- Publish immutable player, entity, chunk, registry, container, and environment
+  snapshots. **Done:** eight domains, one revision per batch, on both protocols.
+- Preserve unknown namespaced attributes, metadata, item data, and custom
+  payloads. **Done:** bounded per owner, and every bound reports what it
+  refused.
+- Apply packet reducers in wire order before publishing events. **Done.**
+
+Two limits carry forward. Protocol 775 chunk sections are stored and not
+decoded, which needs one captured 26.1 chunk as a fixture. No chat component is
+rendered anywhere, which is deliberate and permanent.
 
 ## P3: constructed components
 
