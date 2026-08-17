@@ -330,11 +330,18 @@ the code.
 | 8 | Attack primitive with profile-supplied cooldown | `interaction` | M9.6 | Designed |
 | 9 | Entity position and health for target tracking | `world` | M7 | Position present. Health is not: a server sends another entity's health as an attribute or a metadata field and the world stores both as sent without interpreting either. `EntityView.Dead` answers the only question the bot asks of it, so the example reads that instead |
 | 10 | Breaker acknowledgement after a movement correction | `safety` | M9 | Designed — must be explicit in the example, with a budget |
-| 11 | A map from a block state to whether it is solid | none | **none** | **Gap, and the only one with no milestone behind it.** The bypass search needs `Solid bool` and the library exposes state IDs. `world` refuses block semantics by design and nothing else supplies them, so every position reads `Unknown` and the bot traps instead of orbiting. Isolated behind the `Solidity` port so one type changes when a registry lands |
+| 11 | A map from a block state to whether it is solid | `minecraft-protocol` | none yet | **Gap, but no longer an unowned one.** The bypass search needs `Solid bool` and the library exposes state IDs. `world` refuses block semantics by design and nothing else here supplies them, so every position reads `Unknown` and the bot traps instead of orbiting. Assigned to `minecraft-protocol` on 2026-08-17, where a state ID already means something; isolated behind the `Solidity` port so one type changes when that registry lands |
 
 Items 4, 5, and the spawn half of item 2 are settled. Item 6 is still owed by
-M9, and item 11 is owed by nobody, which makes it the one to argue about: it is
-the only thing now standing between this example and a complete revolution.
+M9. Item 11 now has an owner — `minecraft-protocol` — but no milestone, and it
+is still the last thing standing between this example and a complete
+revolution.
+
+Item 3 was present the whole time and still observed nothing against a real
+server: a vanilla 1.8.9 server sends the join-time world as `map_chunk_bulk`,
+which no reducer read, so every lookup answered "not loaded" and the bot
+reported itself sealed in on open flat ground. Fixed 2026-08-17 in the v1_8
+adapter.
 
 ## Bounds
 

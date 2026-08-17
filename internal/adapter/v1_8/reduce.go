@@ -1,6 +1,7 @@
 package v1_8
 
 import (
+	"math/bits"
 	"slices"
 	"strconv"
 
@@ -403,7 +404,9 @@ func itoa(n int) string { return strconv.Itoa(n) }
 // then the biomes. Only the block half is decoded; the rest is kept as bytes.
 const (
 	sectionBlockBytes47 = blocksPerSection47 * 2
+	sectionLightBytes47 = blocksPerSection47 / 2
 	blocksPerSection47  = 4096
+	biomeBytes47        = 256
 )
 
 // chunkReducer decodes the packets that describe terrain.
@@ -435,6 +438,9 @@ func reduceChunkPacket(chunks *world.Chunks, packet protocol.Packet, c *event.Co
 		}
 		chunks.Loaded(c, pos, sections, light)
 
+	case *gen.PlayClientboundMapChunkBulk:
+		reduceChunkBulk47(chunks, value, c)
+
 	case *gen.PlayClientboundBlockChange:
 		chunks.BlocksChanged(c, []world.BlockChange{{
 			Pos:   blockPos47(value.Location),
@@ -460,6 +466,46 @@ func reduceChunkPacket(chunks *world.Chunks, packet protocol.Packet, c *event.Co
 	case *gen.PlayClientboundTileEntityData:
 		chunks.BlockEntityChanged(c, blockPos47(value.Location), value.NBTData)
 	}
+}
+
+// reduceChunkBulk47 unpacks the packet that carries the join-time world.
+//
+// A vanilla 1.8.9 server sends every column a joining player can see as one
+// bulk packet and never a single-column one, so an adapter that reduces only
+// `map_chunk` observes no terrain at all and reports nothing about it.
+//
+// The blob concatenates the columns in the order the metadata lists them, and
+// each column is laid out blocks, block light, sky light, biomes. The stride
+// therefore depends on SkyLightSent — which the single-column packet never has
+// to know, and which misaligns every column after the first when it is wrong.
+// Every bulk column is ground-up, so the biomes are always present.
+func reduceChunkBulk47(chunks *world.Chunks, value *gen.PlayClientboundMapChunkBulk, c *event.Collector) {
+	offset := 0
+	for _, meta := range value.Meta {
+		size := bulkColumnBytes47(meta.BitMap, value.SkyLightSent)
+		if offset+size > len(value.Data) {
+			// Every following column starts where this one ends, so a blob
+			// shorter than the metadata claims makes the rest unreadable
+			// rather than merely truncated. What was read already is kept.
+			return
+		}
+		sections, light := splitColumn47(meta.BitMap, value.Data[offset:offset+size])
+		offset += size
+		if len(sections) == 0 {
+			continue
+		}
+		chunks.Loaded(c, world.ChunkPos{X: meta.X, Z: meta.Z}, sections, light)
+	}
+}
+
+// bulkColumnBytes47 is one bulk column's extent in the packed blob.
+func bulkColumnBytes47(bitmap uint16, skyLight bool) int {
+	perSection := sectionBlockBytes47 + sectionLightBytes47
+	if skyLight {
+		perSection += sectionLightBytes47
+	}
+
+	return bits.OnesCount16(bitmap)*perSection + biomeBytes47
 }
 
 func blockPos47(p gen.Position) world.BlockPos {

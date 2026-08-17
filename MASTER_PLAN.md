@@ -1096,7 +1096,7 @@ something the approved documents asserted:
   carries the shared `event.Damage` instead of a bare source type. Orbit's
   required-surface items 4 and 5 are satisfied; item 6, respawn as a sendable
   action, stays open against M9.
-- [ ] Reduce `map_chunk_bulk` on protocol 47. Found on 2026-08-17 by running
+- [x] Reduce `map_chunk_bulk` on protocol 47. Found on 2026-08-17 by running
   [`examples/orbit`](docs/superpowers/specs/2026-08-16-orbit-example-design.md)
   against a real vanilla 1.8.9 server: the adapter reduces `map_chunk` and
   nothing else, and a 1.8.9 server sends the whole join-time world as
@@ -1107,7 +1107,15 @@ something the approved documents asserted:
   never fired, and `examples/observe` looked healthy because it prints the events
   that did. The unpacking is not the single-column one — bulk concatenates every
   column's blocks and light into one blob, so `SkyLightSent` decides the stride
-  and getting it wrong misaligns every column after the first.
+  and getting it wrong misaligns every column after the first. Closed by
+  `reduceChunkBulk47` in the v1_8 adapter: one column extent per metadata entry,
+  sliced through the same `splitColumn47` the single-column packet already uses,
+  so both packets reach the world as the same sections. Every bulk column is
+  ground-up, so the biomes are always there and only the skylight is
+  conditional. A blob shorter than its metadata claims stops the loop rather
+  than storing guesses, because every following column starts where this one
+  ends. The stride is covered by a test that reads a block out of the *second*
+  column, which is the only assertion a wrong stride fails.
 - [ ] Guard the class of failure this belongs to. Three defects in one day were
   silent successes: a client with no world installed, a bot reading its own
   position back from server-sent state, and this. Each reported nothing, and each
@@ -1132,7 +1140,13 @@ something the approved documents asserted:
   reads unknown, so the bot will trap as soon as movement lands. It is
   the only thing left between that example and a complete revolution, and it is
   the only gap in its table with no milestone behind it. Isolated behind a
-  `Solidity` port there so the fix lands in one type, wherever it ends up living.
+  `Solidity` port there so the fix lands in one type, wherever it ends up
+  living. **Decided 2026-08-17: `minecraft-protocol` owns it.** That is where a
+  state ID already means something — the same generated per-version data that
+  names packets can name blocks — and it keeps `world`'s refusal to interpret
+  intact, keeps one table serving both protocols, and keeps every consumer from
+  writing its own. `headless-minecraft` keeps the `Solidity` port and satisfies
+  it from there rather than defining the mapping itself.
 
 ### M8–M9 — Simulation and gameplay
 

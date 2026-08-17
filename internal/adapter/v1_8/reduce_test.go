@@ -522,6 +522,113 @@ func TestAProtocol47ChunkDecodesToItsBlocks(t *testing.T) {
 	}
 }
 
+// bulkColumn47 builds one column of a bulk blob: one section's blocks with a
+// single state written at section-local index 0, then the light arrays and the
+// biomes that follow it.
+func bulkColumn47(state uint16, skyLight bool) []byte {
+	column := make([]byte, 8192+2048+256)
+	if skyLight {
+		column = make([]byte, 8192+2048+2048+256)
+	}
+	column[0] = byte(state)
+	column[1] = byte(state >> 8)
+
+	return column
+}
+
+func TestABulkChunkLoadsEveryColumnItCarries(t *testing.T) {
+	t.Parallel()
+
+	// A vanilla 1.8.9 server sends the whole join-time world as map_chunk_bulk
+	// and never a single-column map_chunk, so an adapter that reduces only the
+	// latter sees no terrain and says nothing about it.
+	blob := append(bulkColumn47(1<<4, true), bulkColumn47(2<<4, true)...)
+
+	w, events := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundMapChunkBulk{
+			SkyLightSent: true,
+			Meta: []gen.PlayClientboundMapChunkBulkMetaItem{
+				{X: 0, Z: 0, BitMap: 0x0001},
+				{X: 1, Z: 0, BitMap: 0x0001},
+			},
+			Data: blob,
+		}),
+	})
+
+	chunks := w.Snapshot().Chunks
+	if state, ok := chunks.Block(0, 0, 0); !ok || state != 1<<4 {
+		t.Errorf("first column gave %d, %v, want stone", state, ok)
+	}
+	// The second column only reads back when the stride is right: getting
+	// SkyLightSent wrong misaligns every column after the first.
+	if state, ok := chunks.Block(16, 0, 0); !ok || state != 2<<4 {
+		t.Errorf("second column gave %d, %v, want granite", state, ok)
+	}
+	loads := 0
+	for _, name := range names(events) {
+		if name == event.NameWorldChunkLoaded {
+			loads++
+		}
+	}
+	if loads != 2 {
+		t.Errorf("published %d loads, want 2", loads)
+	}
+}
+
+func TestABulkChunkWithoutSkylightUsesTheShorterStride(t *testing.T) {
+	t.Parallel()
+
+	// The nether and the end send no skylight, so the same metadata describes
+	// a column 2048 bytes per section shorter.
+	blob := append(bulkColumn47(1<<4, false), bulkColumn47(2<<4, false)...)
+
+	w, _ := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundMapChunkBulk{
+			SkyLightSent: false,
+			Meta: []gen.PlayClientboundMapChunkBulkMetaItem{
+				{X: 0, Z: 0, BitMap: 0x0001},
+				{X: 1, Z: 0, BitMap: 0x0001},
+			},
+			Data: blob,
+		}),
+	})
+
+	if state, ok := w.Snapshot().Chunks.Block(16, 0, 0); !ok || state != 2<<4 {
+		t.Errorf("second column gave %d, %v, want granite", state, ok)
+	}
+}
+
+func TestABulkChunkStopsAtATruncatedBlob(t *testing.T) {
+	t.Parallel()
+
+	// Once the blob runs short, every column after it starts at an unknown
+	// offset, so the rest is unreadable rather than merely truncated. What
+	// arrived is kept and the guesses are not.
+	blob := append(bulkColumn47(1<<4, true), make([]byte, 64)...)
+
+	w, _ := script(t, []protocol.Packet{
+		login(1),
+		play(&gen.PlayClientboundMapChunkBulk{
+			SkyLightSent: true,
+			Meta: []gen.PlayClientboundMapChunkBulkMetaItem{
+				{X: 0, Z: 0, BitMap: 0x0001},
+				{X: 1, Z: 0, BitMap: 0x0001},
+			},
+			Data: blob,
+		}),
+	})
+
+	chunks := w.Snapshot().Chunks
+	if state, ok := chunks.Block(0, 0, 0); !ok || state != 1<<4 {
+		t.Errorf("the complete column gave %d, %v", state, ok)
+	}
+	if _, ok := chunks.Get(world.ChunkPos{X: 1}); ok {
+		t.Error("the truncated column was stored")
+	}
+}
+
 func TestABlockChangeAppliesToALoadedChunk(t *testing.T) {
 	t.Parallel()
 
