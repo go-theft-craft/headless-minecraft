@@ -315,9 +315,12 @@ to tell a server where the player went; an outbound version-neutral action seam
 is that plan's first task and a real API addition. **Since met:** `Client.Do`
 landed in `headless-minecraft` with move, look, move-look, ground, and respawn
 intents, serialized against the read loop and refused before the server places
-the player. M8.8's first task is done ahead of it, and its plan should be
-reconciled against the API that actually landed rather than the one it
-sketched. The second prerequisite stands: with M6.4 postponed, the
+the player. M8.8's first task is done ahead of it, and its plan was reconciled
+against the landed API on 2026-08-17: Task 1 is recorded complete with the
+five particulars that differ from its sketch, and Task 4 absorbs the one
+responsibility the landed API deliberately declined — choosing which movement
+packet a tick warrants, per the measured cadence rule `version/action.go`
+documents. The second prerequisite stands: with M6.4 postponed, the
 gate runs in offline mode only — fine for a local vanilla server, but the result
 says nothing about online mode and the plan requires it to say so. The plan also
 defines a correction before counting one, since a vanilla server sends every
@@ -1597,7 +1600,7 @@ The three worth carrying furthest:
 - [M8.4 v1_8 player movement](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-4-v1-8-player-movement.md) — complete; 4,800 ticks agree with the game
 - [M8.6 replay and determinism](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-6-replay-and-determinism.md) — planned; the determinism matrix runs on `actions/setup-go`, not devbox
 - [M8.7 v26_1 player movement](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-7-v26-1-player-movement.md) — planned; opens with the oracle feasibility question
-- [M8.8 consumer integration](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) — planned; its first task, the outbound action seam, has since landed as `Client.Do` and the plan needs reconciling against it
+- [M8.8 consumer integration](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) — planned; reconciled 2026-08-17 against the landed `Client.Do`: Task 1 is complete, Task 4 owns the packet cadence, and execution starts at Task 2
 - [Java 26.1 and protocol 775](../minecraft-protocol/docs/superpowers/plans/2026-08-15-java-26-1-protocol-775.md) — complete
 - [Routing, capture, replay, and CLI](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) — complete; amended 2026-08-15
 - [Headless connection](docs/superpowers/plans/2026-08-15-headless-connection.md) — M6.3; complete. Each task records what executing it changed
