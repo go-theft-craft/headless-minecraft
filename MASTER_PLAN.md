@@ -502,7 +502,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M8.8 | One kernel driven by client prediction and server authority, gated on zero corrections from vanilla | `minecraft-simulation`, `headless-minecraft`, `server` | Planned, plan written | M8.4, M6, M7 | [M8.8 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) |
 | M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic, each verified against both 1.8.9 and 26.1.2 | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.1b planned; M9.3–M9.8 plans drafted ahead of their prerequisites, each with a reconcile-first task; M9.2 unblocked by M8.4 and awaiting M8.8 | M9.1 on M5 and `relay` v0.2.0; M9.1b on M9.1 and M4; M9.2–M9.8 on M8.8, M9.1, and M9.1b | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite), [M9.1b–M10 cross-version plan](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps, [M10 plan](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) |
-| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | M11.1 through M11.3 complete; M11.4–M11.7 designed and planned, unimplemented | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), six sub-milestone designs, and a plan for each, [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) |
+| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | M11.1 through M11.4 complete; M11.5–M11.7 designed and planned, unimplemented | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), six sub-milestone designs, and a plan for each, [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) |
 
 ## What is complete
 
@@ -1705,8 +1705,47 @@ The three worth carrying furthest:
     was a method on it — and could not express player persistence at all. It
     was one milestone old, consumed by nothing outside this repository, and the
     framework design's risk section priced the removal.
-- [ ] M11.4 World generation: parameters, named world types, version-neutral
-  output. No separate repository. [Design](../server/docs/superpowers/specs/2026-08-17-m11-4-world-generation-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-4-world-generation.md), 2026-08-17.
+- [x] M11.4 World generation: parameters, named world types, version-neutral
+  output. Done on 2026-08-17. No separate repository.
+  [Design](../server/docs/superpowers/specs/2026-08-17-m11-4-world-generation-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-4-world-generation.md), 2026-08-17.
+  - **The defaults really were byte-identical, first try.** Every one of the
+    four inherited chunk hashes survived the promotion of about forty constants
+    into structs, and `TestTheGoldenTableStillCoversTheOriginalHashes` carries
+    them forward literally so the claim stays checkable. That is a real
+    result *and* a smaller endorsement of the safety net than it looks: the net
+    never fired, so what it proved is that the transcription was right, not
+    that the net catches a wrong one. The measurement of whether it was worth
+    building is still outstanding.
+  - **The parameter surface is about forty knobs**, grouped as seven at the top
+    level plus `surface` (10), `caves` (8), `ores` (5 fields × 6 entries),
+    `trees` (3), and `biomes` (4 plus 12 biome shapes). Four of them turned out
+    to be entangled rather than independent, and each is a place where changing
+    one value alone gives something nobody wants:
+    - `surface.depth` is both how thick the surface layers are *and* where the
+      stone fill stops, so raising it thins the stone rather than deepening the
+      dirt.
+    - `surface.desert_depth` only moves the stone top. The sand thickness comes
+      from `surface.depth`, which means the two desert numbers do different
+      things despite reading like a pair. That is what the constants did, and
+      transcribing it faithfully is what kept the hashes still.
+    - `bedrock_depth` is also the floor every surface loop guards against, so
+      it is a bedrock setting and a "do not carve below here" setting at once.
+    - `biomes.ocean_below` decides where ocean *is*, and the ocean biome's own
+      `base_offset` of -22 decides how deep it is. Moving one without the other
+      gives ocean above sea level.
+  - **The name-mismatch rule cannot be judged yet**, which the plan predicted.
+    It is written the way the design argued for — the world's generator and
+    parameters win, a version mismatch warns and keeps going — and the tests
+    pin all three branches. Whether it is *right* is only knowable the first
+    time somebody switches `-generator` on a world they care about; what is
+    certain is that today's behaviour, silently generating the new style beside
+    the old, is worse.
+  - **An unknown generator name is now a construction error listing the known
+    ones.** Before this a `switch` fell through to the noise generator, so
+    `-generator flta` gave you default terrain and no indication.
+  - The `HeightAt`/`Generate` disagreement at a cave mouth is still there. It
+    is documented on the method now rather than only in the design, and it
+    belongs to whoever owns where a dropped item lands.
 - [ ] M11.5 Provenance: item and block identity, the ID index, the audit log and
   its queries, reconciliation on load. [Design](../server/docs/superpowers/specs/2026-08-17-m11-5-provenance-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-5-provenance.md), 2026-08-17.
 - [ ] M11.6 Observability: one `Observer` interface, per-player, per-feature,

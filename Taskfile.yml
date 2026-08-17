@@ -60,6 +60,17 @@ tasks:
     cmds:
       - go test -race -covermode=atomic -coverprofile=coverage.out ./...
 
+  test:fast:
+    desc: Run unit tests without the race detector, for the edit loop
+    deps: [deps]
+    # The same tests as test. The race detector's instrumented rebuild is what
+    # separates them, and every source edit invalidates it — measured at 23
+    # seconds against 2 on a sibling tree. Run this while editing and test
+    # before committing; verify still runs the race lane, which is the only one
+    # that finds the failure you cannot reproduce on purpose.
+    cmds:
+      - go test {{.CLI_ARGS | default "./..."}}
+
   test:e2e:
     desc: Run the end-to-end client tests against the in-process fixture server
     deps: [deps]
