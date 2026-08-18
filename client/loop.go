@@ -123,6 +123,9 @@ func (c *Client) runLoop(
 	ready chan<- version.ReadyState,
 ) error {
 	readySent := false
+	// packetState is the protocol state the last packet arrived in, kept here
+	// so the per-packet check below costs a comparison rather than a lock.
+	packetState := ""
 	// Only with a world: without one the client observes no terrain by
 	// construction, and reporting that would be reporting the consumer's own
 	// choice back at them.
@@ -156,6 +159,19 @@ func (c *Client) runLoop(
 		_ = outbox.Drain()
 
 		for _, p := range batch.Packets {
+			// The state this packet arrived in, recorded here rather than
+			// read back off the stream when the session ends: a terminated
+			// stream answers nothing, and the observation path that reports
+			// transitions is allowed to drop what it has not delivered when
+			// the transport goes. A packet the loop has in hand is neither.
+			//
+			// Only a change is written. A state holds for thousands of
+			// packets, and this is the loop that must not slow down.
+			if string(p.State) != packetState {
+				packetState = string(p.State)
+				c.noteState(packetState)
+			}
+
 			if d != nil {
 				if err := d.Dispatch(ctx, p); err != nil {
 					return fmt.Errorf("dispatch %s: %w", p.Name, err)

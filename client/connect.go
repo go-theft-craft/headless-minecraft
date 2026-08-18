@@ -200,11 +200,31 @@ func (c *Client) awaitReady(
 	deadline := time.NewTimer(c.connectTimeout)
 	defer deadline.Stop()
 
+	// Readiness is taken before anything else, and again on the way out.
+	//
+	// A server that places the player and then kicks makes both this and the
+	// loop ending ready in the same instant, and a select picks between ready
+	// cases at random — so half of those sessions were reported as never
+	// placed, having reached play and been told why they were leaving. The
+	// loop signals readiness before it can end, so a value in flight is
+	// already buffered by the time the ending is visible here.
+	select {
+	case <-ready:
+		return nil
+	default:
+	}
+
 	select {
 	case <-ready:
 		return nil
 	case <-c.loop:
-		return fmt.Errorf("connection ended before the player was placed: %w", c.loopErr())
+		select {
+		case <-ready:
+			return nil
+		default:
+		}
+
+		return c.endedBeforePlay()
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-deadline.C:
@@ -213,6 +233,22 @@ func (c *Client) awaitReady(
 			ErrConnectTimeout, c.connectTimeout, c.currentState(ctx, stream),
 		)
 	}
+}
+
+// endedBeforePlay reports a connection that stopped before the server placed
+// the player.
+//
+// A loop that ends without an error is the ordinary case here — a server that
+// hangs up says nothing — and wrapping that nil rendered the message as
+// `%!w(<nil>)`, which describes the formatting verb rather than the session.
+func (c *Client) endedBeforePlay() error {
+	const ended = "connection ended before the player was placed"
+
+	if err := c.loopErr(); err != nil {
+		return fmt.Errorf("%s: %w", ended, err)
+	}
+
+	return errors.New(ended)
 }
 
 // currentState reports the protocol state a stream reached, so a timeout says
@@ -235,7 +271,7 @@ func (c *Client) currentState(ctx context.Context, stream *protocol.Stream) prot
 	return "unknown"
 }
 
-// noteState records a transition the stream reported.
+// noteState records the state a packet the loop processed arrived in.
 func (c *Client) noteState(state string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -243,7 +279,7 @@ func (c *Client) noteState(state string) {
 	c.lastState = state
 }
 
-// notedState reports the last transition the stream reported.
+// notedState reports the state the last processed packet arrived in.
 func (c *Client) notedState() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -289,7 +325,6 @@ func (w *stateWatcher) Observe(_ context.Context, o protocol.Observation) error 
 	if o.Before.State == o.After.State {
 		return nil
 	}
-	w.client.noteState(string(o.After.State))
 	w.client.events.publish(event.One(event.StateChanged{
 		From: string(o.Before.State),
 		To:   string(o.After.State),

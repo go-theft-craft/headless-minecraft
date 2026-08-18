@@ -73,12 +73,23 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
   the stream discarded that packet when its queue closed with the transport.
   This client saw a bare EOF instead of the server's reason, rarely and only
   under load — about three sessions in eight hundred on a busy machine.
+- `client`: a session that was placed and then kicked is not reported as one
+  that never connected. `Connect` waited on the readiness signal and the read
+  loop ending, and a server that places the player and hangs up straight after
+  makes both ready in the same instant — a select picks between ready cases at
+  random, so about half of those returned "connection ended before the player
+  was placed" for a session that reached play and already had the server's
+  reason for leaving waiting on its subscription. Readiness is now taken first.
+  The same message rendered a loop that ended without an error as
+  `%!w(<nil>)`, which described the formatting verb rather than the session.
 - `client`: a disconnect names the state the session ended in. The state was
   read back off the stream at the moment the ending was reported, and a
   terminated stream answers nothing about itself — so every transport loss, the
   killed-server case included, published `"unknown"` for a state the client had
-  watched the session enter. It now reports the last transition it observed, and
-  keeps `"unknown"` for a session that never reached a state at all.
+  watched the session enter. It now reports the state the last packet it
+  processed arrived in — the read loop knows that without asking anything that
+  can be gone by then — and keeps `"unknown"` for a session that never reached a
+  state at all.
 - Taskfile: every lane `verify` runs resolves modules with the workspace off. A
   `go.work` is gitignored, so it is present on a developer machine and absent in
   CI, and the gate was building the neighbouring working tree while CI built the

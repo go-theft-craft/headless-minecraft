@@ -69,11 +69,12 @@ type Client struct {
 	// session, so that a connection ending after the server said why does not
 	// report the ending twice.
 	reportedEnd bool
-	// lastState is the protocol state the stream last transitioned into. A
+	// lastState is the state the last packet the loop processed arrived in. A
 	// terminated stream answers nothing about itself, so a disconnect read
 	// from one names no state at all — and the state a session ended in is
-	// most of what a subscriber wants from a connection that died. This is
-	// what it was, remembered while the stream could still say.
+	// most of what a subscriber wants from a connection that died. The loop
+	// records it as it goes, because it is the one place that knows without
+	// asking anything that can be gone by then.
 	lastState string
 	loopError error
 	stop      func()
