@@ -118,15 +118,25 @@ below are what is left of them.
 - [ ] **M9.8 — crafting**
   ([plan](docs/superpowers/plans/2026-08-17-m9-8-crafting.md)). Only the
   reconcile task is done; tasks 1–5 are open.
-- [ ] **A kicked session sometimes reports the state it ended in as `unknown`.**
-  Seen once on 2026-08-18, in `TestEndToEndSurvivesTheServerHangingUp` under a
-  whole-suite `-race` run, and not reproduced in fifty isolated runs of the same
-  test. The adapter's kick handler publishes a disconnect naming `play`; the
-  loop's transport path publishes one whose state it reads back off the stream,
-  and a stream already closed answers `unknown`. So the failure says the
-  transport report won a race the kick packet should have settled, and a
-  subscriber is told a session ended in no state at all. Whether the kick is
-  being missed or only the state is, is the thing to find out.
+Closed, 2026-08-18: **a kicked session reporting the state it ended in as
+`unknown`.** Both halves of it, and neither was where the first reading put it.
+
+The kick was being lost, in `minecraft-protocol`: a peer that kicks writes its
+disconnect and closes, so the frame and the EOF behind it arrive together, and
+the stream stopped — closing the shared budget — while its coordinator still
+held the decoded packet. The packet's observation record could not be charged to
+a closed budget, that counted as a decode failure, and the packet went with it.
+Fixed in `2dcda29` with two regression tests that fail on the code they replace;
+this client picks it up with the next release, and until then a lost kick reads
+as a transport loss rather than as a session that ended in no state.
+
+The `"unknown"` was this repository's, and it was not only the kick's: the state
+was read back off the stream as the ending was reported, and a terminated stream
+answers nothing, so every transport loss published it. The client records the
+transitions it already observes and reports the last one (`212b160`).
+
+Measured: three failures in eight hundred runs under load before, none in eight
+hundred after, with the same load in the same session.
 
 - [ ] **Export `movement.Strategy`** so an application can implement one
   (task 7 of [the world-state plan](docs/superpowers/plans/2026-08-13-world-state-actions.md)).
