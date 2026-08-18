@@ -42,7 +42,7 @@ here.
 | M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **In progress**: reconciled 2026-08-18, task 1 of six done |
 | P4 | Put every consumer on the released `minecraft-protocol` and keep them there | `minecraft-protocol` | Complete |
 | M11 | Turn `server` into a framework | `server` | Complete (M11.1–M11.7) |
-| — | Navigation and behaviour pillar | `minecraft-simulation`, `headless-minecraft` | **In progress**: terrain, search, heuristic, memo, interaction primitives, the block-movement extraction, and every read-only edge landed; the mutating edges are half built, and aiming and composed behaviours have not started |
+| — | Navigation and behaviour pillar | `minecraft-simulation`, `headless-minecraft` | **Complete in code, pending releases**: all four plans implemented and gated 2026-08-18; three tags and two `go.mod` bumps are what remain |
 
 ---
 
@@ -189,34 +189,84 @@ hundred after, with the same load in the same session.
   still true is that no profile can answer it — `minecraft-simulation` requires
   `minecraft-protocol` v0.6.0 and only test doubles implement `Climbable`, so a
   real caller ships its own ladder list until the release below lands.
-- [ ] **Mutating edges and pillar**
+- [x] **Mutating edges and pillar**
   ([plan](docs/superpowers/plans/2026-08-18-mutating-edges-pillar.md),
-  6 tasks; 1 and 3 done, 2 half done, 4 and 5 in the working tree). Task 1
-  landed 2026-08-18 (`minecraft-protocol` `c6557d1`): falling and climbable are
-  measured out of the pinned jars into `BlockMovementRegistry.FallsByState` and
+  6 tasks; 1 and 3–6 done 2026-08-18, task 2 is the release below). Task 1
+  landed as `minecraft-protocol` `c6557d1`: falling and climbable are measured
+  out of the pinned jars into `BlockMovementRegistry.FallsByState` and
   `ClimbableByState`, rather than onto `data.Block` as both designs first said —
   upstream publishes neither property, and a measured fact belongs with the
-  dataset whose manifest records the jar's digest. The overlay landed with it
-  (`minecraft-simulation` `a1304fd`), and `place.go` and `pillar.go` are being
-  written now.
+  dataset whose manifest records the jar's digest.
 
-  **The release is the piece nothing else can route around.** The changelog
-  entry is written and no tag is cut, so `minecraft-simulation` sits on
-  `minecraft-protocol` v0.6.0 and neither new registry reaches a profile. It
-  also carries the 775 acceptor, which breaks anything outside the module
-  implementing `protocol.LoginExchange`, so the next tag is v0.7.0.
-- [ ] **Aiming and reach geometry**
+  `Overlay` (`a1304fd`), then `EdgePlace` and `EdgePillar` with the
+  re-run-and-ban validation loop, the vertical envelope, the per-column pillar
+  limit, and the recomputed heuristic (`774fb6f`). `EdgePillar` is the edge the
+  parent design's list had no member for: `Place` bridges horizontally and
+  nothing gained height, so a body with a stack of blocks was capped by its step
+  height exactly as a body with none.
+
+  The heuristic fix is the one worth remembering. The floor was computed over
+  the movement edges alone, so the moment a body could place, jump, or climb
+  more cheaply per block than it could walk, A* stopped returning shortest
+  routes — and the symptom would have been paths that are merely suboptimal.
+  A property test over random capabilities with random subsets enabled is what
+  catches it, and it was checked by breaking the floor and watching it fail.
+
+  `Dig`, `Support`, and `Collapse` stay deferred as the design says: the first
+  needs M9.4's break times and the other two M9.5's placement legality and a
+  falling-column trace.
+- [x] **Aiming and reach geometry**
   ([plan](docs/superpowers/plans/2026-08-18-aiming-and-reach-geometry.md),
-  7 tasks). `geom.Behind`, `geom.Lead`, `geom.Tangent`, and `AABB.Reaches` are
-  absent from `minecraft-simulation/geom`. Task 6 is the `examples/orbit`
-  rewrite.
-- [ ] **Composed behaviours**
-  ([plan](docs/superpowers/plans/2026-08-18-composed-behaviours.md),
-  6 tasks). No `behaviour` package exists. Tasks 1–4 unblock once the
-  interaction primitives land (they have); task 5 needs the mutating edges;
-  task 6 (`Fish`) needs a captured fishing trace per version, and neither oracle
-  session captured one — the plan's own dependency table says "neither has
-  run", which is now wrong about the sessions and still right about the trace.
+  7 tasks; 1–4 and 6–7 done 2026-08-18, task 5 is the release below).
+  `AABB.Nearest`, `AABB.Reaches`, `Vec3.Pitch`, `Vec3.Look`, `Behind`, `Lead`,
+  `Tangent`, and `Away` are in `minecraft-simulation/geom` (`57a0b56`), which
+  still imports nothing outside the standard library. Reach is measured to a
+  box's nearest point rather than its centre, because that is what the game
+  measures and a client using the centre refuses hits the server accepts.
+
+  `examples/orbit` defines no `Vec3`, no `BlockPos`, and none of the arithmetic
+  around them (`7cc675d`), and `Sender.Step` sends a computed pitch where it
+  sent the literal `0`. Its behaviour is unchanged — it still looks level
+  walking a flat circle — which is what makes the change safe to have made. Its
+  `Facts` now answers `Climbable` from the measurement rather than from a list,
+  which is the extraction paying off end to end.
+- [x] **Composed behaviours**
+  ([plan](docs/superpowers/plans/2026-08-18-composed-behaviours.md), 6 tasks,
+  done 2026-08-18, `893b99e`). The `behaviour` package: `Follow`, `Flee`, `Eat`,
+  `Block`, `Dig`, `Build`, `Fish`, and `Sequence`, all asked once per tick and
+  none driving. Scopes are checked at construction. Nothing in the client's
+  required path imports it.
+
+  The reviewer question the design flagged is settled: attack gets
+  `safety.ScopeAttack` of its own rather than reusing `ScopeInteract`. The two
+  are one action on the wire, and the split is a safety decision — an
+  authorization that permits opening a chest is not obviously one that permits
+  attacking a player.
+
+  `Fish` is written and is not claimed to work. It refuses to construct without
+  a bite detector the caller supplies, and its gate is skipped with the reason
+  recorded; see the open item below.
+- [ ] **The pillar's releases.** The pillar spans three repositories and every
+  consumer resolves the others through a released tag, so the code is complete
+  and the version bumps are not. Nothing is pushed. In order:
+
+  1. `minecraft-reference` — `e78ac4f` carries the two extended jar dumpers.
+  2. `minecraft-protocol` v0.7.0 — the `BlockMovementRegistry` accessors, plus
+     the 775 acceptor already in `Unreleased`. Both break implementers outside
+     the module, which is what makes it 0.7.0 rather than 0.6.1.
+  3. `minecraft-simulation` — navigation and geom.
+  4. `headless-minecraft` `go.mod` and `examples/go.mod` bumps to both.
+
+  Until those exist the cross-repository work resolves through a gitignored
+  `go.work` on this machine, which is exactly the arrangement P4 records as able
+  to hide a stale pin. The bumps are what make these gates mean in CI what they
+  mean locally.
+- [ ] **`Fish` has no measured bite detector.** No packet in either protocol
+  says a fish bit; what a client reads is the bobber's motion, and how much
+  motion counts as a dip is a measurement. The behaviour ships with the detector
+  behind an interface, refuses to construct without one, and its gate is skipped
+  with the reason recorded. It needs a captured trace per version, which needs
+  M9.1's live check and M9.1b.
 - [ ] **Make the end-to-end lane drive `examples/observe`.** The convention is
   that examples are the integration surface; `client/world_e2e_test.go` mimics
   what `examples/observe` subscribes to rather than driving it. Assigned to

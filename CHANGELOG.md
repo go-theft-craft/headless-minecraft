@@ -6,6 +6,38 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
 
 ### Added
 
+- `behaviour`: one shape for a multi-tick task — follow, flee, eat, block with a
+  shield, dig, build, fish, and a sequence that composes them. A behaviour is
+  asked once per tick and never drives, which is what `adapter.Source` already
+  requires; a wait is a tick that returns no action, so nothing here sleeps,
+  blocks, or owns a goroutine. Scopes are checked at construction rather than per
+  tick, because a behaviour that discovered on tick four hundred that it may not
+  dig has already walked the bot somewhere it should not be.
+
+  `Block` refuses at construction on protocol 47, which has no offhand and
+  therefore no shield, and it finds that out by asking the adapter rather than by
+  matching a protocol name. `Fish` refuses to be built without a bite detector
+  the caller supplies: no packet in either protocol says a fish bit, what a
+  client actually reads is the bobber's motion, and a threshold this package
+  invented would make a bot that does nothing look like it works. Nothing in the
+  client's required path imports any of it.
+
+- `safety`: `ScopeAttack`, separate from `ScopeInteract`. The two are one action
+  on the wire — both protocols carry attack as a mode of the same interact packet
+  — and the split is a safety decision rather than a protocol one: an
+  authorization that permits opening a chest is not obviously one that permits
+  attacking a player.
+
+### Changed
+
+- `examples/orbit` no longer defines its own `Vec3`, `BlockPos`, or the vector
+  arithmetic around them. It was never isolation, only a copy — the example
+  already depended on `minecraft-simulation` — and the arithmetic now lives in
+  `geom` with the doc comments it was written with. `Sender.Step` sends a
+  computed pitch where it sent a literal zero, so a caller can aim at a block
+  underfoot; the bot's own behaviour is unchanged, because it still looks level
+  walking a flat circle.
+
 - `predict`: a prediction loop that simulates the local player ahead of the
   server and reconciles when the server disagrees. The rules are
   `minecraft-simulation`'s, so this client and a server run the same ones; what
