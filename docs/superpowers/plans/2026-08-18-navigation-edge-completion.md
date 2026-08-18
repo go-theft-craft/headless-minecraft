@@ -1,5 +1,14 @@
 # Navigation edge completion Implementation Plan
 
+> **Status: complete, 2026-08-18.** All seven tasks landed in
+> `minecraft-simulation` the same afternoon this plan was written: the reach
+> table (`e6d3651`), `EdgeJumpGap` and `PostureFall` (`ec298ce`), `PostureSneak`
+> and `PostureCrawl` (`07d1c4b`), `EdgeWaterDrop` and `EdgeClimb` (`2689c57`),
+> `EdgeDoor` (`88f94a4`), and the property suite over the widened edge set
+> (`da81460`). The boxes below are ticked against that tree. Three names came
+> out differently and one blocker turned out to be pointed at the wrong thing;
+> both are under "What execution changed" below.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Finish the navigation design's own step 3 — `JumpGap` and the missing postures — and add the read-only edges it never named, so a body stops being unable to cross a two-block hole.
@@ -18,7 +27,17 @@ The navigation plan of 2026-08-17 deferred `JumpGap` and gave a reason this plan
 
 That still stands. Task 1 builds the reach table by running the kernel; no later task takes a gap distance from anywhere else.
 
-The same plan lists `data.Block.Falling` and the `examples/orbit` rewrite as deferred. Neither blocks this plan: no edge here digs, and the orbit rewrite is the [aiming plan](2026-08-18-aiming-and-reach-geometry.md)'s task 6. **The climbable block property does block task 5.** It is extracted in `minecraft-protocol` by the [mutating edges plan](2026-08-18-mutating-edges-pillar.md)'s task 1, because it is the same extraction pass as `Falling`, and that landed on 2026-08-18 as `BlockMovementRegistry.ClimbableByState`. It is not released yet, so `minecraft-simulation` still cannot see it; task 5 now waits on that plan's task 2, not its task 1.
+The same plan lists `data.Block.Falling` and the `examples/orbit` rewrite as deferred. Neither blocks this plan: no edge here digs, and the orbit rewrite is the [aiming plan](2026-08-18-aiming-and-reach-geometry.md)'s task 6.
+
+**The climbable block property was called a blocker for task 5, and it was not one.** `EdgeClimb` reads `terrain.Facts.Climbable`, an oracle method the caller supplies, so the edge shipped with the release still uncut: `minecraft-simulation` requires `minecraft-protocol` v0.6.0, and the only implementations of `Climbable` in the tree are test doubles. What the release actually gates is a *truthful* answer. Until the [mutating edges plan](2026-08-18-mutating-edges-pillar.md)'s task 2 cuts it and a profile answers from `BlockMovementRegistry.ClimbableByState`, every caller has to supply its own ladder list. The blocker belongs to whoever supplies `Facts`, not to this plan.
+
+## What execution changed
+
+Three names in the task list are not the names that landed. The plan text below is left as written; this is the difference.
+
+- **`reach.Measure` takes a `reach.Body`, not an `entity.State`.** A jump distance depends on the movement-speed attribute, the airborne factor, the facing, and whether the body is sprinting, and only the first two are in `entity.State`. `Body` carries the state, the locomotion, and the sprint flag together, and the package doc says to build it from the profile's own `Spawn` rather than writing a box by hand.
+- **Sneak is `Capability.AvoidLedges` plus `SneakTicks`, not `CanSneak`.** The field says what the search does with it rather than what the body can do.
+- **Crawl is `Capability.CrawlHeight` plus `CrawlTicks`, not `Capability.Postures`.** A capability carrying both a crawl height and a list saying whether it crawls holds two values that can disagree; the height is zero for 1.8.9, which produces no crawl edges, and that is the whole assertion. The version asymmetry is recorded in the `navigation` package doc, as task 6 step 4 required.
 
 ## Global Constraints
 
@@ -62,7 +81,7 @@ All paths relative to the `minecraft-simulation` repository root.
 
 This is first because the 2026-08-17 plan refused to build `JumpGap` without it. It lives in its own package because it imports `sim`, `movement`, and a profile, and `navigation` may import none of those.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestASprintJumpClearsMoreThanAWalkJump(t *testing.T) {
@@ -127,12 +146,12 @@ func TestMeasureIsDeterministic(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./navigation/reach/ -v`
 Expected: FAIL, package does not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```go
 // Package reach measures how far a body's jump actually carries it, by running
@@ -227,16 +246,16 @@ func Measure(profile sim.Profile, body entity.State, ticks int) (Table, error) {
 
 `layFloor`, `holdForward`, `jumpCommand`, and `stateOf` are small helpers in the same file: the floor is one layer of a full-cube block under the body's start, the commands are the profile's own movement commands, and `stateOf` reads the body out of the tick result's change set. Drive the runner exactly as `mctest`'s replay does, so the measurement runs the same path the conformance fixtures do.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `devbox run -- go test ./navigation/reach/ -v`
 Expected: PASS.
 
-- [ ] **Step 5: Record the measured numbers**
+- [x] **Step 5: Record the measured numbers**
 
 Add a table to the package doc listing what each profile measured, with the date. It is documentation of a measurement, not a constant the code reads.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add navigation/reach/
@@ -258,7 +277,7 @@ git commit -m "feat(navigation): measure jump reach from each profile's kernel"
 - Consumes: `reach.Table` from task 1, `terrain.Query.Fits`.
 - Produces: `EdgeJumpGap`, `PostureFall`, `Capability.JumpTicks float64`, `Capability.JumpReach float64`, `Capability.JumpRise float64`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestABodyCrossesATwoBlockGap(t *testing.T) {
@@ -337,12 +356,12 @@ func TestAJumpUnderALowCeilingIsRefused(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./navigation/ -run TestA.*Gap -v`
 Expected: FAIL, `EdgeJumpGap` undefined.
 
-- [ ] **Step 3: Add the constants and fields**
+- [x] **Step 3: Add the constants and fields**
 
 In `edge.go`, append `EdgeJumpGap` to the `EdgeKind` block **after** the existing four, so no shipped value renumbers, and extend `String`. In `navigation.go`, append `PostureFall` after `PostureSwim` for the same reason, extend `String`, and add:
 
@@ -363,7 +382,7 @@ In `edge.go`, append `EdgeJumpGap` to the `EdgeKind` block **after** the existin
 	JumpRise float64
 ```
 
-- [ ] **Step 4: Write the expansion**
+- [x] **Step 4: Write the expansion**
 
 In `navigation/jump.go`:
 
@@ -425,17 +444,17 @@ func (c Capability) jumps(o oracle, from node) ([]Edge, error) {
 
 Call `jumps` from `expand` after the four-step loop, so the neighbour order is unchanged for a capability with no jump.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `devbox run -- go test ./navigation/ -run TestA.*Gap -v`
 Expected: PASS.
 
-- [ ] **Step 6: Run the determinism gate**
+- [x] **Step 6: Run the determinism gate**
 
 Run: `devbox run -- task determinism`
 Expected: PASS. If it fails, the new edges are being appended in a non-total order.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add navigation/
@@ -455,7 +474,7 @@ git commit -m "feat(navigation): cross gaps with a measured jump reach"
 
 Sneaking earns a posture rather than a flag because it is a per-position decision. A flag would make a bot sneak for a whole route or none of it, and the whole value of sneaking is doing it at the one ledge that needs it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestABodySneaksAcrossALedgeAndStandsElsewhere(t *testing.T) {
@@ -494,21 +513,21 @@ func TestABodySneaksAcrossALedgeAndStandsElsewhere(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./navigation/ -run TestABodySneaks -v`
 Expected: FAIL, `PostureSneak` undefined.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Append `PostureSneak` to the `Posture` block after `PostureFall`, extend `String`, add the two `Capability` fields, and have `arrivalAt` return `PostureSneak` for a cell the body may occupy only while sneaking. `enter` prices an edge arriving in `PostureSneak` at `SneakTicks`.
 
-- [ ] **Step 4: Run the tests and the determinism gate**
+- [x] **Step 4: Run the tests and the determinism gate**
 
 Run: `devbox run -- go test ./navigation/ -v && devbox run -- task determinism`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add navigation/
@@ -530,7 +549,7 @@ git commit -m "feat(navigation): sneak across ledges as a posture"
 
 The shipped `Fall` edge is bounded by `SafeFall` and has no way to express a drop that is safe because of what is at the bottom.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestADeepDropIntoWaterIsTakenAndOntoStoneIsNot(t *testing.T) {
@@ -578,21 +597,21 @@ func TestShallowWaterDoesNotBreakTheFall(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./navigation/ -run TestADeepDrop -v`
 Expected: FAIL, `EdgeWaterDrop` undefined.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `waterDrop` walks the column below a blocked neighbour exactly as `fall` does, bounded by the same `maxFallSearch`, and admits a landing beyond `SafeFall` only when `FluidAt` reports fluid for at least `WaterLandingDepth` blocks. It arrives in `PostureSwim`.
 
-- [ ] **Step 4: Run the tests and every gate**
+- [x] **Step 4: Run the tests and every gate**
 
 Run: `devbox run -- task verify`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add navigation/
@@ -614,7 +633,7 @@ git commit -m "feat(navigation): drop past the safe fall into deep water"
 
 **Blocked** until `minecraft-protocol` releases it. The extraction itself landed on 2026-08-18; what is missing is the tag and `minecraft-simulation`'s `go.mod` bump. Do not start otherwise.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestALadderIsClimbedInBothDirections(t *testing.T) {
@@ -661,21 +680,21 @@ func TestACapabilityThatCannotClimbRoutesAround(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./navigation/ -run TestALadder -v`
 Expected: FAIL, `EdgeClimb` undefined.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Add `Climbable(BlockRef) bool` to `terrain.Facts`, which is where a profile already supplies block facts. Add `climbs` to `navigation/vertical.go`, expanding one cell up and one down within a climbable column.
 
-- [ ] **Step 4: Run the tests and every gate**
+- [x] **Step 4: Run the tests and every gate**
 
 Run: `devbox run -- task verify`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add terrain/ navigation/
@@ -695,7 +714,7 @@ git commit -m "feat(navigation): climb ladders and vines"
 
 This is the first case that runs backwards through the two-version gate, which currently reads "a scenario that runs on 1.8.9 and not on 26.1.2 is a failure". 26.1.2 has a crawl and 1.8.9 has none.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestTheCrawlAsymmetryIsAssertedInBothDirections(t *testing.T) {
@@ -739,25 +758,25 @@ func TestACapabilityDeclaresItsPostures(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./navigation/ -run 'TestTheCrawl|TestACapabilityDeclares' -v`
 Expected: FAIL, `PostureCrawl` undefined.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Add `PostureCrawl` and `Capability.Postures []Posture`. `arrivalAt` may only return a posture the capability declares, which makes the asymmetry a property of the value rather than a branch in the search.
 
-- [ ] **Step 4: Record the asymmetry**
+- [x] **Step 4: Record the asymmetry**
 
 Add a paragraph to the `navigation` package doc naming crawl as the first behaviour present in 26.1.2 and absent from 1.8.9, and citing the master plan's rule that a per-version gate may say so.
 
-- [ ] **Step 5: Run every gate**
+- [x] **Step 5: Run every gate**
 
 Run: `devbox run -- task verify && devbox run -- task determinism`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add navigation/
@@ -778,7 +797,7 @@ git commit -m "feat(navigation): add the crawl posture and gate its absence on 1
 
 Opening a door mutates the world, and this plan otherwise excludes mutation. The exception holds only if an opened door can never make an earlier edge illegal. **Step 1 is the test that decides that**, and if it finds a case, this task stops and the edge moves to the mutating edges plan.
 
-- [ ] **Step 1: Write the conflict test first**
+- [x] **Step 1: Write the conflict test first**
 
 ```go
 func TestAnOpenedDoorNeverInvalidatesAnEarlierEdge(t *testing.T) {
@@ -809,16 +828,16 @@ func TestAnOpenedDoorNeverInvalidatesAnEarlierEdge(t *testing.T) {
 
 `replayEdgesAgainstTheWorld` walks the path applying each door toggle to a copy of the world and re-checks every earlier edge's legality. It is the same shape as the validation loop the parent design specifies, written here once to answer one question.
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `devbox run -- go test ./navigation/ -run TestAnOpenedDoor -v`
 Expected: it compiles once `EdgeDoor` exists. **If it fails, stop.** Record the finding, move the edge to the other plan, and skip steps 3 through 6.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `doors` expands into an adjacent cell whose block is a door the capability may open, recording the toggle on the edge. Iron doors and any door the version gates behind redstone are refused, not modelled: a bot that walks into an iron door forever is worse than one that routes around it.
 
-- [ ] **Step 4: Write the refusal test**
+- [x] **Step 4: Write the refusal test**
 
 ```go
 func TestAnIronDoorIsRoutedAroundNotOpened(t *testing.T) {
@@ -841,12 +860,12 @@ func TestAnIronDoorIsRoutedAroundNotOpened(t *testing.T) {
 }
 ```
 
-- [ ] **Step 5: Run every gate**
+- [x] **Step 5: Run every gate**
 
 Run: `devbox run -- task verify && devbox run -- task determinism`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add navigation/

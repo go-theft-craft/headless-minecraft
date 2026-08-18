@@ -1,12 +1,22 @@
 # Mutating edges and pillar Implementation Plan
 
-> **Status: task 1 complete, 2026-08-18.** Falling and climbable are measured
-> out of the pinned jars into `BlockMovementRegistry.FallsByState` and
-> `ClimbableByState` (`minecraft-protocol` `c6557d1`), and both designs are
-> corrected to say so. Task 2 is half done. The changelog entry is written and
-> the release is not cut, so `minecraft-simulation` cannot see the registries
-> yet. Tasks 3 through 6 are untouched; `navigation` still has four edge kinds
-> and no overlay.
+> **Status: tasks 1 and 3 complete; 2 half done; 4 and 5 in progress,
+> 2026-08-18.** Falling and climbable are measured out of the pinned jars into
+> `BlockMovementRegistry.FallsByState` and `ClimbableByState`
+> (`minecraft-protocol` `c6557d1`), and both designs are corrected to say so.
+> The overlay landed as `navigation/overlay.go` (`a1304fd`) with the constructor,
+> `Place`, `Remove`, `Reset`, `Len`, and both `world.View` methods.
+>
+> Task 2 is half done. The changelog entry is written and the release is not
+> cut, so `minecraft-simulation` still requires `minecraft-protocol` v0.6.0 and
+> no profile can answer the two new registries. That is what task 5 of the
+> [edge completion plan](2026-08-18-navigation-edge-completion.md) turned out to
+> need too, and it shipped without it by taking the answer from its caller.
+>
+> Tasks 4 and 5 are being written now: `navigation/place.go` and
+> `navigation/pillar.go` are in the working tree, uncommitted, and `edge.go`
+> already carries `EdgePlace` and `EdgePillar`. Their boxes stay open until
+> those commits land. Task 6 has not started.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -241,7 +251,7 @@ git commit -m "build: take minecraft-protocol v0.7.0 for the block behaviour reg
 
 `world.View` being an interface is what makes this a decorator rather than a change to `world`. Nothing in `world` moves.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestAPlacementIsVisibleThroughTheOverlayAndNotTheBase(t *testing.T) {
@@ -296,12 +306,12 @@ func TestResetForgetsEveryPlacement(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./navigation/ -run TestAPlacement -v`
 Expected: FAIL, `NewOverlay` undefined.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```go
 // Overlay is a world.View that answers from a set of pending placements first
@@ -325,12 +335,12 @@ type Overlay struct {
 
 `CollisionShape` and `BlockState` consult `placed` first and fall through to `base`. Iterating `placed` is forbidden anywhere that affects ordering; it is only ever indexed.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./navigation/ -run 'TestAPlacement|TestTheOverlay|TestReset' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add navigation/overlay.go navigation/overlay_test.go

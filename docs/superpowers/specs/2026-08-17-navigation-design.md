@@ -296,14 +296,18 @@ speed is worse than one that refuses to mine.
 1. Falling and climbable extraction, into `BlockMovementRegistry`. Everything
    with a dig edge waits on it. **Done 2026-08-18.**
 2. `terrain`, with the orbit example rewritten onto it. This ships alone and is
-   useful alone.
+   useful alone. **`terrain` done; the orbit rewrite is still open**, as task 6
+   of the aiming plan.
 3. `navigation` with the movement edges only: Walk, Step, Fall, JumpGap, Swim.
    Verifiable against static terrain, no dependency on unlanded work.
+   **Done 2026-08-18**, and wider than this line: WaterDrop, Climb, and Door
+   landed with them, along with the Fall, Sneak, and Crawl postures.
 4. `navigator` over those edges. Needs M8.8's `adapter.Drive` and
    `predict.Correction`.
 5. Dig, Place, Support, and Collapse, once M9.4 and M9.5 land.
 
-Steps 1 through 3 are unblocked today. Steps 4 and 5 are not.
+Step 4 is unblocked and unstarted. Place and Pillar are being written against
+the overlay now; Dig, Support, and Collapse still wait on M9.4 and M9.5.
 
 ## Acceptance criteria
 

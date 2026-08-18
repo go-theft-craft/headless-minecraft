@@ -42,7 +42,7 @@ here.
 | M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **In progress**: reconciled 2026-08-18, task 1 of six done |
 | P4 | Put every consumer on the released `minecraft-protocol` and keep them there | `minecraft-protocol` | Complete |
 | M11 | Turn `server` into a framework | `server` | Complete (M11.1–M11.7) |
-| — | Navigation and behaviour pillar | `minecraft-simulation`, `headless-minecraft` | **In progress**: terrain, search, heuristic, memo, interaction primitives, and the block-movement extraction landed; four plans open |
+| — | Navigation and behaviour pillar | `minecraft-simulation`, `headless-minecraft` | **In progress**: terrain, search, heuristic, memo, interaction primitives, the block-movement extraction, and every read-only edge landed; the mutating edges are half built, and aiming and composed behaviours have not started |
 
 ---
 
@@ -147,24 +147,38 @@ hundred after, with the same load in the same session.
   Controller-owned strategy switching ships bunnyhop; nothing yet proves a
   strategy defined outside the library works, and `examples/orbit` is the first
   caller to need it.
-- [ ] **Navigation edge completion**
+- [x] **Navigation edge completion**
   ([plan](docs/superpowers/plans/2026-08-18-navigation-edge-completion.md),
-  7 tasks). `JumpGap` and the missing postures, plus the read-only edges the
-  navigation design never named. Task 1 builds the jump reach table by running
-  the movement kernel; no later task takes a gap distance from anywhere else.
-  Task 5 is blocked on the climbable-block property. The extraction landed on
-  2026-08-18, but `minecraft-protocol` has not released it, so what task 5 now
-  waits on is the mutating-edges plan's task 2.
+  7 tasks, all done 2026-08-18). `EdgeJumpGap`, `EdgeWaterDrop`, `EdgeClimb`,
+  and `EdgeDoor` join the four read-only edges, with `PostureFall`,
+  `PostureSneak`, and `PostureCrawl`. The jump reach is measured by running each
+  profile's own kernel rather than tabulated (`navigation/reach`, and the
+  package doc carries the four figures with their date). Crawl is the first
+  behaviour 26.1.2 has and 1.8.9 does not, which the `navigation` package doc
+  states as the version asymmetry it is.
+
+  Task 5 was recorded here as blocked on the climbable-block property, and that
+  was aimed at the wrong thing: `EdgeClimb` reads `terrain.Facts.Climbable`,
+  which the caller supplies, so the edge shipped without the release. What is
+  still true is that no profile can answer it — `minecraft-simulation` requires
+  `minecraft-protocol` v0.6.0 and only test doubles implement `Climbable`, so a
+  real caller ships its own ladder list until the release below lands.
 - [ ] **Mutating edges and pillar**
   ([plan](docs/superpowers/plans/2026-08-18-mutating-edges-pillar.md),
-  6 tasks, task 1 done). `EdgePlace` and `EdgePillar` do not exist:
-  `minecraft-simulation/navigation` has `EdgeWalk`, `EdgeStep`, `EdgeFall`, and
-  `EdgeSwim` only. Task 1 landed 2026-08-18 (`minecraft-protocol` `c6557d1`):
-  falling and climbable are measured out of the pinned jars into
-  `BlockMovementRegistry.FallsByState` and `ClimbableByState`, rather than onto
-  `data.Block` as both designs first said — upstream publishes neither property,
-  and a measured fact belongs with the dataset whose manifest records the jar's
-  digest.
+  6 tasks; 1 and 3 done, 2 half done, 4 and 5 in the working tree). Task 1
+  landed 2026-08-18 (`minecraft-protocol` `c6557d1`): falling and climbable are
+  measured out of the pinned jars into `BlockMovementRegistry.FallsByState` and
+  `ClimbableByState`, rather than onto `data.Block` as both designs first said —
+  upstream publishes neither property, and a measured fact belongs with the
+  dataset whose manifest records the jar's digest. The overlay landed with it
+  (`minecraft-simulation` `a1304fd`), and `place.go` and `pillar.go` are being
+  written now.
+
+  **The release is the piece nothing else can route around.** The changelog
+  entry is written and no tag is cut, so `minecraft-simulation` sits on
+  `minecraft-protocol` v0.6.0 and neither new registry reaches a profile. It
+  also carries the 775 acceptor, which breaks anything outside the module
+  implementing `protocol.LoginExchange`, so the next tag is v0.7.0.
 - [ ] **Aiming and reach geometry**
   ([plan](docs/superpowers/plans/2026-08-18-aiming-and-reach-geometry.md),
   7 tasks). `geom.Behind`, `geom.Lead`, `geom.Tangent`, and `AABB.Reaches` are
