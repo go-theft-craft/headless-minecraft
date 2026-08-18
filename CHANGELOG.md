@@ -121,6 +121,16 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
   the stream discarded that packet when its queue closed with the transport.
   This client saw a bare EOF instead of the server's reason, rarely and only
   under load — about three sessions in eight hundred on a busy machine.
+- `examples/orbit`: the bot jumps the edges it was routed over. The planner
+  crosses a one-block rise with `EdgeStep` and a hole with `EdgeJumpGap`, and the
+  example flattened a path to bare positions — so the edge kind was lost, every
+  step was sent as a walk, and the bot walked into the block it had been routed
+  over and off the edge of the gap it had been routed across. A route carries a
+  jump flag per waypoint now, smoothing will not shortcut a jump away, and the
+  actuator arcs the body where the planner said to. The flag was a hard `false`
+  for a reason worth keeping: the actuator had no body to jump with, and a claim
+  the body cannot honour becomes a lie to the server once the bot reports what it
+  is doing on the wire.
 - `client`: acknowledging placement to a server that then hangs up is not a
   failed connection. `minecraft-protocol v0.7.2` reports what the transport did
   with a frame that was in flight when the peer left, rather than refusing a
