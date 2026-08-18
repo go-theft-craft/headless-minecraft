@@ -472,11 +472,13 @@ than no plan.
   tasks that were meant to find them**, because only a non-player body reaches
   them: the move rebuilt every body's box at the player's dimensions, and the
   gravity and drag phases were unguarded by family.
-- **The 26.1 lanes skip.** This module pins `minecraft-protocol` v0.5.0, which
-  predates the constants Task 2 landed. Every 26.1 check is written, skips with
-  that reason, and was run against the new dataset locally. The bump must
-  regenerate `replay/testdata/26_1` in the same commit: a profile that gains two
-  families gains a data digest.
+- **The 26.1 lanes skipped for half a day, then ran.** This module pinned
+  `minecraft-protocol` v0.5.0, which predated the constants Task 2 landed, so
+  every 26.1 check was written and skipped with that reason recorded. v0.6.0
+  shipped the same day and the bump turned all of them on: the skips became
+  failures, because a family with no constants is a defect rather than a lane
+  waiting on a release. The bump regenerated `replay/testdata/26_1` in the same
+  commit, since a profile that gains two families gains a data digest.
 
 ## Stage summary
 
