@@ -40,7 +40,7 @@ here.
 | M8 | Deterministic 1.8.9 and 26.1.2 movement kernel, replay, consumer integration | `minecraft-simulation` | Complete (M8.1–M8.8) |
 | M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **In progress**: M9.1 complete, live check run 2026-08-17; M9.1b and M9.2 complete; M9.3 and M9.4 part-done; M9.5–M9.8 not started |
 | M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **In progress**: reconciled 2026-08-18, task 1 of six done |
-| P4 | Put every consumer on the released `minecraft-protocol` and keep them there | `minecraft-protocol` | **In progress**: task 1 of four done |
+| P4 | Put every consumer on the released `minecraft-protocol` and keep them there | `minecraft-protocol` | Complete |
 | M11 | Turn `server` into a framework | `server` | Complete (M11.1–M11.7) |
 | — | Navigation and behaviour pillar | `minecraft-simulation`, `headless-minecraft` | **In progress**: terrain, search, heuristic, memo, interaction primitives, and the block-movement extraction landed; four plans open |
 
@@ -118,6 +118,16 @@ below are what is left of them.
 - [ ] **M9.8 — crafting**
   ([plan](docs/superpowers/plans/2026-08-17-m9-8-crafting.md)). Only the
   reconcile task is done; tasks 1–5 are open.
+- [ ] **A kicked session sometimes reports the state it ended in as `unknown`.**
+  Seen once on 2026-08-18, in `TestEndToEndSurvivesTheServerHangingUp` under a
+  whole-suite `-race` run, and not reproduced in fifty isolated runs of the same
+  test. The adapter's kick handler publishes a disconnect naming `play`; the
+  loop's transport path publishes one whose state it reads back off the stream,
+  and a stream already closed answers `unknown`. So the failure says the
+  transport report won a race the kick packet should have settled, and a
+  subscriber is told a session ended in no state at all. Whether the kick is
+  being missed or only the state is, is the thing to find out.
+
 - [ ] **Export `movement.Strategy`** so an application can implement one
   (task 7 of [the world-state plan](docs/superpowers/plans/2026-08-13-world-state-actions.md)).
   Controller-owned strategy switching ships bunnyhop; nothing yet proves a
@@ -187,17 +197,16 @@ measurably impossible. Its six tasks, none executed:
   the six repositories.
 - [ ] **Task 6 — restate M10 as what the reconciliation found.**
 
-Also open in `minecraft-protocol`, and not part of M10:
-
-- [ ] **Close P4's uptake half**
-  ([plan](../minecraft-protocol/docs/superpowers/plans/2026-08-18-p4-shared-consumers.md),
-  4 tasks, task 1 done). The three migrations P4 named are done or superseded,
-  but a consumer can sit a release behind while a Go workspace makes it look
-  current — which is how one shipped against a defect this repository had
-  already fixed. Task 1 landed: `headless-minecraft` takes `v0.6.0` in both
-  modules and pins the corrected velocity to bytes. Open: make the local gate
-  resolve what CI resolves, name the consumers in the release flow, and restate
-  P4 in the roadmap.
+Closed, 2026-08-18: **P4's uptake half**
+([plan](../minecraft-protocol/docs/superpowers/plans/2026-08-18-p4-shared-consumers.md),
+4 of 4 tasks). The three migrations P4 named were done or superseded; what was
+left was that a consumer can sit a release behind while a Go workspace makes it
+look current, which is how one shipped against a defect `minecraft-protocol` had
+already fixed. `headless-minecraft` takes `v0.6.0` in both modules and pins the
+corrected velocity to bytes; every lane its `verify` runs now resolves modules
+with `GOWORK=off`, so reverting the pin fails locally the way it would in CI; and
+`minecraft-protocol`'s `RELEASING.md` names the five consumer modules a release
+is not finished without.
 
 Still owned by M10 and outside that plan:
 
