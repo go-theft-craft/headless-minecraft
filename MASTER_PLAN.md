@@ -39,10 +39,10 @@ here.
 | M7 | Immutable observed world state, wire-ordered reducers | `headless-minecraft` | Complete |
 | M8 | Deterministic 1.8.9 and 26.1.2 movement kernel, replay, consumer integration | `minecraft-simulation` | Complete (M8.1–M8.8) |
 | M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **In progress**: M9.1 complete, live check run 2026-08-17; M9.1b and M9.2 complete; M9.3 and M9.4 part-done; M9.5–M9.8 not started |
-| M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **In progress**: reconciled 2026-08-18, six tasks drafted and none executed |
+| M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **In progress**: reconciled 2026-08-18, task 1 of six done |
 | P4 | Put every consumer on the released `minecraft-protocol` and keep them there | `minecraft-protocol` | **In progress**: task 1 of four done |
 | M11 | Turn `server` into a framework | `server` | Complete (M11.1–M11.7) |
-| — | Navigation and behaviour pillar | `minecraft-simulation`, `headless-minecraft` | **In progress**: terrain, search, heuristic, memo and interaction primitives landed; four plans open |
+| — | Navigation and behaviour pillar | `minecraft-simulation`, `headless-minecraft` | **In progress**: terrain, search, heuristic, memo, interaction primitives, and the block-movement extraction landed; four plans open |
 
 ---
 
@@ -128,13 +128,18 @@ below are what is left of them.
   7 tasks). `JumpGap` and the missing postures, plus the read-only edges the
   navigation design never named. Task 1 builds the jump reach table by running
   the movement kernel; no later task takes a gap distance from anywhere else.
-  Task 5 is blocked on the climbable-block property, extracted by task 1 of the
-  mutating-edges plan.
+  Task 5 was blocked on the climbable-block property; that extraction landed on
+  2026-08-18, so nothing outside this plan blocks it now.
 - [ ] **Mutating edges and pillar**
   ([plan](docs/superpowers/plans/2026-08-18-mutating-edges-pillar.md),
-  6 tasks). `EdgePlace` and `EdgePillar` do not exist:
+  6 tasks, task 1 done). `EdgePlace` and `EdgePillar` do not exist:
   `minecraft-simulation/navigation` has `EdgeWalk`, `EdgeStep`, `EdgeFall`, and
-  `EdgeSwim` only.
+  `EdgeSwim` only. Task 1 landed 2026-08-18 (`minecraft-protocol` `c6557d1`):
+  falling and climbable are measured out of the pinned jars into
+  `BlockMovementRegistry.FallsByState` and `ClimbableByState`, rather than onto
+  `data.Block` as both designs first said — upstream publishes neither property,
+  and a measured fact belongs with the dataset whose manifest records the jar's
+  digest.
 - [ ] **Aiming and reach geometry**
   ([plan](docs/superpowers/plans/2026-08-18-aiming-and-reach-geometry.md),
   7 tasks). `geom.Behind`, `geom.Lead`, `geom.Tangent`, and `AABB.Reaches` are
@@ -160,11 +165,13 @@ The 2026-08-18 M10 reconciliation
 against the working trees and found four already satisfied elsewhere and one
 measurably impossible. Its six tasks, none executed:
 
-- [ ] **Task 1 — teach `login.Acceptor` protocol 775.** The only code gap M10
-  owns outright. `login/acceptor.go` names `generated/java/v1_8` at ten call
-  sites, so nothing here can serve a 775 login; M11.7's brigadier rendering has
-  therefore never reached a client, and the matrix row for the owned Go server
-  cannot exist at 775.
+- [x] **Task 1 — teach `login.Acceptor` protocol 775.** Landed 2026-08-18
+  (`minecraft-protocol` `b644bb4`): the acceptor drives both logins from the
+  exchange each version declares, with `login_exchange.go` generated for `v1_8`
+  and `v26_1` and an acceptor test per version. This was the only code gap M10
+  owned outright, and three things it blocked are now unblocked: the matrix row
+  for the owned Go server at 775, M11.7's brigadier rendering reaching a client,
+  and the headless end-to-end lane covering more than protocol 47.
 - [ ] **Task 2 — settle the advertised version string.** Already reconciled in
   code (`"1.8.9"` in the data, `"1.8.8"` advertised and pinned by a test, and
   Node 1.66.2 agrees); the decision itself is unwritten.
