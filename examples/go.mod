@@ -5,7 +5,7 @@ go 1.26.6
 require github.com/go-theft-craft/headless-minecraft v0.0.0
 
 require (
-	github.com/go-theft-craft/minecraft-protocol v0.7.1
+	github.com/go-theft-craft/minecraft-protocol v0.7.2
 	github.com/go-theft-craft/minecraft-simulation v0.2.0
 )
 

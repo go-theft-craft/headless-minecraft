@@ -105,6 +105,11 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
   the stream discarded that packet when its queue closed with the transport.
   This client saw a bare EOF instead of the server's reason, rarely and only
   under load — about three sessions in eight hundred on a busy machine.
+- `client`: acknowledging placement to a server that then hangs up is not a
+  failed connection. `minecraft-protocol v0.7.2` reports what the transport did
+  with a frame that was in flight when the peer left, rather than refusing a
+  write the peer already had — which this client read as a session that ended
+  before the player was placed.
 - `client`: a session that was placed and then kicked is not reported as one
   that never connected. `Connect` waited on the readiness signal and the read
   loop ending, and a server that places the player and hangs up straight after
