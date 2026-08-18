@@ -83,6 +83,11 @@ type Options struct {
 	Interval time.Duration
 	// OnCorrection is called when the server's position replaces the predicted
 	// one. It runs on the loop's goroutine, so it should not block.
+	//
+	// It runs after the loop has adopted the position and before the tick that
+	// follows it is simulated, with the loop's own lock free. So a callback may
+	// ask the loop what it now believes, and Predicted answers with the
+	// position the correction names.
 	OnCorrection func(Correction)
 	// Retained bounds the commands kept for replay. The zero value is the
 	// default; a negative value keeps none.
@@ -321,7 +326,7 @@ func (l *Loop) step(ctx context.Context) error {
 			return nil
 		}
 	}
-	l.reconcile(snapshot.Player)
+	correction, corrected := l.reconcile(snapshot.Player)
 
 	l.tick++
 	input := l.input
@@ -329,6 +334,17 @@ func (l *Loop) step(ctx context.Context) error {
 	l.retain(retainedCommand{tick: l.tick, input: input})
 	tick := l.tick
 	l.mu.Unlock()
+
+	// Published here rather than where it was found: the first thing a caller
+	// does with a correction is ask the loop what it now believes, and a
+	// callback that ran while the loop held its own lock would deadlock the
+	// first caller who did the obvious thing. Here the lock is free, the
+	// adoption has already happened, and the tick that follows the correction
+	// has not been simulated yet — so Predicted answers with the position the
+	// correction names rather than with one the loop has already left.
+	if corrected && l.options.OnCorrection != nil {
+		l.options.OnCorrection(correction)
+	}
 
 	result, err := l.simulate(ctx, snapshot, tick, input)
 	if err != nil {
@@ -364,16 +380,17 @@ func (l *Loop) adopt(player world.PlayerView) bool {
 }
 
 // reconcile replaces the prediction when the server has moved the player since
-// the last tick. It runs under the lock.
+// the last tick. It runs under the lock, and reports the correction for the
+// caller to publish once the lock is free rather than publishing it itself.
 //
 // A correction is a server position that arrives after the client has begun
 // reporting its own. The login sequence's position is not one, which is why the
 // acknowledgement boundary is explicit state rather than a timeout: a timeout
 // would make this flaky on a slow machine, and a flaky gate gets deleted.
-func (l *Loop) reconcile(player world.PlayerView) {
+func (l *Loop) reconcile(player world.PlayerView) (Correction, bool) {
 	at := simgeom.Vec3{X: player.X, Y: player.Y, Z: player.Z}
 	if l.seenPlaced && at == l.seen {
-		return
+		return Correction{}, false
 	}
 
 	from := simgeom.Vec3{X: l.body.Position.X, Y: l.body.Position.Y, Z: l.body.Position.Z}
@@ -392,7 +409,7 @@ func (l *Loop) reconcile(player world.PlayerView) {
 
 	state, loco, ok := l.options.Spawn(at, player.Yaw, player.Pitch)
 	if !ok {
-		return
+		return Correction{}, false
 	}
 	// The locomotion the server does not carry stays ours: it knows where the
 	// player is, not which keys are held.
@@ -411,12 +428,11 @@ func (l *Loop) reconcile(player world.PlayerView) {
 
 	if !l.acknowledged {
 		// The login sequence, not a disagreement.
-		return
+		return Correction{}, false
 	}
 	l.corrections++
-	if l.options.OnCorrection != nil {
-		l.options.OnCorrection(Correction{Tick: l.tick, From: from, To: at})
-	}
+
+	return Correction{Tick: l.tick, From: from, To: at}, true
 }
 
 // retain keeps a command for replay, dropping the oldest when the bound is
