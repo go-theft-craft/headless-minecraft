@@ -1,12 +1,13 @@
 package v1_8
 
 import (
-	"math/bits"
+	"fmt"
 	"slices"
 	"strconv"
 
 	protocol "github.com/go-theft-craft/minecraft-protocol"
 	gen "github.com/go-theft-craft/minecraft-protocol/generated/java/v1_8"
+	"github.com/go-theft-craft/minecraft-protocol/wire/java/chunk"
 
 	"github.com/go-theft-craft/headless-minecraft/event"
 	"github.com/go-theft-craft/headless-minecraft/version"
@@ -398,17 +399,6 @@ func mobType(kind uint8) string { return "java/1.8.9:mob/" + itoa(int(kind)) }
 // itoa keeps the type names above readable.
 func itoa(n int) string { return strconv.Itoa(n) }
 
-// Protocol 47 sends a chunk column as a bitmask and one packed blob: for each
-// set bit, 4096 blocks of two little-endian bytes holding the block ID in the
-// high twelve bits and the metadata in the low four, then the light arrays,
-// then the biomes. Only the block half is decoded; the rest is kept as bytes.
-const (
-	sectionBlockBytes47 = blocksPerSection47 * 2
-	sectionLightBytes47 = blocksPerSection47 / 2
-	blocksPerSection47  = 4096
-	biomeBytes47        = 256
-)
-
 // chunkReducer decodes the packets that describe terrain.
 func chunkReducer(chunks *world.Chunks) world.Func {
 	return func(_ *world.Context, batch version.Batch, c *event.Collector) error {
@@ -482,7 +472,12 @@ func reduceChunkPacket(chunks *world.Chunks, packet protocol.Packet, c *event.Co
 func reduceChunkBulk47(chunks *world.Chunks, value *gen.PlayClientboundMapChunkBulk, c *event.Collector) {
 	offset := 0
 	for _, meta := range value.Meta {
-		size := bulkColumnBytes47(meta.BitMap, value.SkyLightSent)
+		// Every bulk column is ground-up, which is what puts the biome map
+		// at the end of each one.
+		layout := chunk.Layout47{
+			Bitmap: meta.BitMap, SkyLight: value.SkyLightSent, GroundUp: true,
+		}
+		size := layout.Bytes()
 		if offset+size > len(value.Data) {
 			// Every following column starts where this one ends, so a blob
 			// shorter than the metadata claims makes the rest unreadable
@@ -498,63 +493,48 @@ func reduceChunkBulk47(chunks *world.Chunks, value *gen.PlayClientboundMapChunkB
 	}
 }
 
-// bulkColumnBytes47 is one bulk column's extent in the packed blob.
-func bulkColumnBytes47(bitmap uint16, skyLight bool) int {
-	perSection := sectionBlockBytes47 + sectionLightBytes47
-	if skyLight {
-		perSection += sectionLightBytes47
-	}
-
-	return bits.OnesCount16(bitmap)*perSection + biomeBytes47
-}
-
 func blockPos47(p gen.Position) world.BlockPos {
 	return world.BlockPos{X: p.X, Y: int32(p.Y), Z: p.Z}
 }
 
-// splitColumn47 slices the packed blob into one immutable byte range per
-// present section, and keeps whatever follows as light and biome data.
+// splitColumn47 slices the packed blob into the sections the world stores, and
+// keeps whatever follows as light and biome data.
 //
 // The blocks come first for every section, so the block half can be sliced
 // without knowing whether the dimension carries skylight — which the packet
 // does not say and this reducer does not track.
+//
+// A truncated column is the server's business, not a reason to end the
+// session, so the error the reader returns is dropped and the sections that
+// did arrive are kept. It reports them alongside the error for this.
 func splitColumn47(bitmap uint16, data []byte) ([]world.SectionData, []byte) {
-	var sections []world.SectionData
-	offset := 0
-	for y := range 16 {
-		if bitmap&(1<<uint(y)) == 0 {
-			continue
-		}
-		if offset+sectionBlockBytes47 > len(data) {
-			// A truncated column is the server's business, not a reason to
-			// end the session. What arrived is kept.
-			break
-		}
-		sections = append(sections, world.SectionData{
-			Y:      y,
-			Raw:    data[offset : offset+sectionBlockBytes47],
+	sections, rest, _ := chunk.Split47(bitmap, data)
+
+	stored := make([]world.SectionData, 0, len(sections))
+	for _, section := range sections {
+		stored = append(stored, world.SectionData{
+			Y:      section.Y,
+			Raw:    section.Blocks,
 			Decode: decodeSection47,
 		})
-		offset += sectionBlockBytes47
 	}
 
-	return sections, data[min(offset, len(data)):]
+	return stored, rest
 }
 
-// decodeSection47 turns one section's bytes into block states. It is pure, as
-// the world requires: two readers racing to decode the same bytes compute the
-// same answer.
+// decodeSection47 is the world's decoder for one section of a 47 column.
+//
+// It is pure, as the world requires: two readers racing to decode the same
+// bytes compute the same answer.
+//
+// A failure is reported in both vocabularies. The world's contract is that a
+// section it cannot read answers with ErrSectionNotDecodable rather than with
+// air, and the reader's own error says why; wrapping both keeps a caller
+// matching either one working.
 func decodeSection47(raw []byte) ([]uint32, error) {
-	if len(raw) < sectionBlockBytes47 {
-		return nil, world.ErrSectionNotDecodable
-	}
-
-	states := make([]uint32, blocksPerSection47)
-	for i := range states {
-		// Little-endian: the low byte first, and the value is the block ID
-		// shifted four bits with the metadata in the low nibble, which is
-		// exactly the state identifier this protocol uses.
-		states[i] = uint32(raw[i*2]) | uint32(raw[i*2+1])<<8
+	states, err := chunk.DecodeSection47(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", world.ErrSectionNotDecodable, err)
 	}
 
 	return states, nil

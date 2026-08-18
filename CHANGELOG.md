@@ -30,6 +30,22 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
 
 ### Changed
 
+- `internal/adapter`: both adapters read a chunk column through
+  `minecraft-protocol`'s new `wire/java/chunk` rather than carrying their own
+  copy of the layout, which `v0.8.0` brings in. The column is the same bytes for
+  anything that speaks the protocol, and it was being read from scratch in every
+  repository that wanted a block out of one — the layout is the part that fails
+  silently, so a second copy is a second chance to decode plausible wrong blocks
+  rather than to fail.
+
+  What stays here is what belongs to a client rather than to the wire: where a
+  775 column sits, which the blob does not say and the `dimension_type` registry
+  does; that a section this client cannot read answers in the world's own
+  vocabulary; and that a column that cannot be read at all is kept whole and
+  undecoded rather than dropped. The tests that pinned the container layout move
+  to the module that now owns it, including the captured Paper 26.1 column; the
+  ones that pin placement, the fallback, and the world's answer stay.
+
 - `examples/orbit` no longer defines its own `Vec3`, `BlockPos`, or the vector
   arithmetic around them. It was never isolation, only a copy — the example
   already depended on `minecraft-simulation` — and the arithmetic now lives in

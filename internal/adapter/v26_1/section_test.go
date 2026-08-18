@@ -2,12 +2,14 @@ package v26_1
 
 import (
 	"encoding/binary"
+	"errors"
 	"os"
 	"testing"
 
 	protocol "github.com/go-theft-craft/minecraft-protocol"
 	gen "github.com/go-theft-craft/minecraft-protocol/generated/java/v26_1"
 	"github.com/go-theft-craft/minecraft-protocol/wire/java"
+	"github.com/go-theft-craft/minecraft-protocol/wire/java/chunk"
 
 	"github.com/go-theft-craft/headless-minecraft/event"
 	"github.com/go-theft-craft/headless-minecraft/version"
@@ -112,28 +114,24 @@ func TestEveryRealSectionDecodesToTheBlockCountTheServerDeclared(t *testing.T) {
 	}
 }
 
-// declaredBlockCounts re-walks the blob for the counts alone, so the numbers
-// the decode is checked against do not come from the code being checked.
+// declaredBlockCounts is what each section says it holds.
+//
+// The count is the server's own statement, carried through the split and read
+// by nothing in the decode path, so comparing a decode against it still checks
+// this client's terrain against the server that packed it -- what changed is
+// that the walk producing both is now one walk in the shared reader rather
+// than two here.
 func declaredBlockCounts(t *testing.T, data []byte) []int {
 	t.Helper()
 
-	var counts []int
-	r := &columnReader{data: data}
-	for r.pos < len(data) {
-		nonEmpty, err := r.short()
-		if err != nil {
-			t.Fatalf("block count: %v", err)
-		}
-		if _, err := r.short(); err != nil {
-			t.Fatalf("fluid count: %v", err)
-		}
-		if _, err := r.container(blocksPerSection775, maxBlockPaletteBits775); err != nil {
-			t.Fatalf("states: %v", err)
-		}
-		if _, err := r.container(biomesPerSection775, maxBiomePaletteBits775); err != nil {
-			t.Fatalf("biomes: %v", err)
-		}
-		counts = append(counts, int(nonEmpty))
+	sections, err := chunk.Split775(data, overworldBottom)
+	if err != nil {
+		t.Fatalf("chunk.Split775: %v", err)
+	}
+
+	counts := make([]int, 0, len(sections))
+	for _, section := range sections {
+		counts = append(counts, int(section.BlockCount))
 	}
 
 	return counts
@@ -171,117 +169,62 @@ func TestARealColumnAnswersBlockLookupsThroughTheWorld(t *testing.T) {
 	}
 }
 
-func TestASectionOfOneValueNeedsNoLongArray(t *testing.T) {
+// TestAnUndecodableSectionReportsItselfInBothVocabularies pins what this
+// package adds to the shared reader.
+//
+// The reader says which part of the container it could not read. The world
+// requires something else: a section it cannot decode has to answer with
+// ErrSectionNotDecodable rather than with zeros, because zero is air and air
+// is an answer a consumer will walk into. The wrapper owes both, so a caller
+// matching either sentinel keeps working.
+//
+// The two inputs are the failures worth naming. One is short of its long
+// array. The other declares more bits an entry than a long can hold, which is
+// what a malformed column from the network used to divide by -- the bound
+// lives in the reader now, and this is the check that it still reaches a
+// caller as a decode failure rather than as a panic.
+func TestAnUndecodableSectionReportsItselfInBothVocabularies(t *testing.T) {
 	t.Parallel()
 
-	// The single-valued container is the one the real column uses for every
-	// empty section, and it is the case where a decoder that insists on
-	// reading a long array walks off the end.
-	states, err := decodeSection775([]byte{0x00, 0x2a})
-	if err != nil {
-		t.Fatalf("decodeSection775: %v", err)
-	}
-	if len(states) != 4096 {
-		t.Fatalf("decoded %d states, want 4096", len(states))
-	}
-	for i, state := range states {
-		if state != 42 {
-			t.Fatalf("state %d is %d, want 42 everywhere", i, state)
-		}
-	}
-}
-
-func TestAColumnThatDoesNotFitIsRefused(t *testing.T) {
-	t.Parallel()
-
-	// A blob that ends mid-section is the shape every misread layout takes,
-	// and the failure it must not have is a silent one: sections that decode
-	// to plausible wrong blocks. The exact-fit check is what turns it into an
-	// error.
-	data := realColumn(t)
-	for _, test := range []struct {
-		name string
-		data []byte
-	}{
-		{name: "truncated", data: data[:len(data)-1]},
-		{name: "trailing byte", data: append(append([]byte{}, data...), 0)},
+	for name, raw := range map[string][]byte{
+		"short of its long array": {0x04, 0x01, 0x01, 0x00},
+		"an impossible bit width": {0xFF, 0x00},
 	} {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if _, err := splitColumn775(test.data, overworldBottom); err == nil {
-				t.Error("a column that does not fit its sections was accepted")
+			_, err := decodeSection775(raw)
+			if !errors.Is(err, world.ErrSectionNotDecodable) {
+				t.Errorf("got %v, want it to be ErrSectionNotDecodable", err)
+			}
+			if !errors.Is(err, chunk.ErrSection) {
+				t.Errorf("got %v, want it to be chunk.ErrSection", err)
 			}
 		})
 	}
 }
 
-func TestADecodedSectionMatchesItsPackedEntries(t *testing.T) {
-	t.Parallel()
-
-	// A hand-packed container, so the bit arithmetic is checked against
-	// something whose answer is known independently of the fixture: five bits
-	// an entry, twelve entries a long.
-	const bits = 5
-	palette := []uint32{0, 11, 22, 33}
-	perLong := 64 / bits
-
-	raw := []byte{bits, byte(len(palette))}
-	for _, entry := range palette {
-		raw = append(raw, byte(entry))
-	}
-	longs := make([]byte, longsFor(4096, perLong)*8)
-	for i := range 4096 {
-		cell := i / perLong
-		word := binary.BigEndian.Uint64(longs[cell*8:])
-		word |= uint64(i%len(palette)) << ((i - cell*perLong) * bits)
-		binary.BigEndian.PutUint64(longs[cell*8:], word)
-	}
-	raw = append(raw, longs...)
-
-	states, err := decodeSection775(raw)
-	if err != nil {
-		t.Fatalf("decodeSection775: %v", err)
-	}
-	for i, state := range states {
-		if want := palette[i%len(palette)]; state != want {
-			t.Fatalf("state %d is %d, want %d", i, state, want)
-		}
-	}
-}
-
-func TestAnUndecodableSectionReportsItself(t *testing.T) {
-	t.Parallel()
-
-	// Short of its long array: the world's contract is that a section it
-	// cannot decode says so rather than answering with zeros, because zero is
-	// air and air is an answer a consumer will walk into.
-	if _, err := decodeSection775([]byte{0x04, 0x01, 0x01, 0x00}); err == nil {
-		t.Error("a truncated section decoded")
-	} else if err != world.ErrSectionNotDecodable {
-		t.Errorf("got %v, want ErrSectionNotDecodable", err)
-	}
-}
-
-// TestAnImpossibleBitWidthIsRefusedRatherThanPanicking pins the bound on the
-// bit width.
+// TestAColumnThatCannotBeReadIsKeptWhole is the fallback this package owns.
 //
-// Entries per long is 64 divided by the width, and the length of the long
-// array is divided by that, so a width past 64 divided by zero and took the
-// process down. The bytes come from whatever the session is connected to,
-// which makes a panic here a crash a server can ask for; a width nobody could
-// have meant is a column this client cannot read, which is a thing this
-// package already knows how to say.
-func TestAnImpossibleBitWidthIsRefusedRatherThanPanicking(t *testing.T) {
+// The shared reader refuses a column that does not fit its sections, and what
+// this adapter does with that refusal is keep the bytes: a lookup in the
+// column reports that it cannot be decoded, which is what it did before any
+// decoder existed, rather than reporting air.
+func TestAColumnThatCannotBeReadIsKeptWhole(t *testing.T) {
 	t.Parallel()
 
-	if _, err := decodeSection775([]byte{0xFF, 0x00}); err != world.ErrSectionNotDecodable {
-		t.Errorf("decode: got %v, want ErrSectionNotDecodable", err)
-	}
+	floor := &columnFloor{section: overworldBottom, placed: true}
+	truncated := realColumn(t)[:len(realColumn(t))-1]
 
-	// A section's two counts, then the same width in its block container.
-	if _, err := splitColumn775([]byte{0x00, 0x00, 0x00, 0x00, 0xFF, 0x00}, 0); err == nil {
-		t.Error("split: a column declaring an impossible bit width was accepted")
+	sections := columnSections(floor, truncated)
+	if len(sections) != 1 {
+		t.Fatalf("a column that does not fit kept %d sections, want 1 whole", len(sections))
+	}
+	if sections[0].Decode != nil {
+		t.Error("a column that could not be read was given a decoder")
+	}
+	if len(sections[0].Raw) != len(truncated) {
+		t.Errorf("kept %d bytes of the %d that arrived", len(sections[0].Raw), len(truncated))
 	}
 }
 
