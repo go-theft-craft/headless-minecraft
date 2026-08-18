@@ -535,3 +535,65 @@ func TestRunningStopsOnceTheBotHasLeftItsCircleBehind(t *testing.T) {
 		t.Errorf("the bot is %v after running past its margin, want returning", bot.State())
 	}
 }
+
+// TestSomethingThatCannotFollowDoesNotEndTheOrbit pins the point of naming
+// entities at all.
+//
+// Leaving the circle costs the bot its orbit and a walk back. That is worth it
+// for something chasing it and wasted on a minecart, and until the entity had
+// a name the bot could not tell the two apart -- it ran from whatever the
+// damage pointed at.
+func TestSomethingThatCannotFollowDoesNotEndTheOrbit(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+	w.entities[42] = Entity{
+		ID: 42, Position: position, Health: 20, Alive: true,
+		Kind: Kind{Name: "Minecart", Pursues: false}, Named: true,
+	}
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+
+	bot.Advance(Tick{
+		Now:      c.advance(50 * time.Millisecond),
+		Ready:    true,
+		Self:     Self{Position: position},
+		Attacker: 42,
+	}, w)
+
+	if bot.State() != Orbiting {
+		t.Errorf("the bot is %v after a minecart hit it, want it still orbiting", bot.State())
+	}
+}
+
+// TestAnUnnamedAttackerIsStillRunFrom pins that the cautious default survives
+// into the core, not just the lookup.
+func TestAnUnnamedAttackerIsStillRunFrom(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+	// Named false, and a Kind that would say "harmless" if anything read it.
+	w.entities[42] = Entity{
+		ID: 42, Position: position.Add(Vec3{X: 2}), Health: 20, Alive: true,
+		Kind: Kind{Pursues: false}, Named: false,
+	}
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+
+	bot.Advance(Tick{
+		Now:      c.advance(50 * time.Millisecond),
+		Ready:    true,
+		Self:     Self{Position: position},
+		Attacker: 42,
+	}, w)
+
+	if bot.State() != Fleeing {
+		t.Errorf("the bot is %v after something it cannot name hit it, want fleeing", bot.State())
+	}
+}

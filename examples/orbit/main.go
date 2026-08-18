@@ -58,6 +58,16 @@ func run(logger *slog.Logger, address, username string, legacy, dryRun bool) int
 		return 1
 	}
 
+	// What the server spawns, by the type strings it spawns them under. The
+	// bot runs from what hits it, and this is how it tells a skeleton from a
+	// minecart before deciding to leave its circle over one.
+	kinds, err := NewKinds(legacy)
+	if err != nil {
+		logger.Error("kinds", slog.Any("error", err))
+
+		return 1
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -95,7 +105,7 @@ func run(logger *slog.Logger, address, username string, legacy, dryRun bool) int
 
 	logger.Info("connected", slog.String("address", address))
 
-	code, err := drive(ctx, logger, bot, events, navigator)
+	code, err := drive(ctx, logger, bot, events, navigator, kinds)
 	if err != nil {
 		logger.Error("run", slog.Any("error", err))
 	}
@@ -179,6 +189,7 @@ func drive(
 	source connection,
 	events *client.Subscription,
 	navigator Navigator,
+	kinds Kinds,
 ) (int, error) {
 	bounds := DefaultBounds()
 	core := NewBot(bounds)
@@ -249,7 +260,7 @@ func drive(
 			}
 			pending.Revision = snapshot.Revision
 
-			action := core.Advance(pending, NewObserved(ctx, snapshot, navigator))
+			action := core.Advance(pending, NewObserved(ctx, snapshot, navigator, kinds))
 			narrate(logger, core, action, &last)
 			// Edge-triggered facts are consumed by the tick that saw them.
 			// Leaving Died set would make the core respawn on every tick after

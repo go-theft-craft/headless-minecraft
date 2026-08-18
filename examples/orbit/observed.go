@@ -20,6 +20,7 @@ type Observed struct {
 	ctx       context.Context
 	snapshot  world.Snapshot
 	navigator Navigator
+	kinds     Kinds
 }
 
 // NewObserved binds one snapshot and the planner that routes over it.
@@ -27,8 +28,10 @@ type Observed struct {
 // The context belongs to the tick rather than to the navigator: a route is
 // searched inside one Advance, and a bot whose run is being shut down should
 // abandon the search rather than finish it.
-func NewObserved(ctx context.Context, snapshot world.Snapshot, navigator Navigator) Observed {
-	return Observed{ctx: ctx, snapshot: snapshot, navigator: navigator}
+func NewObserved(
+	ctx context.Context, snapshot world.Snapshot, navigator Navigator, kinds Kinds,
+) Observed {
+	return Observed{ctx: ctx, snapshot: snapshot, navigator: navigator, kinds: kinds}
 }
 
 // Route plans a way between two positions over this snapshot.
@@ -74,10 +77,14 @@ func (o Observed) Entity(id int32) (Entity, bool) {
 		return Entity{}, false
 	}
 
+	kind, named := o.kinds.Lookup(tracked.Type)
+
 	return Entity{
 		ID:       tracked.EntityID,
 		Position: Vec3{X: tracked.X, Y: tracked.Y, Z: tracked.Z},
 		Alive:    !tracked.Dead,
+		Kind:     kind,
+		Named:    named,
 	}, true
 }
 

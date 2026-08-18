@@ -20,7 +20,7 @@ func silent() Observed {
 		panic(err)
 	}
 
-	return NewObserved(context.Background(), world.New().Snapshot(), navigator)
+	return NewObserved(context.Background(), world.New().Snapshot(), navigator, Kinds{})
 }
 
 func TestTheBotGivesUpWhenTheWorldNeverSuppliesSpawn(t *testing.T) {

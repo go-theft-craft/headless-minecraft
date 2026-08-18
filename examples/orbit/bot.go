@@ -387,7 +387,7 @@ func (b *Bot) flee(t Tick, w World) Action {
 	case t.Now.Sub(b.fledAt) > b.bounds.Escape:
 		return b.disengage(t, "ran as long as it is worth running")
 	case t.Self.Position.HorizontalDistance(threat.Position) >= b.bounds.SafeDistance:
-		return b.disengage(t, "clear of the threat")
+		return b.disengage(t, "clear of "+threatName(threat))
 	// The bot's distance from the centre, not the threat's. The bot is the one
 	// running, and it is the one that has to come back.
 	case t.Self.Position.HorizontalDistance(b.circle.Centre) > b.circle.Radius+b.bounds.FleeMargin:
@@ -549,12 +549,33 @@ func (b *Bot) provoked(t Tick, w World) (Action, bool) {
 		return Action{}, false
 	}
 
+	// Something that cannot follow the bot is not worth leaving the circle
+	// for. The damage names the cause rather than the thing that arrived --
+	// an arrow's shooter, not the arrow -- so what reaches here and stays put
+	// really is something the bot can simply walk away from.
+	//
+	// An entity this client cannot name pursues. A modded server spawns types
+	// no data set has heard of, and the safe reading of "I do not know what
+	// hit me" is not "it is harmless".
+	if attacker.Named && !attacker.Kind.Pursues {
+		return Action{}, false
+	}
+
 	b.target = t.Attacker
 	b.fledAt = t.Now
 	b.state = Fleeing
 	b.route = Route{}
 
 	return b.flee(t, w), true
+}
+
+// threatName is what to call a threat in a log line.
+func threatName(threat Entity) string {
+	if threat.Named && threat.Kind.Name != "" {
+		return threat.Kind.Name
+	}
+
+	return "an entity this client cannot name"
 }
 
 // step is a movement update toward a target.

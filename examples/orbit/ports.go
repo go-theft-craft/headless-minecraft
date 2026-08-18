@@ -26,6 +26,13 @@ type Entity struct {
 	Position Vec3
 	Health   float64
 	Alive    bool
+	// Kind is what this client can say about the entity: a name for a log
+	// line, and whether it is the sort of thing that follows a bot walking
+	// away. Named reports whether the client could say anything at all -- a
+	// modded server spawns types no data set has heard of, and the caller must
+	// not read the zero value as "harmless".
+	Kind  Kind
+	Named bool
 }
 
 // World is observed state, read-only, as of one snapshot revision.

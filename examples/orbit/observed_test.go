@@ -22,7 +22,7 @@ func TestSpawnIsTheBlockCentreAndNotItsCorner(t *testing.T) {
 	var c event.Collector
 	w.Environment().SpawnChanged(&c, world.BlockPos{X: 100, Y: 64, Z: -20}, "", 0, 0, false)
 
-	centre, known := NewObserved(context.Background(), w.Snapshot(), Navigator{}).Spawn()
+	centre, known := NewObserved(context.Background(), w.Snapshot(), Navigator{}, Kinds{}).Spawn()
 	if !known {
 		t.Fatal("the adapter did not see a spawn the world had recorded")
 	}
@@ -49,7 +49,7 @@ func TestAnEntityIsAliveUntilTheServerSaysOtherwise(t *testing.T) {
 	var c event.Collector
 	w.Entities().Spawned(&c, 42, "", "minecraft:zombie", 10, 64, 10, 0, 0)
 
-	adapter := NewObserved(context.Background(), w.Snapshot(), Navigator{})
+	adapter := NewObserved(context.Background(), w.Snapshot(), Navigator{}, Kinds{})
 
 	target, known := adapter.Entity(42)
 	if !known {
