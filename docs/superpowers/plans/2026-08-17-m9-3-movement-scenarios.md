@@ -206,6 +206,11 @@ git commit -m "docs(plan): reconcile M9.3 against what M8.8 and M9.2 landed"
 
 ## Task 1: Freeze the trace document
 
+**Not started.** It is buildable today — nothing about it needs a capture —
+but it exists to serve Tasks 2 to 4, which are blocked, and freezing a format
+nobody reads yet would pin whatever the one writer happens to do.
+
+
 **Files:**
 - Create: `relay/examples/minecraft/trace/document.go`
 - Create: `relay/examples/minecraft/trace/document_test.go`
@@ -356,6 +361,12 @@ unknown schema rather than guessing at it."
 ---
 
 ## Task 2: The reader and comparator in `minecraft-simulation`
+
+**Not started, and re-scoped by Task 0.** M9.2 already built this comparator as
+`mctest.Captured` and `mctest.ReplayCaptured`. What is left is extending it to a
+player driven by input rather than forking a second one, and that is worth doing
+when there is a corpus to run it against.
+
 
 **Files:**
 - Create: `minecraft-simulation/conformance/document.go`
@@ -553,6 +564,13 @@ release separately. A shared golden file keeps the formats honest."
 
 ## Task 3: Capture the movement corpus on both versions
 
+**Blocked, and not by an agent.** A player trace is built from what the client
+reported, so capturing one with this project's headless client would compare the
+kernel against itself. This needs a person playing 26.1.2 through the proxy;
+1.8.9's recordings already exist in `oracle-evidence/2026-08-17-relay-capture/`.
+See "The blocker this plan did not see", above.
+
+
 This is a manual capture task with a written record, in the shape of M9.1's and
 M9.1b's live checks. It produces the fixtures every remaining task compares
 against, so it comes before them.
@@ -621,6 +639,10 @@ so a re-capture produces something comparable rather than similar."
 ---
 
 ## Task 4: The six ordinary scenarios
+
+**Blocked on Task 3.** There is nothing to compare against until the corpus
+exists.
+
 
 Walk, sprint, sneak, jump, fall, and collide. These overlap M8.4's fixture suite
 on purpose: M8.4 checks the kernel against fixtures generated from the game's
@@ -857,60 +879,109 @@ would have passed over the bug.
 
 ---
 
-## Task 8: Wire the stage into the gate harness and record it
+## Task 8: Record what this stage reached
+
+**Rewritten by Task 0.** The `conform.Scenario` wiring in this task's Step 1
+belongs to the corpus half, which is blocked. What it declares lanes *for* is
+the nine captured scenarios, and there are none for 26.1.2.
 
 **Files:**
-- Create: `minecraft-simulation/conformance/scenario.go`
 - Modify: `headless-minecraft/MASTER_PLAN.md`
 - Modify: `headless-minecraft/docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md`
 
-- [ ] **Step 1: Declare the nine scenarios as `conform.Scenario` values**
+- [x] **Step 1: Record the gate as met, and the rest as blocked**
 
-Each with a lane per version. `conform.Run` refuses a scenario missing a lane,
-so this is where the two-version gate becomes enforceable rather than a
-convention.
+The master plan's own gate for M9.3 is the three scenarios, and they pass on
+both versions. The corpus half is this plan's own addition and it is blocked, so
+both stage tables say so rather than saying "complete" and leaving somebody to
+find out later.
 
-- [ ] **Step 2: Add `task test:conformance` and put it in CI**
+- [ ] **Step 2: Declare the nine scenarios as `conform.Scenario` values**
 
-The corpus is checked in and the comparison needs no server, so this runs in
-ordinary CI. The live-server tests from Tasks 5 to 7 need a pinned jar; gate
-them behind the same build tag M8.8's vanilla lane uses.
+Blocked with Tasks 1 to 4. A lane per version is the point of the type, and
+26.1.2 has no lane to declare.
 
-- [ ] **Step 3: Record the milestone**
+- [ ] **Step 3: Add `task test:conformance` and put it in CI**
 
-Mark M9.3 complete in both stage tables. Write what the work found, in the
-established shape — what was built, what cost more than budgeted, and what
-surprised you. If the captured traces and M8.4's fixtures disagreed anywhere,
-that is the most valuable thing this stage produced and it belongs in the
-master plan, not only in a commit message.
+Blocked with the above. The live scenarios need no new task: they are named
+`TestVanilla…` and carry the `vanilla` build tag, so `task test:vanilla` already
+runs them and `task verify` already does not.
 
-- [ ] **Step 4: Commit**
-
-```bash
-git add MASTER_PLAN.md docs/superpowers/plans/
-git commit -m "docs(plan): close M9.3, and what the movement corpus found"
-```
+- [x] **Step 4: Commit**
 
 ---
 
+## What this stage found
+
+**A player trace cannot be its own oracle.** The finding that blocks half this
+plan, written up in the master plan because it outlives this stage. An item's
+trajectory is the server's, so a capture of one is evidence whoever was
+connected. A player's is the client's own report, so a corpus captured with this
+project's client would compare the kernel against itself.
+
+**Two defects, neither of them in the physics.**
+
+A correction was published from under the loop's own mutex, so the first thing
+any caller would do with one — ask the loop what it now believes — deadlocked.
+Found by writing that caller.
+
+A client whose server died published nothing at all. The transport disconnect
+was reported only when the read loop stopped with an error, and a killed server
+produces no error: no disconnect packet, no reset, just EOF. The ending a
+subscriber has no other way to learn about was the only one never reported.
+1.8.9 is where it showed: 26.1.2's server happens to reset the connection, so
+that lane would have passed over it.
+
+**And one in the test harness**, which is worth more than it looks. The vanilla
+server's `Stop` asked for the process's stdin pipe after the process had
+started, which cannot work, so its graceful stop command was never sent and
+every server in the suite was killed twenty seconds later by the fallback. The
+suite paid twenty seconds per server for a shutdown it thought it was doing
+politely, and the half-written region file the comment warns about was the
+outcome it was taking every time.
+
+**What a refused move actually proves.** Less than the plan assumed. The server
+corrects to the last position it accepted, which is the client's own last
+report, so `From` equals `To` and there is nothing to adopt. Standing still
+makes the correction invisible entirely. The scenario that proves adoption is
+the teleport, where the destination is the server's choice.
+
+**What 775's teleport identifier costs to count.** The login placement carries
+one and is confirmed like any other position, so a confirmation count taken over
+a session reports two for one teleport. Measured from the teleport it is
+exactly one.
+
 ## Definition of done
 
-- The trace document has a schema version, a golden file, and byte-identical
+Ticked against what was reached. The three scenario criteria are met on both
+versions; the corpus criteria are not, and why is recorded above rather than
+softened here.
+
+
+- [ ] The trace document has a schema version, a golden file, and byte-identical
   copies in both repositories, with a test on each side that fails if they drift.
-- `minecraft-simulation/conformance` compares kernel trajectories against
-  captured traces at the version's own tolerance, and does not depend on `relay`.
-- Walk, sprint, sneak, jump, fall, and collide match captured vanilla on both
+- [ ] A comparator checks kernel trajectories against captured traces at the
+  version's own tolerance, without depending on `relay`. Half met before this
+  stage: `mctest.ReplayCaptured` does it for a body the server simulates, and
+  what is missing is a player driven by input.
+- [ ] Walk, sprint, sneak, jump, fall, and collide match captured vanilla on both
   1.8.9 and 26.1.2, with the max deviation logged even on success.
-- A provoked correction is adopted absolutely, published before the next
-  prediction, and does not produce a second correction.
-- A 775 teleport is confirmed exactly once; a 47 teleport is settled without a
-  confirmation packet; queued pre-teleport input is not replayed after it.
-- A disconnect mid-action applies no unconfirmed change set and publishes
-  everything already observed.
-- All nine scenarios are declared as `conform.Scenario` values with a lane per
+- [x] A provoked correction does not enter the prediction, is published where the
+  loop can be asked about it, and does not produce a second correction. **Not**
+  "adopted absolutely": a refused move is corrected to the client's own last
+  reported position, so there is nothing to adopt. Adoption is proved by the
+  teleport.
+- [x] A 775 teleport is confirmed exactly once, counted from the teleport rather
+  than from the session; a 47 teleport settles with no confirmation packet.
+- [x] A disconnect mid-action leaves the observed world where the server last
+  confirmed it, and publishes the disconnect — which it previously did not when
+  the server died without saying so.
+- [ ] All nine scenarios are declared as `conform.Scenario` values with a lane per
   version.
-- `task lint`, `task test` under `-race`, and `task verify` pass in
-  `minecraft-simulation`, `headless-minecraft`, and `relay`.
+- [x] `task lint` and `task test` under `-race` pass in `headless-minecraft`, and
+  `task test:vanilla` passes on both versions. `task verify` fails on a gitleaks
+  finding in `.local/vanilla-26/server.properties` — untracked local server data
+  from a manual run, present before this stage and unrelated to it.
 
 ## Risks
 

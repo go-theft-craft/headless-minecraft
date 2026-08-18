@@ -506,7 +506,7 @@ is rewritten:
 | --- | --- | --- | --- |
 | M9.1b | The capture oracle on protocol 775, against a pinned 26.1.2 server | M9.1's live check | A 775 trace replays deterministically, and the replay tolerance is derived from 775's own position encoding |
 | M9.2 | Dropped item and arrow rules, both profiles | M9.1b and M8.4 | Complete 2026-08-18, both versions: 440 item ticks agree with the 1.8.9 jar bit for bit, two captured 1.8.9 trajectories replay within 0.017 of a block, and the 26.1.2 lanes land within 0.054 of where that server put them |
-| M9.3 | Movement scenarios | M8.8 | Correction, teleport, and disconnect mid-action behave as vanilla on both versions |
+| M9.3 | Movement scenarios | M8.8 | Gate met 2026-08-18, both versions: one refused move draws one correction and never enters the prediction, a server-sent teleport is taken whole and confirmed exactly once on 775 and not at all on 47, and a killed server applies nothing unconfirmed and still reports the disconnect. The plan's replay-against-corpus half is blocked: a player trace is built from what the client reported, so only a real vanilla client can capture one, and 26.1.2 has no such recording |
 | M9.4 | Digging and block breaking | M9.3 | Break times match vanilla across tool, block, and effect combinations on both versions |
 | M9.5 | Building and placement | M9.4 | Placement legality and resulting block state match vanilla on both versions |
 | M9.6 | Attack, damage, knockback | M9.3 | Reach validation, damage, and death match vanilla on both versions; cooldown timing on 26.1.2, recorded as absent on 1.8.9 |

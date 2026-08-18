@@ -1441,7 +1441,7 @@ independently verifiable against a vanilla server.
 | M9.1 | Entity-trace capture in a new protocol 47 proxy repository | A captured trace replays deterministically from its recording |
 | M9.1b | The same capture oracle on protocol 775, against a pinned 26.1.2 server | Complete 2026-08-18. Three 26.1.2 recordings replay to their own digests. The relative move is 4096 units a block, measured from two arrows landing on one surface; the tolerance is zero at an absolute sample, because 775 sends `float64`, and 1/4096 per relative move, against 47's 1/32 everywhere |
 | M9.2 | Dropped item and arrow rules, both profiles | Complete 2026-08-18, both versions. 440 item ticks agree with the 1.8.9 jar bit for bit; two captured item trajectories replay within 0.017 of a block over sixty blocks of fall, against the 1/32 that wire carries; and the 26.1.2 lanes land within 0.054 of where a real 26.1.2 server put them |
-| M9.3 | Movement scenarios | Correction, teleport, and disconnect mid-action behave as vanilla on 1.8.9 and 26.1.2 |
+| M9.3 | Movement scenarios | Gate met 2026-08-18, both versions: a refused move draws one correction and never enters the prediction, a server-sent teleport is taken whole and confirmed exactly once on 775 and not at all on 47, and a server killed mid-walk applies nothing unconfirmed and still reports the disconnect. The stage plan's replay-against-corpus half is outstanding and blocked — see below |
 | M9.4 | Digging and block breaking | Break times match vanilla for tool, block, and effect combinations on 1.8.9 and 26.1.2 |
 | M9.5 | Building and placement | Placement legality and resulting block state match vanilla on 1.8.9 and 26.1.2 |
 | M9.6 | Attack, damage, knockback | Reach validation, cooldown timing, damage, and death match vanilla on 1.8.9 and 26.1.2 |
@@ -1481,6 +1481,25 @@ Two further constraints belong to the cross-version gates above:
   two games that disagree. `relay/examples/minecraft/conform` is where that is
   enforced: a scenario naming no lane for a readable version fails to run, and
   an absent lane must carry a reason.
+
+Executing M9.3 surfaced one that changes what the remaining stages can claim:
+
+- **A player trace cannot be its own oracle, and that blocks half of M9.3.**
+  M9.2's captured trajectories are of items and arrows, which the server
+  simulates, so a capture of one is evidence no matter which client was
+  connected. A player is not: the server does not narrate a player's walking
+  back to it, so the player trace in a recording is built from what the *client*
+  reported. A movement corpus captured through this project's headless client is
+  therefore this project's own physics played back to itself, and comparing the
+  kernel against it would pass by construction. The oracle is a real vanilla
+  client behind the proxy. Those recordings exist for 1.8.9, in
+  `oracle-evidence/2026-08-17-relay-capture/`; for 26.1.2 there are none, every
+  775 capture having been taken with the headless client. So M9.3's Tasks 1–4 —
+  freeze the trace document, build the comparator, capture nine scenarios on
+  each version, and check the six ordinary ones — are blocked on somebody
+  playing 26.1.2 through the proxy, and this constraint applies to every later
+  stage that wants to verify a *player* behaviour against a capture rather than
+  against a server's acceptance.
 
 Drafting the M9.3–M9.8 stage plans surfaced three more, worth carrying here
 because each one changes what a stage costs:
@@ -2214,7 +2233,7 @@ The three worth carrying furthest:
 - [Minecraft reference extraction](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md) — reference tool extracted and released; simulation research catalog pending
 - [Minecraft simulation foundation](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) — repository foundation complete; implementation pending
 - [M9 gameplay mechanics](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) — M9.1 written and built. Revised 2026-08-17: every gate from M9.2 on is a two-version gate, and M9.3–M9.8 now have drafted stage plans
-- [M9.3 movement scenarios](docs/superpowers/plans/2026-08-17-m9-3-movement-scenarios.md) — drafted ahead of its prerequisites; Task 0 reconciles the M8.3/M8.4/M8.8 symbols it names
+- [M9.3 movement scenarios](docs/superpowers/plans/2026-08-17-m9-3-movement-scenarios.md) — reconciled and executed 2026-08-18 as far as it goes: the stated gate is met on both versions, and Tasks 1–4 are blocked on a capture nobody here can take
 - [M9.4 digging and block breaking](docs/superpowers/plans/2026-08-17-m9-4-digging-block-breaking.md) — drafted; found that the two versions' block-material vocabularies are incompatible
 - [M9.5 building and placement](docs/superpowers/plans/2026-08-17-m9-5-building-and-placement.md) — drafted; the resulting-state rule is version-owned because 1.8.9 addresses states by metadata and 26.1.2 by a flat range
 - [M9.6 attack, damage, and knockback](docs/superpowers/plans/2026-08-17-m9-6-attack-damage-knockback.md) — drafted; owns the respawn primitive, and demonstrates the harness's `Absent` outcome on the attack cooldown
