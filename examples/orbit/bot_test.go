@@ -52,6 +52,15 @@ func advanceTo(t *testing.T, bot *Bot, w World, c *clock, self func() Self, want
 	return last
 }
 
+// revolutionTicks is how many ticks a full revolution takes when the test
+// teleports the bot to whatever the core aimed at.
+//
+// It used to be forty, one per waypoint, because the core aimed straight at the
+// next waypoint and the test jumped the whole five blocks. The core now walks a
+// planned route and aims at the next cell on it, so a tick covers one block and
+// a circle of radius 25 is about a hundred and sixty of them.
+const revolutionTicks = 400
+
 func TestTheBotWalksTheCircleAndAdvancesWaypoints(t *testing.T) {
 	t.Parallel()
 
@@ -64,7 +73,7 @@ func TestTheBotWalksTheCircleAndAdvancesWaypoints(t *testing.T) {
 
 	// Teleport the bot onto each waypoint in turn; the core must advance.
 	seen := map[int]bool{}
-	for range 40 {
+	for range revolutionTicks {
 		action := bot.Advance(Tick{
 			Now:   c.advance(50 * time.Millisecond),
 			Ready: true,
@@ -86,18 +95,24 @@ func TestTheBotWalksTheCircleAndAdvancesWaypoints(t *testing.T) {
 	}
 
 	if len(seen) < 30 {
-		t.Errorf("visited %d distinct waypoints in 40 ticks, want a full revolution", len(seen))
+		t.Errorf("visited %d distinct waypoints in %d ticks, want a full revolution", len(seen), revolutionTicks)
 	}
 }
 
-func TestAWallIsBypassedInsideTheBand(t *testing.T) {
+// TestAWaypointNothingCanRouteToIsSkipped pins what the example still decides.
+//
+// Going around an obstacle is the planner's job now and is tested where the
+// planner lives. What is left here is the answer to a planner that comes back
+// with nothing: skip the waypoint and carry on round, rather than walk at it
+// anyway. Walking at it anyway is what the old radial-band search did when its
+// band was exhausted, and it cost two live runs.
+func TestAWaypointNothingCanRouteToIsSkipped(t *testing.T) {
 	t.Parallel()
 
 	w := newScripted()
 	circle := NewCircle(w.spawn, 25, 32)
 
-	// Wall the circle at waypoint 1 and one block either side of it radially,
-	// leaving the band open beyond.
+	// Wall the circle at waypoint 1 and one block either side of it radially.
 	for _, offset := range []float64{0, -1, 1} {
 		p := circle.At(1, offset).Floor()
 		w.wall(p.X, p.Z, 3)
@@ -112,15 +127,14 @@ func TestAWallIsBypassedInsideTheBand(t *testing.T) {
 
 	action := bot.Advance(Tick{Now: c.advance(50 * time.Millisecond), Ready: true, Self: Self{Position: position}}, w)
 
-	if action.Kind != StepTo {
-		t.Fatalf("blocked orbit produced %v, want a step around it", action.Kind)
+	if action.Kind != Stand {
+		t.Fatalf("produced %v at a waypoint nothing routes to, want it to skip", action.Kind)
 	}
-	offset := bot.Offset()
-	if offset == 0 {
-		t.Error("the bot stepped into the wall")
+	if bot.Waypoint() == 1 {
+		t.Error("the bot is still heading at the wall")
 	}
-	if offset < -4 || offset > 4 {
-		t.Errorf("bypass offset %.0f left the band", offset)
+	if len(bot.Route().Steps) != 0 {
+		t.Errorf("kept a route of %d steps to somewhere unreachable", len(bot.Route().Steps))
 	}
 }
 
@@ -180,11 +194,21 @@ func TestATrappedBotResumesWhenTheWallChanges(t *testing.T) {
 		t.Fatalf("produced %v with an unchanged revision, want Stand", action.Kind)
 	}
 
-	// Break one column out of the wall and bump the revision, which is how M7
-	// reports a block change.
-	p := circle.At(bot.Waypoint(), 2).Floor()
-	for y := 64; y < 68; y++ {
-		delete(w.solid, BlockPos{X: p.X, Y: y, Z: p.Z})
+	// Take the whole wall down and bump the revision, which is how M7 reports
+	// a block change.
+	//
+	// All of it, not one column of it. Which single column would open a way
+	// through depends on where the planner would route and how wide the body
+	// is, and pinning that here would be testing the planner. What this test
+	// is for is narrower: the bot re-asks when the world changes, and walks
+	// when the answer comes back different.
+	for waypoint := range 8 {
+		for offset := -4; offset <= 4; offset++ {
+			p := circle.At(waypoint, float64(offset)).Floor()
+			for y := 64; y < 68; y++ {
+				delete(w.solid, BlockPos{X: p.X, Y: y, Z: p.Z})
+			}
+		}
 	}
 
 	action := bot.Advance(Tick{
@@ -270,11 +294,20 @@ func TestBeingHitSendsTheBotRunningTheOtherWay(t *testing.T) {
 	if action.Kind != StepTo {
 		t.Fatalf("produced %+v, want a step", action)
 	}
-	// Away, and the full safe distance away: the bot aims where it wants to
-	// end up, and the actuator clamps how far of it one tick covers.
+	// Away, and routed: the bot aims at the first leg of a way out rather than
+	// at the destination, so the destination is the end of the route and the
+	// step only has to be heading there.
+	route := bot.Route()
+	if len(route.Steps) == 0 {
+		t.Fatal("fleeing without a route")
+	}
 	want := position.X - DefaultBounds().SafeDistance
-	if math.Abs(action.Target.X-want) > 1e-9 || math.Abs(action.Target.Z-position.Z) > 1e-9 {
-		t.Errorf("ran to %+v, want (%v, _, %v)", action.Target, want, position.Z)
+	if last := route.Steps[len(route.Steps)-1]; math.Abs(last.X-want) > 1e-9 ||
+		math.Abs(last.Z-position.Z) > 1e-9 {
+		t.Errorf("the route ends at %+v, want (%v, _, %v)", last, want, position.Z)
+	}
+	if action.Target.X >= position.X {
+		t.Errorf("stepped to %+v, which is not away from the attacker", action.Target)
 	}
 }
 
@@ -408,9 +441,19 @@ func TestDeathSendsOneRespawnAndReturnsToTheCircle(t *testing.T) {
 	if action.Kind != StepTo {
 		t.Fatalf("produced %v while returning, want a step", action.Kind)
 	}
-	// It walks back toward the circle, not to wherever it died.
-	if got := action.Target.HorizontalDistance(circle.Centre); got < 24 || got > 26 {
-		t.Errorf("returning toward a point %.1f from spawn, want the circle at 25", got)
+	// It walks back toward the circle, not to wherever it died. The step is the
+	// first cell of a route now rather than the destination itself, so the
+	// circle is where the route ends and the step is only required to be
+	// heading there.
+	route := bot.Route()
+	if len(route.Steps) == 0 {
+		t.Fatal("returning without a route")
+	}
+	if got := route.Steps[len(route.Steps)-1].HorizontalDistance(circle.Centre); got < 24 || got > 26 {
+		t.Errorf("the route ends %.1f from spawn, want the circle at 25", got)
+	}
+	if action.Target.HorizontalDistance(circle.Centre) >= far.HorizontalDistance(circle.Centre) {
+		t.Error("the first step did not close the distance to the circle")
 	}
 }
 

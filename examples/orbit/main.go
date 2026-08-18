@@ -46,22 +46,16 @@ func run(logger *slog.Logger, address, username string, legacy, dryRun bool) int
 		return 0
 	}
 
-	// Before the network, because a bot that cannot classify a block cannot
-	// walk, and that is worth knowing at startup rather than after ninety
-	// seconds of standing still. Only the version someone has measured has the
-	// answer; the other connects, observes, and refuses every step.
-	solidity, err := NewSolidity(legacy)
+	// Before the network, because a bot that cannot route cannot walk, and
+	// that is worth knowing at startup rather than after ninety seconds of
+	// standing still. Building the planner also measures the body off the
+	// version's own profile, so a version whose data will not load fails here
+	// rather than on the first step.
+	navigator, err := NewNavigator(legacy, DefaultBounds())
 	if err != nil {
-		logger.Error("solidity", slog.Any("error", err))
+		logger.Error("navigator", slog.Any("error", err))
 
 		return 1
-	}
-	if !solidity.Measured() {
-		logger.Warn(
-			"no block measurement for this version: the bot will see the world, "+
-				"classify nothing in it, and refuse to move",
-			slog.Bool("legacy", legacy),
-		)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -101,7 +95,7 @@ func run(logger *slog.Logger, address, username string, legacy, dryRun bool) int
 
 	logger.Info("connected", slog.String("address", address))
 
-	code, err := drive(ctx, logger, bot, events, solidity)
+	code, err := drive(ctx, logger, bot, events, navigator)
 	if err != nil {
 		logger.Error("run", slog.Any("error", err))
 	}
@@ -184,7 +178,7 @@ func drive(
 	logger *slog.Logger,
 	source connection,
 	events *client.Subscription,
-	solidity Solidity,
+	navigator Navigator,
 ) (int, error) {
 	bounds := DefaultBounds()
 	core := NewBot(bounds)
@@ -255,7 +249,7 @@ func drive(
 			}
 			pending.Revision = snapshot.Revision
 
-			action := core.Advance(pending, NewObserved(snapshot, solidity))
+			action := core.Advance(pending, NewObserved(ctx, snapshot, navigator))
 			narrate(logger, core, action, &last)
 			// Edge-triggered facts are consumed by the tick that saw them.
 			// Leaving Died set would make the core respawn on every tick after

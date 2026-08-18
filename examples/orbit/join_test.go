@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"testing"
 	"time"
@@ -14,7 +15,12 @@ import (
 // written stub could not prove that an unsent spawn reads as unknown rather
 // than as the origin.
 func silent() Observed {
-	return NewObserved(world.New().Snapshot(), unclassified{})
+	navigator, err := NewNavigator(false, DefaultBounds())
+	if err != nil {
+		panic(err)
+	}
+
+	return NewObserved(context.Background(), world.New().Snapshot(), navigator)
 }
 
 func TestTheBotGivesUpWhenTheWorldNeverSuppliesSpawn(t *testing.T) {

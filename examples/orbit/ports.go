@@ -13,13 +13,6 @@ import (
 // property the split was chosen for. Actuator is still Pending, because the
 // actions it names belong to M8.8 and M9.6.
 
-// Block is what the bot needs to know about one block to decide whether it can
-// stand there. It is not a block state: the example has no business modelling
-// one, and Solid is the only fact the bypass search asks for.
-type Block struct {
-	Solid bool
-}
-
 // Self is the local player's observed state.
 type Self struct {
 	Position Vec3
@@ -45,12 +38,17 @@ type World interface {
 	// same packet when the player's respawn point moves, so a bot that slept
 	// would find its circle recentred. This one never sleeps.
 	Spawn() (Vec3, bool)
-	// Block reports one block. The second result is false when the chunk is
-	// not loaded, which the bypass search must distinguish from air — strict
-	// mode refuses to move through collision data it does not have, and a
-	// missing chunk answering "not solid" would walk the bot into a wall it
-	// simply could not see.
-	Block(BlockPos) (Block, bool)
+	// Route plans a way between two positions and reports the positions to
+	// walk through. The second result is false when nothing was reachable at
+	// all, which the caller answers by skipping the waypoint rather than by
+	// walking at it anyway.
+	//
+	// Routing is a question and not a fact about the world, which is why it is
+	// on this port rather than beside the block reader it replaced. The core
+	// asks for a way and never learns what terrain is; that is what lets the
+	// decision tests script three points and run the whole state machine
+	// without a chunk in sight.
+	Route(from, to Vec3) (Route, bool)
 	// Entity reports one tracked entity by ID.
 	Entity(id int32) (Entity, bool)
 }

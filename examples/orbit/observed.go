@@ -1,11 +1,7 @@
 package main
 
 import (
-	"fmt"
-
-	"github.com/go-theft-craft/minecraft-protocol/data"
-	gen1_8 "github.com/go-theft-craft/minecraft-protocol/generated/java/v1_8"
-	gen26_1 "github.com/go-theft-craft/minecraft-protocol/generated/java/v26_1"
+	"context"
 
 	"github.com/go-theft-craft/headless-minecraft/world"
 )
@@ -16,32 +12,28 @@ import (
 //
 // One snapshot per tick, not one per question. The whole point of the world
 // package's design is that six domains read at one revision describe one
-// instant, and a Block call that took its own snapshot would let the terrain
-// move between the bot's feet and its head.
-
-// Solidity answers whether a block state stops the bot.
-//
-// It is its own port because the world package stores state IDs as the server
-// sent them and deliberately models no block semantics. Splitting it out was a
-// bet that the day a block registry landed, one type would be written and
-// Observed would not change. That day came: MeasuredSolidity is that type, and
-// nothing else here moved.
-type Solidity interface {
-	// Solid reports whether a block state is solid. The second result is false
-	// when the mapping is unknown, which is not the same as "not solid" — the
-	// bypass search refuses to walk through a state it cannot classify.
-	Solid(state uint32) (bool, bool)
-}
+// instant, and a reader that took its own snapshot per question would let the
+// terrain move between the bot's feet and its head.
 
 // Observed implements World over a snapshot supplier.
 type Observed struct {
-	snapshot world.Snapshot
-	solidity Solidity
+	ctx       context.Context
+	snapshot  world.Snapshot
+	navigator Navigator
 }
 
-// NewObserved binds one snapshot and a solidity source.
-func NewObserved(snapshot world.Snapshot, solidity Solidity) Observed {
-	return Observed{snapshot: snapshot, solidity: solidity}
+// NewObserved binds one snapshot and the planner that routes over it.
+//
+// The context belongs to the tick rather than to the navigator: a route is
+// searched inside one Advance, and a bot whose run is being shut down should
+// abandon the search rather than finish it.
+func NewObserved(ctx context.Context, snapshot world.Snapshot, navigator Navigator) Observed {
+	return Observed{ctx: ctx, snapshot: snapshot, navigator: navigator}
+}
+
+// Route plans a way between two positions over this snapshot.
+func (o Observed) Route(from, to Vec3) (Route, bool) {
+	return o.navigator.Plan(o.ctx, o.snapshot.Chunks, from, to)
 }
 
 // Spawn reports the compass target the server sent.
@@ -66,29 +58,6 @@ func (o Observed) Spawn() (Vec3, bool) {
 		Y: float64(environment.Spawn.Y),
 		Z: float64(environment.Spawn.Z) + 0.5,
 	}, true
-}
-
-// Block reports one block, and distinguishes an unloaded chunk from air.
-//
-// There are two ways to not know, and both answer false: the chunk is not
-// loaded, or it is loaded and nothing can say what its state means. Collapsing
-// them here is safe because the caller treats both as Unknown and refuses to
-// move through either.
-func (o Observed) Block(pos BlockPos) (Block, bool) {
-	// The example's own BlockPos is int-wide and the library's is int32-wide.
-	// The conversion is safe: these coordinates come from a circle of radius 25
-	// around a position the server sent, not from arithmetic that could overflow.
-	state, loaded := o.snapshot.Chunks.Block(int32(pos.X), int32(pos.Y), int32(pos.Z))
-	if !loaded {
-		return Block{}, false
-	}
-
-	solid, classified := o.solidity.Solid(state)
-	if !classified {
-		return Block{}, false
-	}
-
-	return Block{Solid: solid}, true
 }
 
 // Entity reports one tracked entity.
@@ -127,59 +96,4 @@ func observeSelf(snapshot world.Snapshot) (Self, bool) {
 		Position: Vec3{X: player.X, Y: player.Y, Z: player.Z},
 		Health:   float64(player.Health),
 	}, true
-}
-
-// MeasuredSolidity answers solidity from the library's measurement of the
-// game's own rule.
-//
-// The example held that table itself until 2026-08-17, which put block
-// semantics in whichever consumer happened to want them first and left the next
-// one to write its own. The library owns it now — one measurement, both
-// protocols, and the state encoding decoded where the version is already
-// known — so this type is the whole of what the example still owes: a port
-// implemented against a registry.
-//
-// A version nobody has measured yields a registry that is nil, and this
-// classifies nothing rather than guessing. That is the same honesty the earlier
-// stand-in had: a block nobody has described is not a block that has been shown
-// to be safe, and the bypass search refuses to walk through what it cannot
-// classify.
-type MeasuredSolidity struct {
-	movement data.BlockMovementRegistry
-}
-
-// NewSolidity reads the measurement for the version profile the bot is
-// speaking.
-//
-// The version matters and getting it wrong is silent. Protocol 47 packs a chunk
-// state as the block identifier shifted left four; a flattened protocol does
-// not, so a 47 table asked about a 775 state answers about an unrelated block
-// every time, confidently. Loading the version's own data is what keeps that
-// impossible.
-func NewSolidity(legacy bool) (MeasuredSolidity, error) {
-	load := gen26_1.Data
-	if legacy {
-		load = gen1_8.Data
-	}
-
-	set, err := load()
-	if err != nil {
-		return MeasuredSolidity{}, fmt.Errorf("load game data: %w", err)
-	}
-
-	return MeasuredSolidity{movement: set.BlockMovement()}, nil
-}
-
-// Measured reports whether this version publishes the measurement at all. A
-// bot without it can still see the world and cannot walk through it, so the
-// example says so before connecting rather than after standing still.
-func (s MeasuredSolidity) Measured() bool { return s.movement != nil }
-
-// Solid reports whether a chunk block state stops the bot.
-func (s MeasuredSolidity) Solid(state uint32) (bool, bool) {
-	if s.movement == nil {
-		return false, false
-	}
-
-	return s.movement.ByState(data.BlockStateID(state))
 }

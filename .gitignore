@@ -4,6 +4,18 @@
 *.out
 coverage.*
 
+# Compiled examples. Each example is package main in its own directory, so a
+# bare `go build ./...` drops an executable beside the source, named after the
+# directory it came from -- and one of them reached a commit here at eighteen
+# megabytes. This repository is public and its history is fetched by Go's
+# module mirror, so a binary committed once is one every clone carries.
+#
+# Named one by one rather than globbed. A pattern wide enough to catch an
+# extensionless binary is wide enough to hide a source file nobody notices is
+# missing, and in a public repository that is the worse failure.
+/examples/orbit/orbit
+/examples/observe/observe
+
 # Local dependencies and workspaces
 /vendor/
 go.work

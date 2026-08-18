@@ -76,7 +76,8 @@ func NewCircle(centre Vec3, radius float64, waypoints int) Circle {
 
 // At returns waypoint i, wrapping, at a radius offset by delta blocks.
 //
-// The offset is what makes the bypass search one-dimensional: the circle is the
+// The offset shifts the circle in or out. Nothing in the bot uses it now that
+// the planner routes around obstacles, and it stays because the circle is the
 // invariant and the radius is the free variable, so going around an obstacle is
 // a choice of delta rather than a search through a graph.
 func (c Circle) At(i int, delta float64) Vec3 {

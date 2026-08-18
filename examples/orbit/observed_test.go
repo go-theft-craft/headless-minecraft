@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/go-theft-craft/headless-minecraft/event"
@@ -21,7 +22,7 @@ func TestSpawnIsTheBlockCentreAndNotItsCorner(t *testing.T) {
 	var c event.Collector
 	w.Environment().SpawnChanged(&c, world.BlockPos{X: 100, Y: 64, Z: -20}, "", 0, 0, false)
 
-	centre, known := NewObserved(w.Snapshot(), unclassified{}).Spawn()
+	centre, known := NewObserved(context.Background(), w.Snapshot(), Navigator{}).Spawn()
 	if !known {
 		t.Fatal("the adapter did not see a spawn the world had recorded")
 	}
@@ -48,7 +49,7 @@ func TestAnEntityIsAliveUntilTheServerSaysOtherwise(t *testing.T) {
 	var c event.Collector
 	w.Entities().Spawned(&c, 42, "", "minecraft:zombie", 10, 64, 10, 0, 0)
 
-	adapter := NewObserved(w.Snapshot(), unclassified{})
+	adapter := NewObserved(context.Background(), w.Snapshot(), Navigator{})
 
 	target, known := adapter.Entity(42)
 	if !known {
@@ -66,24 +67,18 @@ func TestAnEntityIsAliveUntilTheServerSaysOtherwise(t *testing.T) {
 	}
 }
 
-// unclassified is a solidity source that knows nothing, which is what a block
-// the extracted table has never heard of looks like.
-type unclassified struct{}
-
-func (unclassified) Solid(uint32) (bool, bool) { return false, false }
-
-func TestAnUnclassifiableBlockIsUnknownRatherThanAir(t *testing.T) {
+// TestAnUnstreamedWorldRoutesNowhere pins the refusal the example still owns.
+//
+// Whether a particular block stops a body is terrain's question and is tested
+// where terrain lives. What this example must not do is walk over ground
+// nobody has described to it: the planner reports a cell in an unloaded chunk
+// as unknown rather than as air, and a bot that got a route out of that would
+// be walking on the assumption that the server's world matches its gaps.
+func TestAnUnstreamedWorldRoutesNowhere(t *testing.T) {
 	t.Parallel()
 
-	// This is the whole reason Solidity is its own port. A block whose state
-	// nothing can classify must read unknown, so the bypass search refuses it;
-	// answering "not solid" would walk the bot into a wall it could not see.
-	if _, known := silent().Block(BlockPos{X: 0, Y: 64, Z: 0}); known {
-		t.Error("an unclassifiable block claimed to be known")
-	}
-
-	if passability := Passable(silent(), Vec3{X: 0, Y: 64, Z: 0}); passability != Unknown {
-		t.Errorf("passability is %v, want Unknown", passability)
+	if _, found := silent().Route(Vec3{Y: 64}, Vec3{X: 8, Y: 64}); found {
+		t.Error("routed across a world that has streamed nothing")
 	}
 }
 
@@ -105,15 +100,13 @@ func TestTheMeasuredTableAgreesWithTheGame(t *testing.T) {
 	// drowns it in water it read as a wall; reading a bounding box instead of
 	// the material calls thin snow a wall, which it is not.
 	//
-	// The table moved into the library and this test did not, because what it
-	// pins is not where the numbers live: it is that the bot walking a protocol
-	// 47 world gets vanilla's answer for the blocks a bot actually meets.
-	solidity, err := NewSolidity(true)
+	// The table moved out of this example along with the rest of the terrain
+	// rules, and this test did not, because what it pins is not where the
+	// numbers live: it is that the bot walking a protocol 47 world gets
+	// vanilla's answer for the blocks a bot actually meets.
+	profile, blocks, err := versionTerrain(true)
 	if err != nil {
-		t.Fatalf("NewSolidity: %v", err)
-	}
-	if !solidity.Measured() {
-		t.Fatal("protocol 47 reports no measurement")
+		t.Fatalf("versionTerrain: %v", err)
 	}
 	for name, c := range map[string]struct {
 		block int
@@ -136,82 +129,26 @@ func TestTheMeasuredTableAgreesWithTheGame(t *testing.T) {
 		// the block. Check a state with metadata set to prove the shift.
 		for _, meta := range []uint32{0, 5} {
 			state := uint32(c.block)<<4 | meta
-			got, known := solidity.Solid(state)
+			ref, known := blocks.Ref(state)
 			if !known {
 				t.Errorf("%s (state %d) is not classified", name, state)
 
 				continue
 			}
-			if got != c.solid {
+			shape, ok := profile.Shape(ref)
+			if !ok {
+				t.Errorf("%s (state %d) has no shape", name, state)
+
+				continue
+			}
+			// A body is stopped by a collision shape, so an empty one is
+			// something the bot walks through. That is the same question the
+			// measured table answered and a different way of asking it: the
+			// table said what a block is made of, and this says what it
+			// collides as.
+			if got := !shape.IsEmpty(); got != c.solid {
 				t.Errorf("%s (state %d) solid=%v, want %v", name, state, got, c.solid)
 			}
 		}
-	}
-}
-
-func TestAnUnknownBlockIsNotAssumedWalkable(t *testing.T) {
-	t.Parallel()
-
-	// A modded block, or one a later version added, is not a block that has
-	// been shown to be safe to walk into.
-	solidity, err := NewSolidity(true)
-	if err != nil {
-		t.Fatalf("NewSolidity: %v", err)
-	}
-	if _, known := solidity.Solid(4000 << 4); known {
-		t.Error("a block the table has never heard of claimed to be classified")
-	}
-}
-
-// TestTheCurrentVersionClassifiesBlocks pins what closed the last gap between
-// this example and a complete revolution.
-//
-// Until the 26.1.2 jar was measured this version had no table at all, so the
-// bot could see the whole world, classify nothing in it, and refuse every step.
-// The states here are the ones the library measured out of the game, read
-// through this example's own port.
-func TestTheCurrentVersionClassifiesBlocks(t *testing.T) {
-	t.Parallel()
-
-	solidity, err := NewSolidity(false)
-	if err != nil {
-		t.Fatalf("NewSolidity: %v", err)
-	}
-	if !solidity.Measured() {
-		t.Fatal("the current version reports no measurement")
-	}
-
-	for _, test := range []struct {
-		name  string
-		state uint32
-		want  bool
-	}{
-		{"air", 0, false},
-		{"stone", 1, true},
-		{"water", 86, false},
-	} {
-		solid, known := solidity.Solid(test.state)
-		if !known {
-			t.Errorf("%s was not classified", test.name)
-			continue
-		}
-		if solid != test.want {
-			t.Errorf("%s solid = %v, want %v", test.name, solid, test.want)
-		}
-	}
-}
-
-// TestAnUnknownCurrentStateIsNotAssumedWalkable keeps the refusal that mattered
-// when there was no measurement at all. A state past the end of the
-// measurement is a block this version does not have, and it is not open ground.
-func TestAnUnknownCurrentStateIsNotAssumedWalkable(t *testing.T) {
-	t.Parallel()
-
-	solidity, err := NewSolidity(false)
-	if err != nil {
-		t.Fatalf("NewSolidity: %v", err)
-	}
-	if _, known := solidity.Solid(1 << 24); known {
-		t.Error("a state beyond the measurement claimed to be classified")
 	}
 }

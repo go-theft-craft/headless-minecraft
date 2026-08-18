@@ -28,16 +28,49 @@ func newScripted() *scripted {
 
 func (s *scripted) Spawn() (Vec3, bool) { return s.spawn, s.hasSpawn }
 
-func (s *scripted) Block(p BlockPos) (Block, bool) {
-	if !s.loaded(p) {
-		return Block{}, false
+// Route is a straight line, sampled once per block, refused if anything on it
+// is solid or unstreamed.
+//
+// It is deliberately not a planner. The planner is minecraft-simulation's, it
+// has its own tests and its own benchmarks, and running it here would test that
+// package instead of this state machine. This is just enough routing that a
+// test can wall something off and say what the bot should decide.
+func (s *scripted) Route(from, to Vec3) (Route, bool) {
+	steps := make([]Vec3, 0, 8)
+
+	for d := 1.0; d < from.HorizontalDistance(to); d++ {
+		point := from.Toward(to, d)
+		if s.blocked(point) {
+			return Route{}, false
+		}
+		steps = append(steps, point)
 	}
-	// The floor is at y=63 so that a bot standing at y=64 has ground under it.
-	if p.Y < 64 {
-		return Block{Solid: true}, true
+	if s.blocked(to) {
+		return Route{}, false
 	}
 
-	return Block{Solid: s.solid[p]}, true
+	return Route{Steps: append(steps, to), Complete: true}, true
+}
+
+// blocked reports whether a body standing here would not fit. The cell the bot
+// is already in is never asked about: these fictions put the bot inside walls
+// to reach Trapped, and a body that cannot leave a block it is already in is a
+// body that can never get out of one.
+func (s *scripted) blocked(p Vec3) bool {
+	foot := p.Floor()
+	for h := range 2 {
+		cell := BlockPos{X: foot.X, Y: foot.Y + h, Z: foot.Z}
+		if !s.loaded(cell) {
+			return true
+		}
+		// The floor is at y=63 so that a bot standing at y=64 has ground
+		// under it.
+		if cell.Y >= 64 && s.solid[cell] {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (s *scripted) Entity(id int32) (Entity, bool) {

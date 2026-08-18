@@ -8,7 +8,7 @@
 //
 // The decision core runs and is tested. [Bot.Advance] is a pure function from
 // one [Tick] and a [World] to one [Action]: it owns the orbit geometry, the
-// bypass search, retaliation, the respawn path, and every bound. It needs no
+// routing, escape, the respawn path, and every bound. It needs no
 // server, which is why its tests script a world instead of connecting to one.
 //
 // Observation runs too. [Observed] implements [World] over one

@@ -13,8 +13,6 @@ const (
 	Joining State = iota
 	// Orbiting walks the circle.
 	Orbiting
-	// Bypassing searches the band for a way around an obstacle.
-	Bypassing
 	// Fleeing runs from the entity that hit the bot.
 	Fleeing
 	// Dead waits for a respawn to be sent and confirmed.
@@ -34,8 +32,6 @@ func (s State) String() string {
 		return "joining"
 	case Orbiting:
 		return "orbiting"
-	case Bypassing:
-		return "bypassing"
 	case Fleeing:
 		return "fleeing"
 	case Dead:
@@ -116,10 +112,16 @@ type Bot struct {
 
 	// waypoint is the index the bot is walking toward.
 	waypoint int
-	// offset is the radial deviation the bypass search settled on.
-	offset float64
 	// skips counts consecutive waypoints given up on.
 	skips int
+
+	// route is the planned way to the current waypoint, leg the step of it
+	// being walked, and routedFor the waypoint it was planned for. The three
+	// move together: a route is only valid for the waypoint that asked for it,
+	// and a waypoint that changed invalidates the route rather than the leg.
+	route     Route
+	leg       int
+	routedFor int
 
 	// target is the entity being fought.
 	target int32
@@ -155,8 +157,8 @@ func (b *Bot) State() State { return b.state }
 // Waypoint reports the waypoint being walked toward, for tests.
 func (b *Bot) Waypoint() int { return b.waypoint }
 
-// Offset reports the current radial deviation, for tests.
-func (b *Bot) Offset() float64 { return b.offset }
+// Route reports the planned route being walked, for tests.
+func (b *Bot) Route() Route { return b.route }
 
 // Advance folds one tick into the state machine and returns what to do.
 //
@@ -177,8 +179,6 @@ func (b *Bot) Advance(t Tick, w World) Action {
 		return b.join(t, w)
 	case Orbiting:
 		return b.orbit(t, w)
-	case Bypassing:
-		return b.bypass(t, w)
 	case Fleeing:
 		return b.flee(t, w)
 	case Dead:
@@ -214,7 +214,6 @@ func (b *Bot) interrupt(t Tick) (Action, bool) {
 		// Acknowledging the breaker is explicit, per the library's strict
 		// recovery rules, and the projection is discarded with it: the bot
 		// re-derives its waypoint from where the server says it is.
-		b.offset = 0
 	}
 
 	return Action{}, false
@@ -254,59 +253,102 @@ func (b *Bot) join(t Tick, w World) Action {
 	return Action{Kind: Stand, Reason: "circle established"}
 }
 
-// orbit walks toward the current waypoint, advancing when it arrives.
+// orbit walks the planned route to the current waypoint, advancing when it
+// arrives and planning again when it needs to.
+//
+// The bot does not walk at the waypoint. It walks the route the planner
+// returned, cell centre to cell centre, which is the difference between going
+// round a wall and standing against one. What this used to do instead -- aim
+// straight at the waypoint and search a radial band when the aim was refused --
+// is gone, along with the passability rules it needed: minecraft-simulation
+// owns the body, the terrain predicates and an A* over them, and a worked
+// example reimplementing any of the three was a worked example getting them
+// wrong.
 func (b *Bot) orbit(t Tick, w World) Action {
 	if action, fighting := b.provoked(t, w); fighting {
 		return action
 	}
 
-	target := b.circle.At(b.waypoint, b.offset)
-	if t.Self.Position.HorizontalDistance(target) <= b.bounds.WaypointRadius {
+	if t.Self.Position.HorizontalDistance(b.circle.At(b.waypoint, 0)) <= b.bounds.WaypointRadius {
 		b.waypoint++
 		b.skips = 0
 		b.progressAt = t.Now
-		// The offset is not carried past the obstacle that caused it. Keeping
-		// it would leave the bot orbiting at radius 21 forever after one tree.
-		b.offset = 0
-		target = b.circle.At(b.waypoint, b.offset)
+		b.route = Route{}
 	}
 
-	switch Passable(w, target) {
-	case Clear, Steppable:
-		return b.step(target)
-	case Blocked, Unknown:
-		b.state = Bypassing
-
-		return b.bypass(t, w)
-	default:
-		return b.step(target)
+	// One search per waypoint, not one per tick. A* over streamed terrain is
+	// the most expensive thing this loop can do and the waypoints are some five
+	// blocks apart, so planning on arrival costs one search every twenty-five
+	// ticks; planning every tick would cost twenty-five times that to answer
+	// the same question.
+	action, routed := b.follow(t, w, b.circle.At(b.waypoint, 0), b.waypoint)
+	if !routed {
+		return b.unreachable(t)
 	}
+
+	return action
 }
 
-// bypass searches the band, then the next waypoints, then gives up.
-func (b *Bot) bypass(t Tick, w World) Action {
-	if action, fighting := b.provoked(t, w); fighting {
-		return action
+// follow walks the planned route to a goal, planning one when there is none.
+//
+// Three callers now -- the orbit, the walk back to the circle, and the flight
+// from a threat -- and they used to be three copies, of which the flight was
+// the one that never got a route and went on walking into walls after the
+// other two stopped. A goal is identified by a key so that a route survives
+// across ticks and is thrown away the moment the goal changes.
+//
+// The second result is false when nothing could be routed to, which each
+// caller answers differently: the orbit skips the waypoint, the return waits,
+// and the flight runs at the threat's opposite anyway because standing still
+// while something hits it is worse.
+func (b *Bot) follow(t Tick, w World, goal Vec3, key int) (Action, bool) {
+	if len(b.route.Steps) == 0 || b.routedFor != key {
+		route, found := w.Route(t.Self.Position, goal)
+		if !found {
+			return Action{}, false
+		}
+
+		b.route, b.leg, b.routedFor = route, 0, key
 	}
 
-	if offset, found := Bypass(w, b.circle, b.waypoint, b.bounds.RadialBand); found {
-		b.offset = offset
-		b.state = Orbiting
-
-		return b.step(b.circle.At(b.waypoint, offset))
+	// Consume every leg already arrived at. More than one lands at a time when
+	// the planner routes through cells closer together than the arrival radius.
+	for b.leg < len(b.route.Steps) &&
+		t.Self.Position.HorizontalDistance(b.route.Steps[b.leg]) <= b.bounds.LegRadius {
+		b.leg++
+		b.progressAt = t.Now
 	}
 
+	if b.leg >= len(b.route.Steps) {
+		// Walked out. An incomplete route ends short of the goal on purpose,
+		// and the next tick plans the rest from where that left the bot, which
+		// is closer than where it started.
+		b.route = Route{}
+
+		return Action{Kind: Stand, Reason: "route walked out"}, true
+	}
+
+	return b.step(b.route.Steps[b.leg]), true
+}
+
+// fleeRoute is the route key for a flight. Waypoint indices only ever grow
+// from zero, so a negative one cannot collide with them.
+const fleeRoute = -1
+
+// unreachable answers a waypoint nothing can route to: skip it, and after
+// enough skips call the bot sealed in.
+func (b *Bot) unreachable(t Tick) Action {
 	if b.skips < b.bounds.MaxSkips {
 		b.skips++
 		b.waypoint++
-		b.offset = 0
+		b.route = Route{}
 
 		return Action{Kind: Stand, Reason: fmt.Sprintf("skipping to waypoint %d", b.waypoint%b.circle.Waypoints)}
 	}
 
-	// The band and the skips are both exhausted, but that alone is not being
-	// trapped: the bot also has to have stopped making progress. A slow mob in
-	// the way exhausts the search and then walks off.
+	// Exhausted skips alone are not being trapped: the bot also has to have
+	// stopped making progress. A slow mob in the way defeats a search and then
+	// walks off.
 	if t.Now.Sub(b.progressAt) < b.bounds.NoProgress {
 		return Action{Kind: Stand, Reason: "blocked, waiting for it to clear"}
 	}
@@ -342,14 +384,26 @@ func (b *Bot) flee(t Tick, w World) Action {
 		return b.disengage(t, "ran far enough from the circle")
 	}
 
-	return b.step(Away(t.Self.Position, threat.Position, b.bounds.SafeDistance))
+	// Routed, like the rest. This was the last leg that was not, and it was the
+	// last one that walked the bot into a wall: everything else stopped doing
+	// that and the flight went on doing it, because running away is chosen by
+	// where the threat is rather than by where the ground goes.
+	away := Away(t.Self.Position, threat.Position, b.bounds.SafeDistance)
+	if action, routed := b.follow(t, w, away, fleeRoute); routed {
+		return action
+	}
+
+	// Nothing routes away. Run at it anyway rather than stand still while
+	// something hits the bot -- the server refuses the steps that do not fit
+	// and the breaker ends the run, which is a better answer than being eaten
+	// in place.
+	return b.step(away)
 }
 
 // disengage returns to the circle at the nearest waypoint by angle.
 func (b *Bot) disengage(t Tick, why string) Action {
 	b.target = 0
 	b.waypoint = b.circle.Nearest(t.Self.Position)
-	b.offset = 0
 	b.skips = 0
 	b.progressAt = t.Now
 	b.state = Returning
@@ -365,7 +419,6 @@ func (b *Bot) dead(t Tick) Action {
 		return Action{Kind: Stand, Reason: "awaiting respawn"}
 	}
 
-	b.offset = 0
 	b.skips = 0
 	b.progressAt = t.Now
 
@@ -388,30 +441,44 @@ func (b *Bot) dead(t Tick) Action {
 }
 
 // returning walks back to the circle, which may be a long way if the respawn
-// point is not spawn. It reuses the bypass search, so a wall between the bed and
+// point is not spawn. It routes like any other leg, so a wall between the bed and
 // the circle is already handled.
 func (b *Bot) returning(t Tick, w World) Action {
 	if action, fighting := b.provoked(t, w); fighting {
 		return action
 	}
 
-	b.waypoint = b.circle.Nearest(t.Self.Position)
+	nearest := b.circle.Nearest(t.Self.Position)
+	if nearest != b.waypoint {
+		// A different waypoint is a different goal, and the route to the old
+		// one is no longer the way back.
+		b.waypoint, b.route = nearest, Route{}
+	}
 	target := b.circle.At(b.waypoint, 0)
 
 	if t.Self.Position.HorizontalDistance(target) <= b.bounds.WaypointRadius {
 		b.state = Orbiting
 		b.progressAt = t.Now
+		b.route = Route{}
 
 		return Action{Kind: Stand, Reason: "back on the circle"}
 	}
 
-	return b.step(target)
+	// Routed, like every other leg. The way back is the leg most likely to
+	// cross something: the bot got here by running from a threat, and it ran
+	// in whatever direction was away rather than in one it had planned.
+	action, routed := b.follow(t, w, target, b.waypoint)
+	if !routed {
+		return Action{Kind: Stand, Reason: "no way back to the circle yet"}
+	}
+
+	return action
 }
 
 // trapped stands still and re-tests when the world changes.
 func (b *Bot) trapped(t Tick, w World) Action {
 	// A walled-in bot should still defend itself, and killing the thing may be
-	// what clears the band.
+	// what opens a way out.
 	if action, fighting := b.provoked(t, w); fighting {
 		return action
 	}
@@ -431,16 +498,17 @@ func (b *Bot) trapped(t Tick, w World) Action {
 	}
 	b.trappedRevision = t.Revision
 
-	if offset, found := Bypass(w, b.circle, b.waypoint, b.bounds.RadialBand); found {
-		b.offset = offset
-		b.skips = 0
-		b.progressAt = t.Now
-		b.state = Orbiting
-
-		return b.step(b.circle.At(b.waypoint, offset))
+	route, found := w.Route(t.Self.Position, b.circle.At(b.waypoint, 0))
+	if !found {
+		return Action{Kind: Stand, Reason: "still sealed in"}
 	}
 
-	return Action{Kind: Stand, Reason: "still sealed in"}
+	b.route, b.leg, b.routedFor = route, 0, b.waypoint
+	b.skips = 0
+	b.progressAt = t.Now
+	b.state = Orbiting
+
+	return b.step(b.route.Steps[0])
 }
 
 // provoked switches to Fleeing when this tick carries an attacker.
@@ -457,6 +525,7 @@ func (b *Bot) provoked(t Tick, w World) (Action, bool) {
 	b.target = t.Attacker
 	b.fledAt = t.Now
 	b.state = Fleeing
+	b.route = Route{}
 
 	return b.flee(t, w), true
 }

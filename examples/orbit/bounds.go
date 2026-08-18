@@ -12,8 +12,6 @@ type Bounds struct {
 	// within an eighth of a block of the true circle at radius 25; sixteen
 	// would be half a block out.
 	Waypoints int
-	// RadialBand is how far in and out the bypass search may move, in blocks.
-	RadialBand int
 	// MaxSkips is how many waypoints in a row may be skipped before the region
 	// counts as impassable.
 	MaxSkips int
@@ -46,6 +44,15 @@ type Bounds struct {
 	// answer stands in silence forever, which is what the first live run of
 	// this example did.
 	JoinTimeout time.Duration
+	// LegRadius is how close counts as arrived at one step of a route.
+	//
+	// Far smaller than WaypointRadius, and it has to be. A waypoint is a point
+	// on a circle and anywhere within a block of it will do; a route leg is a
+	// cell centre the bot has to actually reach, because the next leg is only
+	// safe from there. Arriving at a leg a block early leaves the bot
+	// off-centre and cutting the corner the planner routed around. Smaller
+	// than one step, so the step that lands exactly on the leg also arrives.
+	LegRadius float64
 	// WaypointRadius is how close counts as arrived. Smaller than this and the
 	// bot chases a point it overshoots every tick.
 	WaypointRadius float64
@@ -60,12 +67,18 @@ type Bounds struct {
 	WalkSpeed float64
 }
 
+// Step is how far one movement update may travel, in blocks. It is derived
+// rather than stored so that changing the tick rate changes how often the bot
+// reports rather than how fast it claims to move, and it lives here because
+// both the core and the actuator need the same number: the core to ask what is
+// underfoot one step ahead, the actuator to go there.
+func (b Bounds) Step() float64 { return b.WalkSpeed * b.Tick.Seconds() }
+
 // DefaultBounds returns the shipped values.
 func DefaultBounds() Bounds {
 	return Bounds{
 		Radius:         25,
 		Waypoints:      32,
-		RadialBand:     4,
 		MaxSkips:       3,
 		NoProgress:     15 * time.Second,
 		FleeMargin:     8,
@@ -75,6 +88,7 @@ func DefaultBounds() Bounds {
 		BreakerBudget:  5,
 		Tick:           50 * time.Millisecond,
 		JoinTimeout:    30 * time.Second,
+		LegRadius:      0.05,
 		WaypointRadius: 1,
 		WalkSpeed:      4,
 	}

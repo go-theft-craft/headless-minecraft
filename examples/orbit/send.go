@@ -58,7 +58,7 @@ type Sender struct {
 func NewSender(client sender, bounds Bounds) *Sender {
 	return &Sender{
 		client: client,
-		step:   bounds.WalkSpeed * bounds.Tick.Seconds(),
+		step:   bounds.Step(),
 	}
 }
 
