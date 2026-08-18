@@ -1,5 +1,13 @@
 # Mutating edges and pillar Implementation Plan
 
+> **Status: task 1 complete, 2026-08-18.** Falling and climbable are measured
+> out of the pinned jars into `BlockMovementRegistry.FallsByState` and
+> `ClimbableByState` (`minecraft-protocol` `c6557d1`), and both designs are
+> corrected to say so. Task 2 is half done. The changelog entry is written and
+> the release is not cut, so `minecraft-simulation` cannot see the registries
+> yet. Tasks 3 through 6 are untouched; `navigation` still has four edge kinds
+> and no overlay.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Extract the two block properties every mutating edge waits on, build the overlay and its validation loop against the smallest edge that needs them, and add the vertical edge the parent design's list has no member for.
@@ -62,11 +70,11 @@ This also inherits the rule that matters most: **a version nobody has measured p
 
 The dataset already carries `blocksMovement` per block with the jar's SHA-256 as provenance. These two ride in the same records, from the same extraction pass, with the same version rule.
 
-- [ ] **Step 1: Correct the two design documents**
+- [x] **Step 1: Correct the two design documents**
 
 In both specs, replace every `data.Block.Falling` with the extracted-registry form, and record the reason in one sentence: upstream publishes neither property, so they belong with the measured dataset rather than on the published block record.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```go
 func TestGravelFallsAndSoulSandDoesNot(t *testing.T) {
@@ -124,12 +132,12 @@ func TestAnUndescribedBlockReportsNotDescribed(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `cd minecraft-protocol && devbox run -- go test ./data/ -run 'TestGravel|TestALadder|TestAnUndescribed' -v`
 Expected: FAIL, undefined.
 
-- [ ] **Step 4: Extend the dataset records**
+- [x] **Step 4: Extend the dataset records**
 
 Each entry in `blockMovement.json` gains two fields beside `blocksMovement`:
 
@@ -145,21 +153,21 @@ Each entry in `blockMovement.json` gains two fields beside `blocksMovement`:
 
 Re-run the extraction against the pinned jar whose SHA-256 the file already records, so the provenance stays true. Do not hand-edit the values: the file records a measurement, and a hand-edited measurement is a guess wearing a hash.
 
-- [ ] **Step 5: Extend the registry and the generator**
+- [x] **Step 5: Extend the registry and the generator**
 
 Add the four accessors to `BlockMovementRegistry`, mirroring `ByState` and `ByID` exactly, including the two-result "described" convention. Extend `mcdata-gen`'s renderer to emit them.
 
-- [ ] **Step 6: Run the generation check**
+- [x] **Step 6: Run the generation check**
 
 Run: `cd minecraft-protocol && devbox run -- task generate && devbox run -- task generate:check`
 Expected: PASS, and the diff shows only the two new properties.
 
-- [ ] **Step 7: Run every gate**
+- [x] **Step 7: Run every gate**
 
 Run: `cd minecraft-protocol && devbox run -- task verify`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add data/ cmd/ source/ generated/
@@ -177,7 +185,7 @@ git commit -m "feat(data): extract whether a block falls and whether it is climb
 **Interfaces:**
 - Produces: a `minecraft-protocol` release `minecraft-simulation` can require.
 
-- [ ] **Step 1: Add the changelog entry**
+- [x] **Step 1: Add the changelog entry**
 
 ```markdown
 ### Added
@@ -189,12 +197,18 @@ git commit -m "feat(data): extract whether a block falls and whether it is climb
 
 - [ ] **Step 2: Release**
 
+The entry is already in `Unreleased`, written when task 1 landed. It sits
+beside the protocol 775 acceptor, which is a breaking change for anything
+outside the module implementing `protocol.LoginExchange`, so the next tag is
+`v0.7.0` and not a patch. `v0.6.0` is spent: it shipped on 2026-08-18 with the
+item and arrow constants.
+
 ```bash
 cd minecraft-protocol
 devbox run -- task release:check
 git add CHANGELOG.md
-git commit -m "docs: prepare the 0.6.0 release"
-git tag v0.6.0
+git commit -m "docs: prepare the 0.7.0 release"
+git tag v0.7.0
 git push origin main --tags
 ```
 
@@ -202,7 +216,7 @@ git push origin main --tags
 
 ```bash
 cd minecraft-simulation
-devbox run -- go get github.com/go-theft-craft/minecraft-protocol@v0.6.0
+devbox run -- go get github.com/go-theft-craft/minecraft-protocol@v0.7.0
 devbox run -- task verify
 ```
 
@@ -210,7 +224,7 @@ devbox run -- task verify
 
 ```bash
 git add go.mod go.sum
-git commit -m "build: take minecraft-protocol v0.6.0 for the block behaviour registry"
+git commit -m "build: take minecraft-protocol v0.7.0 for the block behaviour registry"
 ```
 
 ---

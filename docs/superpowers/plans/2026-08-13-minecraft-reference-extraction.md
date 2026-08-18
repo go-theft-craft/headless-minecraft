@@ -2,8 +2,9 @@
 
 > **Status: complete, 2026-08-18.** Shipped as the `minecraft-reference`
 > repository, released at `v1.0.1`, with `mcreference dump`, a family catalog
-> covering 1.0 through 26.2, and a weekly maintenance workflow. The checkboxes
-> below were never ticked and are not evidence; do not re-run this plan.
+> covering 1.0 through 26.2, and a weekly maintenance workflow. The boxes
+> below are ticked by outcome, checked against that repository on 2026-08-18.
+> Do not re-run this plan.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or execute this plan inline one task at a time. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -119,7 +120,7 @@ References:
 
 - Produces: module `github.com/go-theft-craft/minecraft-simulation`, the standard verification tasks, OpenJDK 25, and an enforced ignored workspace.
 
-- [ ] **Step 1: Initialize the repository**
+- [x] **Step 1: Initialize the repository**
 
 Run from `/home/ocharnyshevich/pet.projects/go-theft-craft`:
 
@@ -136,7 +137,7 @@ module github.com/go-theft-craft/minecraft-simulation
 go 1.26.6
 ```
 
-- [ ] **Step 2: Add the shared Go workflow and Java runtime**
+- [x] **Step 2: Add the shared Go workflow and Java runtime**
 
 Copy the Go and tool pins from `minecraft-protocol`. Add `javaPackages.compiler.openjdk25@25.0.2+10`. Change the gci module prefix to `github.com/go-theft-craft/minecraft-simulation`. Add focused test arguments:
 
@@ -148,7 +149,7 @@ test:
     - go test -race -covermode=atomic -coverprofile=coverage.out {{.CLI_ARGS | default "./..."}}
 ```
 
-- [ ] **Step 3: Ignore every restricted artifact form**
+- [x] **Step 3: Ignore every restricted artifact form**
 
 Add:
 
@@ -165,7 +166,7 @@ Add:
 
 Do not ignore tracked Markdown, YAML, JSON configuration, or original conformance fixtures below `reference/`.
 
-- [ ] **Step 4: Enforce the boundary in tests**
+- [x] **Step 4: Enforce the boundary in tests**
 
 Walk `git ls-files -z` and fail for any path below `reference/work` or any forbidden extension. Also fail if a tracked file begins with ZIP or Java class magic bytes.
 
@@ -176,7 +177,7 @@ var forbiddenExtensions = map[string]struct{}{
 }
 ```
 
-- [ ] **Step 5: Verify the empty foundation**
+- [x] **Step 5: Verify the empty foundation**
 
 Run `devbox run -- task fmt`, `devbox run -- task verify`, and `git status --short`.
 
@@ -201,7 +202,7 @@ Expected: all checks pass. No restricted file is tracked. Do not commit.
 
 - Produces: `artifact.Resolve(ctx, version)`, `artifact.Download(ctx, spec, cache)`, safe `REFERENCE_DIR` resolution, and `mcreference prepare` argument parsing.
 
-- [ ] **Step 1: Write metadata and path safety tests**
+- [x] **Step 1: Write metadata and path safety tests**
 
 Use `httptest.Server` fixtures. Cover an unknown version, duplicate manifest IDs, a version JSON SHA-1 mismatch, an artifact size mismatch, an artifact SHA-1 mismatch, interrupted download cleanup, cache revalidation, missing client or server metadata, and unsafe output paths.
 
@@ -214,7 +215,7 @@ func TestResolveReferenceDirRejectsRepositoryRoot(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Define supported versions explicitly**
+- [x] **Step 2: Define supported versions explicitly**
 
 Create:
 
@@ -229,15 +230,15 @@ Create:
 
 Reject any version absent from this file even when Mojang lists it.
 
-- [ ] **Step 3: Resolve Mojang metadata**
+- [x] **Step 3: Resolve Mojang metadata**
 
 Read `version_manifest_v2.json`, find the exact ID, verify the version JSON SHA-1, then decode `downloads.client`, `downloads.server`, and `libraries[].downloads.artifact`. Use the URL and digest from metadata. Resolve old library entries without an explicit URL against `https://libraries.minecraft.net/`.
 
-- [ ] **Step 4: Download only analysis inputs**
+- [x] **Step 4: Download only analysis inputs**
 
 Download the requested client, server, and Java library artifacts. Skip assets, native classifiers, log configuration, and platform rules that do not produce Java classpath jars. Write `manifest.lock.json` under the ignored version directory with URL, size, SHA-1, and computed SHA-256 for every file.
 
-- [ ] **Step 5: Add CLI validation**
+- [x] **Step 5: Add CLI validation**
 
 Support:
 
@@ -247,7 +248,7 @@ mcreference prepare --versions 1.8.9,26.1.2 --sides client,server --reference-di
 
 Require at least one version and one side. Accept only `client` and `server`. Resolve and validate the output directory before network access.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 Run `devbox run -- task test -- ./internal/reference/artifact ./cmd/mcreference`.
 
@@ -271,7 +272,7 @@ Expected: metadata, digest, cache, and path-safety tests pass. Do not contact Mo
 - Consumes: verified downloaded jars and the configured naming strategy.
 - Produces: one analysis jar per version and side with stable readable names.
 
-- [ ] **Step 1: Pin every external tool and legacy mapping**
+- [x] **Step 1: Pin every external tool and legacy mapping**
 
 Create `tools.json` with these exact entries:
 
@@ -302,15 +303,15 @@ Create `tools.json` with these exact entries:
 }
 ```
 
-- [ ] **Step 2: Write legacy mapping composition tests**
+- [x] **Step 2: Write legacy mapping composition tests**
 
 Use small SRG, `methods.csv`, and `fields.csv` fixtures. Verify class, field, and method replacement. Verify overloaded methods by descriptor. Reject a duplicate stable name, a missing SRG member, invalid CSV, invalid descriptors, and output that depends on zip entry order.
 
-- [ ] **Step 3: Compose the final 1.8.9 mapping**
+- [x] **Step 3: Compose the final 1.8.9 mapping**
 
 Extract `joined.srg`, `methods.csv`, and `fields.csv`. Replace SRG member names with stable MCP names while retaining owner paths and JVM descriptors. Write the composed SRG only below `REFERENCE_DIR`.
 
-- [ ] **Step 4: Remap both 1.8.9 sides**
+- [x] **Step 4: Remap both 1.8.9 sides**
 
 Invoke only:
 
@@ -320,15 +321,15 @@ java -jar SpecialSource-1.11.4-shaded.jar --in-jar <original.jar> --out-jar <map
 
 Capture the command, Java version, tool digest, mapping digests, input digest, and output digest in the ignored lock manifest.
 
-- [ ] **Step 5: Handle 26.1.2 server bundling and identity names**
+- [x] **Step 5: Handle 26.1.2 server bundling and identity names**
 
 If `META-INF/versions.list` exists, parse its tab-separated digest, path, and version fields. Extract the selected inner server jar and verify its declared digest. If no bundler manifest exists, use the downloaded server jar directly. Copy neither jar into a tracked path. Use the executable server jar and client jar as identity-mapped analysis jars.
 
-- [ ] **Step 6: Verify mappings without executing game code**
+- [x] **Step 6: Verify mappings without executing game code**
 
 List mapped jar entries and use `javap -p -s` on a fixed sample. For 1.8.9, require readable mapped owners for the entity, world, AABB, item entity, and arrow classes. For 26.1.2, require readable `net.minecraft` owners. Fail before decompilation if the checks do not pass.
 
-- [ ] **Step 7: Run focused tests**
+- [x] **Step 7: Run focused tests**
 
 Run `devbox run -- task test -- ./internal/reference/mapping ./internal/reference/decompile`.
 
@@ -352,11 +353,11 @@ Expected: both naming strategies and server extraction pass fixture tests. Do no
 - Consumes: named analysis jars and verified library classpaths.
 - Produces: decompiled sources, complete class and method indexes, bytecode lookup, and the single `reference:prepare` Task command.
 
-- [ ] **Step 1: Write runner and index tests**
+- [x] **Step 1: Write runner and index tests**
 
 Use a tiny compiled fixture jar. Verify argument boundaries for paths with spaces, deterministic output paths, captured tool versions, method descriptors, constructors, static initializers, bridge methods, synthetic methods, and overloaded methods.
 
-- [ ] **Step 2: Invoke Vineflower with a fixed option set**
+- [x] **Step 2: Invoke Vineflower with a fixed option set**
 
 Invoke the pinned jar as an argument array, never through a shell. Use a
 deterministic thread count of one, folder output, and preserve bridge and
@@ -369,7 +370,7 @@ java -jar <vineflower.jar> --folder --thread-count=1 --remove-bridge=false --rem
 
 If Vineflower changes or rejects an option, fail and require an explicit tracked tool update. Do not silently retry with defaults.
 
-- [ ] **Step 3: Generate complete JVM symbol indexes**
+- [x] **Step 3: Generate complete JVM symbol indexes**
 
 Enumerate every class in the analysis jar. Invoke `javap -p -s` in bounded batches. Write sorted JSON Lines records with version, side, owner, member kind, name, descriptor, access flags, and source path. Generate a second source index with declarations and line ranges from decompiled Java.
 
@@ -377,7 +378,7 @@ Implement source-tree walking locally from jar entries and Java package
 declarations. Do not infer overload identity from source text; join source
 locations to the authoritative `javap` descriptor index.
 
-- [ ] **Step 4: Add bytecode extraction for reviewed symbols**
+- [x] **Step 4: Add bytecode extraction for reviewed symbols**
 
 Support:
 
@@ -387,7 +388,7 @@ mcreference bytecode --version 1.8.9 --side client --owner net.minecraft.entity.
 
 Invoke `javap -c -p -s` and write the result below `reference/work/bytecode`. Reject ambiguous overloads unless the descriptor is present.
 
-- [ ] **Step 5: Add the one-command Task target**
+- [x] **Step 5: Add the one-command Task target**
 
 ```yaml
 reference:prepare:
@@ -405,7 +406,7 @@ reference:prepare:
       --reference-dir '{{.REFERENCE_DIR}}'
 ```
 
-- [ ] **Step 6: Run the complete local preparation**
+- [x] **Step 6: Run the complete local preparation**
 
 Run:
 
@@ -415,7 +416,7 @@ devbox run -- task reference:prepare VERSIONS=1.8.9,26.1.2 SIDES=client,server R
 
 Expected: four decompiled source trees, four complete indexes, four verified lock manifests, and no tracked restricted artifact.
 
-- [ ] **Step 7: Prove cache idempotence**
+- [x] **Step 7: Prove cache idempotence**
 
 Run the same command again. Expected: every verified download and completed stage reports a cache hit. The second run does not change a file digest.
 
@@ -440,7 +441,7 @@ Run the same command again. Expected: every verified download and completed stag
 
 - Produces: one reviewed map of the complete planned simulation behavior, validated against generated JVM indexes.
 
-- [ ] **Step 1: Define a method record that cannot hide ambiguity**
+- [x] **Step 1: Define a method record that cannot hide ambiguity**
 
 Each mapped symbol has this shape:
 
@@ -465,7 +466,7 @@ Each mapped symbol has this shape:
 
 Allow `status` values `candidate`, `reviewed`, `verified`, and `excluded`. Require an exclusion reason for `excluded`.
 
-- [ ] **Step 2: Enumerate every approved domain**
+- [x] **Step 2: Enumerate every approved domain**
 
 `domains.yaml` contains these required domains:
 
@@ -487,11 +488,11 @@ particles, sounds, animations
 
 Mark each domain as `first-slice` or `later`. Do not omit later roadmap work from the catalog.
 
-- [ ] **Step 3: Validate catalogs against symbol indexes**
+- [x] **Step 3: Validate catalogs against symbol indexes**
 
 For every non-excluded record, require an exact owner, method, and descriptor match in the chosen version and side index. Require unique IDs, existing call references, valid line ranges, an existing bytecode file for arithmetic-sensitive methods, and at least one fixture for `verified` status.
 
-- [ ] **Step 4: Add coverage commands**
+- [x] **Step 4: Add coverage commands**
 
 Support:
 
@@ -507,7 +508,7 @@ never edits tracked catalogs. Candidate discovery is local to the vanilla jar.
 Do not accept any candidate as a reviewed mapping without an exact JVM symbol
 and human review.
 
-- [ ] **Step 5: Add Task targets and tests**
+- [x] **Step 5: Add Task targets and tests**
 
 Add `reference:candidates`, `reference:check`, and `reference:report`. Run `devbox run -- task test -- ./internal/reference/catalog`.
 
@@ -529,27 +530,27 @@ Expected: schema, exact-symbol validation, call references, and coverage calcula
 - Consumes: mapped 1.8.9 client and server sources, bytecode, symbol indexes, and the required-domain catalog.
 - Produces: a reviewed symbol and behavior map for all planned simulation domains in Java 1.8.9.
 
-- [ ] **Step 1: Map tick, world, collision, and random behavior**
+- [x] **Step 1: Map tick, world, collision, and random behavior**
 
 Trace the client and server tick entry points through scheduling, world queries, AABB clipping, stepping, ray casting, fluid queries, block updates, and random calls. Add exact descriptors and one-hop call relationships. Record client-only and server-only ownership explicitly.
 
-- [ ] **Step 2: Map entity families and environmental consequences**
+- [x] **Step 2: Map entity families and environmental consequences**
 
 Trace base entities, living entities, players, aquatic mobs, items, experience orbs, projectiles, fishing bobbers, boats, minecarts, falling blocks, and primed TNT. Map movement, lifecycle, collisions, pushing, mounting, passengers, spawning, removal, merging, pickup, and despawning.
 
-- [ ] **Step 3: Map blocks, fluids, and world transitions**
+- [x] **Step 3: Map blocks, fluids, and world transitions**
 
 Trace water and lava behavior, scheduled ticks, random ticks, neighbor updates, pistons, redstone, crop growth, fire, portals, weather, dimensions, and the world border. Mark absent mechanics as `excluded` with `not present in Java 1.8.9`.
 
-- [ ] **Step 4: Map damage, effects, and presentation outputs**
+- [x] **Step 4: Map damage, effects, and presentation outputs**
 
 Trace explosions, damage, knockback, suffocation, drowning, hunger, regeneration, attributes, status effects, particles, sounds, and animations. Distinguish a state transition from an emitted presentation request.
 
-- [ ] **Step 5: Check arithmetic-sensitive bytecode**
+- [x] **Step 5: Check arithmetic-sensitive bytecode**
 
 Generate and review bytecode for every mapped method that changes position, velocity, collision bounds, damage, explosion exposure, fluid height, or random state. Record casts, branch comparisons, constant types, and operation order in prose notes.
 
-- [ ] **Step 6: Pass the 1.8.9 catalog gate**
+- [x] **Step 6: Pass the 1.8.9 catalog gate**
 
 Run:
 
@@ -578,15 +579,15 @@ Expected: every domain has at least one reviewed symbol or one reviewed exclusio
 - Consumes: the 26.1.2 sources and the completed 1.8.9 catalog.
 - Produces: full 26.1.2 coverage and explicit decisions about shared or version-owned Go rules.
 
-- [ ] **Step 1: Repeat the complete domain review for 26.1.2**
+- [x] **Step 1: Repeat the complete domain review for 26.1.2**
 
 Map every required domain with the same evidence requirements as Task 6. Record new mechanics and changed ownership instead of forcing them into 1.8.9 concepts.
 
-- [ ] **Step 2: Compare methods by behavior, not names**
+- [x] **Step 2: Compare methods by behavior, not names**
 
 For each domain, compare phase order, inputs, outputs, calls, constants, numeric types, RNG streams, and side ownership. A similar class or method name does not prove equivalent behavior.
 
-- [ ] **Step 3: Classify every comparison**
+- [x] **Step 3: Classify every comparison**
 
 Use exactly these classifications:
 
@@ -603,11 +604,11 @@ unresolved
 
 Each `shared-identical` record names a conformance scenario that must prove identical output. Each `shared-parameterized` record names the parameters and their source. An `unresolved` record blocks the related implementation task.
 
-- [ ] **Step 4: Produce the first-slice handoff list**
+- [x] **Step 4: Produce the first-slice handoff list**
 
 List the exact symbols and findings required for geometry, AABB collision, stepping, player ground and air movement, sprinting, sneaking, jumping, climbing, swimming, fluid occupancy, external impulses, dropped-item motion, and arrow motion.
 
-- [ ] **Step 5: Run the complete catalog gate**
+- [x] **Step 5: Run the complete catalog gate**
 
 Run `devbox run -- task reference:check REFERENCE_DIR=reference/work` and `devbox run -- task reference:report REFERENCE_DIR=reference/work`.
 
@@ -627,19 +628,19 @@ Expected: all domains have reviewed coverage for both versions, all first-slice 
 
 - Produces: a safe tracked research package and an explicit prerequisite gate for the simulation foundation plan.
 
-- [ ] **Step 1: Document the local workflow**
+- [x] **Step 1: Document the local workflow**
 
 Document the one-command preparation, cache layout, supported versions, mapping strategies, review procedure, catalog statuses, and cleanup command. State that `reference/work` cannot be shared or committed.
 
-- [ ] **Step 2: Add a safe cleanup target**
+- [x] **Step 2: Add a safe cleanup target**
 
 Add `reference:clean` that resolves and validates `REFERENCE_DIR`, then removes only that exact directory. Reject the repository root, parents, and paths outside the repository before deletion.
 
-- [ ] **Step 3: Record provenance without restricted content**
+- [x] **Step 3: Record provenance without restricted content**
 
 Record the Mojang manifest endpoint, version IDs, expected official artifact SHA-1 values from the resolved lock manifests, MCP URLs and SHA-256 values, SpecialSource identity, Vineflower identity, and Java runtime identity. Do not copy decompiled text into provenance.
 
-- [ ] **Step 4: Run publication checks**
+- [x] **Step 4: Run publication checks**
 
 Run:
 
@@ -652,7 +653,7 @@ git ls-files reference
 
 Expected: only configuration, schemas, catalogs, notes, and provenance are tracked. All jars, mappings, sources, bytecode dumps, indexes, and reports remain ignored.
 
-- [ ] **Step 5: Activate the implementation prerequisite**
+- [x] **Step 5: Activate the implementation prerequisite**
 
 Require the simulation foundation plan to check:
 

@@ -1,8 +1,9 @@
 # Immutable game-data contracts implementation plan
 
 > **Status: complete, 2026-08-18.** Shipped in `minecraft-protocol` as part of
-> M0, alongside the generated Java 1.8 data. The checkboxes below were never
-> ticked and are not evidence; do not re-run this plan.
+> M0, alongside the generated Java 1.8 data. The boxes below are ticked by
+> outcome, checked against `minecraft-protocol/data` on 2026-08-18. Do not
+> re-run this plan.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or execute this plan inline one task at a time. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -65,7 +66,7 @@
 - Consumes: the public fields in `server/pkg/gamedata/*.go`.
 - Produces: the same value-type names under package `data`, domain ID types, named nested collection types, and `Clone` methods on values that contain pointers, slices, maps, or nested values.
 
-- [ ] **Step 1: Write mutation-isolation tests**
+- [x] **Step 1: Write mutation-isolation tests**
 
 Create table-driven tests that clone each mutable type, mutate every nested reference in the clone, and assert that the source is unchanged. Use the named ID and collection types from Step 3 in test fixtures. Cover this ownership table:
 
@@ -100,7 +101,7 @@ clone.Variations[0].Metadata = 2
 
 Also assert that cloning nil pointers, maps, and slices preserves nil.
 
-- [ ] **Step 2: Run the tests and verify failure**
+- [x] **Step 2: Run the tests and verify failure**
 
 Run:
 
@@ -110,7 +111,7 @@ devbox run -- task test -- ./data -run 'Test.*Clone'
 
 Expected: compilation fails because the value types and clone methods do not exist.
 
-- [ ] **Step 3: Port the value types**
+- [x] **Step 3: Port the value types**
 
 Copy the public struct definitions from these exact server files:
 
@@ -180,7 +181,7 @@ type Materials []Material
 
 Change the corresponding struct fields and registry method results to these named types. `Block.Drops` uses `Drops`, both block and item variation fields use `Variations`, `Block.HarvestTools` uses `HarvestToolSet`, and `Material.ToolSpeeds` uses `ToolSpeedIndex`. Untyped numeric values in generated literals remain assignable. Task 4 updates generator templates that emit explicit primitive map or slice types.
 
-- [ ] **Step 4: Implement deep-copy methods**
+- [x] **Step 4: Implement deep-copy methods**
 
 Add `Clone` methods to every named collection. Collections whose elements are scalar-only can use `slices.Clone` or `maps.Clone` inside their method. Collections whose elements own references must allocate and call each element's `Clone`. Do not add generic or bespoke clone helpers. Containing values call the collection's `Clone` method so the ownership rule stays attached to the domain type. Immutable scalar-only values need no `Clone` method.
 
@@ -196,7 +197,7 @@ func cloneFloat64(value *float64) *float64 {
 }
 ```
 
-- [ ] **Step 5: Run the clone tests**
+- [x] **Step 5: Run the clone tests**
 
 Run:
 
@@ -206,7 +207,7 @@ devbox run -- task test -- ./data -run 'Test.*Clone'
 
 Expected: every source value remains unchanged after nested mutations to its clone.
 
-- [ ] **Step 6: Run package checks**
+- [x] **Step 6: Run package checks**
 
 Run:
 
@@ -232,7 +233,7 @@ Expected: tests and lint pass. Do not commit.
 - Consumes: Task 1 value types and `RawDataset.Clone()`.
 - Produces: typed read-only registry interfaces, `SetOptions`, `NewSet(SetOptions) (*Set, error)`, typed `Set` accessors, `(*Set).Raw(string) (RawDataset, bool)`, and `(*Set).DatasetNames() []string`.
 
-- [ ] **Step 1: Write the interface compile checks**
+- [x] **Step 1: Write the interface compile checks**
 
 Define test fakes for each interface and add compile-time assignments. The interfaces retain these server method sets:
 
@@ -264,7 +265,7 @@ Define the remaining ID-and-name interfaces with their matching named ID and plu
 
 Document on every interface that returned collections and nested reference fields are owned by the caller.
 
-- [ ] **Step 2: Write raw-dataset ownership tests**
+- [x] **Step 2: Write raw-dataset ownership tests**
 
 Construct a set from two unsorted `RawDataset` values. Assert that:
 
@@ -275,7 +276,7 @@ Construct a set from two unsorted `RawDataset` values. Assert that:
 - An unknown name returns `false`.
 - Duplicate and empty dataset names return `ErrInvalidDataset` through `errors.Is`.
 
-- [ ] **Step 3: Write set-accessor tests**
+- [x] **Step 3: Write set-accessor tests**
 
 Create one fake for every typed registry. Pass all fakes plus `CollisionShapes`, `Protocol`, and `Version` through `SetOptions`. Assert that each accessor returns the selected registry and that value accessors return deep copies:
 
@@ -289,7 +290,7 @@ if got := set.CollisionShapes().Blocks["stone"][0]; got == 99 {
 
 Apply the same mutation check to `Protocol()`. `Version()` returns a scalar value.
 
-- [ ] **Step 4: Run the tests and verify failure**
+- [x] **Step 4: Run the tests and verify failure**
 
 Run:
 
@@ -299,7 +300,7 @@ devbox run -- task test -- ./data -run 'Test(Set|Raw|RegistryInterfaces)'
 
 Expected: compilation fails because the registry interfaces and `Set` do not exist.
 
-- [ ] **Step 5: Implement `SetOptions` and `Set`**
+- [x] **Step 5: Implement `SetOptions` and `Set`**
 
 Use this construction boundary:
 
@@ -330,11 +331,11 @@ Store fields privately. `NewSet` clones `CollisionShapes`, `Protocol`, and every
 
 Do not require every typed registry to be non-nil yet. Some protocol families or source versions omit datasets. Generated built-ins validate their required datasets in their own constructors.
 
-- [ ] **Step 6: Implement raw access**
+- [x] **Step 6: Implement raw access**
 
 Add `ErrInvalidDataset`. In `NewSet`, reject an empty `RawDataset.Name` and duplicate names. Store raw datasets by name. `Raw` returns `RawDataset.Clone()`. `DatasetNames` creates and sorts a new slice for every call.
 
-- [ ] **Step 7: Run package checks**
+- [x] **Step 7: Run package checks**
 
 Run:
 
@@ -358,7 +359,7 @@ Expected: all data tests and lint pass. Do not commit.
 - Consumes: `data.Set` from Task 2.
 - Produces: `Factory`, `Registry`, `NewRegistry`, `(*Registry).Register`, `(*Registry).Load`, `(*Registry).Versions`, and package-level `Register`, `Load`, and `RegisteredVersions`.
 
-- [ ] **Step 1: Write validation tests**
+- [x] **Step 1: Write validation tests**
 
 Cover empty names, nil factories, duplicate registration, unknown versions, and a factory that returns nil. Assert these sentinels through `errors.Is`:
 
@@ -371,17 +372,17 @@ var (
 )
 ```
 
-- [ ] **Step 2: Write order and factory-isolation tests**
+- [x] **Step 2: Write order and factory-isolation tests**
 
 Register `java/b` and `java/a`. Assert that `Versions()` returns `[]string{"java/a", "java/b"}` and returns a fresh slice on every call.
 
 Use a factory that increments a counter and returns `NewSet(SetOptions{Version: Version{MinecraftVersion: strconv.Itoa(counter)}})`. The factory returns both values from `NewSet`. Load twice. Assert that the counter is two, the pointers differ, and the version values differ.
 
-- [ ] **Step 3: Write concurrency tests**
+- [x] **Step 3: Write concurrency tests**
 
 Start concurrent goroutines that register unique names, list versions, and load one stable version. The test must pass under the repository's race-enabled `task test` command. Do not assert goroutine completion with sleeps. Use a `sync.WaitGroup`.
 
-- [ ] **Step 4: Run the tests and verify failure**
+- [x] **Step 4: Run the tests and verify failure**
 
 Run:
 
@@ -391,7 +392,7 @@ devbox run -- task test -- ./data -run 'TestRegistry'
 
 Expected: compilation fails because the version registry does not exist.
 
-- [ ] **Step 5: Implement the instance registry**
+- [x] **Step 5: Implement the instance registry**
 
 Use this contract:
 
@@ -411,7 +412,7 @@ func (r *Registry) Versions() []string
 
 Initialize the map in `NewRegistry` and lazily in `Register` so a zero-value `Registry` also works. Hold locks only while accessing the factory map. Call factories after releasing the read lock. If a factory returns an error, wrap it with the version name and preserve it for `errors.Is`. If it returns `(nil, nil)`, return `ErrNilSet`.
 
-- [ ] **Step 6: Add package-level wrappers**
+- [x] **Step 6: Add package-level wrappers**
 
 Create a private `defaultRegistry := NewRegistry()` and expose:
 
@@ -423,7 +424,7 @@ func RegisteredVersions() []string
 
 Generated packages call `Register` from `init` and must handle its error. Task 4 will choose the generated failure policy when it ports the generator.
 
-- [ ] **Step 7: Run package checks**
+- [x] **Step 7: Run package checks**
 
 Run:
 
@@ -448,13 +449,13 @@ Expected: validation, ordering, isolation, and concurrency tests pass. Do not co
 - Consumes: the complete `data` package from Tasks 1 through 3.
 - Produces: accurate pre-alpha support documentation and a verified commit candidate.
 
-- [ ] **Step 1: Add contract examples**
+- [x] **Step 1: Add contract examples**
 
 Update the README to state that typed game-data contracts, immutable lookup ownership rules, raw dataset lookup, and version registration exist. Keep generated Java 1.8 and Java 26.1 datasets marked as planned.
 
 Add one short example that constructs a `Set` with `NewSet`, registers a factory, loads it, and reads `DatasetNames`. Use error handling for both `NewSet` and `Register`.
 
-- [ ] **Step 2: Update the changelog and old plan**
+- [x] **Step 2: Update the changelog and old plan**
 
 Add an Unreleased changelog entry for the typed data contracts and registry. Add this note below the old shared-extraction plan header:
 
@@ -466,7 +467,7 @@ Add an Unreleased changelog entry for the typed data contracts and registry. Add
 > milestone, then resume this plan at Task 4.
 ```
 
-- [ ] **Step 3: Run the protocol release gate**
+- [x] **Step 3: Run the protocol release gate**
 
 Run:
 
@@ -476,7 +477,7 @@ devbox run -- task verify
 
 Expected: formatting, lint, secret scanning, race-enabled tests, vulnerability scanning, and build all pass.
 
-- [ ] **Step 4: Run the unchanged server gate**
+- [x] **Step 4: Run the unchanged server gate**
 
 From `/home/ocharnyshevich/pet.projects/go-theft-craft/server`, run:
 
@@ -487,7 +488,7 @@ devbox run -- task test
 
 Expected: all server tests pass and the server worktree remains clean.
 
-- [ ] **Step 5: Inspect and review the final scope**
+- [x] **Step 5: Inspect and review the final scope**
 
 Run:
 
@@ -499,7 +500,7 @@ git diff --stat
 
 Expected: changes are limited to `data`, `README.md`, and `CHANGELOG.md`. The ignored plan files remain local.
 
-- [ ] **Step 6: Commit after review**
+- [x] **Step 6: Commit after review**
 
 After every task review and the final whole-change review pass, stage only the milestone files and run:
 

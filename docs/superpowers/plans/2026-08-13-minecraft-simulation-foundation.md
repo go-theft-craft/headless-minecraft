@@ -2,8 +2,9 @@
 
 > **Status: complete, 2026-08-18.** Shipped as the `minecraft-simulation`
 > repository across M8.1 through M8.8, under that repository's own stage plans,
-> which supersede this one wherever they disagree. The checkboxes below were
-> never ticked and are not evidence; do not re-run this plan.
+> which supersede this one wherever they disagree. The boxes below are ticked
+> by outcome, checked against that repository's packages on 2026-08-18, not as
+> a record that each step ran as written. Do not re-run this plan.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or execute this plan inline one task at a time. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -80,7 +81,7 @@ internal/buildcheck/      Dependency and repository-content checks
 
 - Produces: `geom.Vec3`, `geom.BlockPos`, `geom.AABB`, `geom.Axis`, `geom.AxisOrder`, `sim.JavaFloat`, `sim.JavaInt`, and `sim.CanonicalZero`.
 
-- [ ] **Step 1: Write geometry and numeric edge-case tests**
+- [x] **Step 1: Write geometry and numeric edge-case tests**
 
 Test negative block flooring, touching versus intersecting boxes, signed zero normalization for hashing, NaN rejection, infinity rejection, Java float narrowing, and Java integer casts.
 
@@ -94,13 +95,13 @@ func TestBlockPosFromVecFloorsNegativeCoordinates(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Verify the tests fail**
+- [x] **Step 2: Verify the tests fail**
 
 Run `devbox run -- task test -- ./geom ./sim`.
 
 Expected: compilation fails because the packages do not exist.
 
-- [ ] **Step 3: Implement focused immutable value types**
+- [x] **Step 3: Implement focused immutable value types**
 
 Use these public shapes:
 
@@ -120,7 +121,7 @@ func BlockPosFromVec(v Vec3) BlockPos
 
 Reject non-finite coordinates and inverted boxes in `NewAABB`. Keep arithmetic methods free of allocation and mutation.
 
-- [ ] **Step 4: Implement explicit Java conversion helpers**
+- [x] **Step 4: Implement explicit Java conversion helpers**
 
 Keep numeric narrowing visible at call sites:
 
@@ -137,7 +138,7 @@ func CanonicalZero(v float64) float64 {
 
 Add test vectors from both movement research notes when the operation order narrows a value.
 
-- [ ] **Step 5: Run focused checks**
+- [x] **Step 5: Run focused checks**
 
 Run `devbox run -- task fmt`, `devbox run -- task test -- ./geom ./sim`, and `devbox run -- task lint`.
 
@@ -164,7 +165,7 @@ Expected: all geometry and numeric tests pass. Do not commit.
 - Consumes: `geom.Vec3`, `geom.BlockPos`, and `geom.AABB`.
 - Produces: three-state world lookups, stable dependencies, immutable entity state, and sorted iteration.
 
-- [ ] **Step 1: Write unknown-state and isolation tests**
+- [x] **Step 1: Write unknown-state and isolation tests**
 
 Test known air, known block, unknown block, missing collision shapes, sorted entity IDs, copied slices, and snapshot isolation after the source builder changes.
 
@@ -178,7 +179,7 @@ func TestUnknownBlockIsNotAir(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Define lookup and dependency contracts**
+- [x] **Step 2: Define lookup and dependency contracts**
 
 ```go
 type Knowledge uint8
@@ -208,7 +209,7 @@ type View interface {
 
 Require every dependency list and collision box list to use canonical order.
 
-- [ ] **Step 3: Define entity state without application ownership**
+- [x] **Step 3: Define entity state without application ownership**
 
 ```go
 type ID uint64
@@ -246,11 +247,11 @@ type View interface {
 Return owned slices from `IDs`. Sort components by namespaced ID, reject
 duplicates, and clone every component byte slice. Do not expose maps.
 
-- [ ] **Step 4: Implement in-memory immutable views**
+- [x] **Step 4: Implement in-memory immutable views**
 
 Use builders that clone all input maps and slices at `Build`. Sort collision boxes by minimum coordinates and entity IDs numerically. Reject duplicate entity IDs and invalid boxes.
 
-- [ ] **Step 5: Run focused and race tests**
+- [x] **Step 5: Run focused and race tests**
 
 Run `devbox run -- task test -- ./world ./entity` and `devbox run -- task lint`.
 
@@ -276,11 +277,11 @@ Expected: all isolation, ordering, and unknown-state tests pass under the race d
 - Consumes: immutable `world.View` and `entity.View` values.
 - Produces: `sim.TickInput`, `sim.TickResult`, `sim.Command`, `sim.Change`, `sim.Event`, `sim.Limits`, `sim.Budget`, and `sim.RandomState`.
 
-- [ ] **Step 1: Write validation and atomicity tests**
+- [x] **Step 1: Write validation and atomicity tests**
 
 Test duplicate command IDs, non-increasing command sequence numbers, invalid zero limits, hard-ceiling violations, budget exhaustion, duplicate random stream names, sorted random streams, and incomplete results with no changes or events.
 
-- [ ] **Step 2: Define the tick input and semantic IDs**
+- [x] **Step 2: Define the tick input and semantic IDs**
 
 ```go
 type Revision uint64
@@ -306,7 +307,7 @@ type TickInput struct {
 
 Validation clones and sorts scope IDs. It rejects a nil view, duplicate IDs, invalid limits, and unordered commands.
 
-- [ ] **Step 3: Define extensible ordered records**
+- [x] **Step 3: Define extensible ordered records**
 
 ```go
 type Command interface {
@@ -330,7 +331,7 @@ type Event interface {
 
 Built-in command, change, and event implementations use explicit structs. Custom types require profile registration before a kernel accepts them.
 
-- [ ] **Step 4: Add deterministic limits and random state**
+- [x] **Step 4: Add deterministic limits and random state**
 
 ```go
 type Limits struct {
@@ -359,7 +360,7 @@ returns `ErrBudgetExceeded` before a counter crosses its limit.
 Expose `NewBudget(limits Limits) *Budget`. A budget is local to one kernel call
 and is never shared between ticks.
 
-- [ ] **Step 5: Define complete and incomplete results**
+- [x] **Step 5: Define complete and incomplete results**
 
 ```go
 type Completeness uint8
@@ -384,7 +385,7 @@ type TickResult struct {
 
 Make the constructor reject changes or events in an incomplete result. Return owned slices from every accessor.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 Run `devbox run -- task fmt`, `devbox run -- task test -- ./sim`, and `devbox run -- task lint`.
 
@@ -409,11 +410,11 @@ Expected: validation, ordering, limits, random state, and atomicity tests pass. 
 - Consumes: `sim.TickInput`, `sim.TickResult`, and `sim.Budget`.
 - Produces: `sim.Phase`, `sim.Profile`, `sim.Kernel.Step`, `profile.Builder`, and an immutable profile manifest.
 
-- [ ] **Step 1: Write pipeline failure tests**
+- [x] **Step 1: Write pipeline failure tests**
 
 Test duplicate phase IDs, an unknown insertion boundary, a dependency cycle, an unregistered custom command, phase-budget exhaustion, cancellation, panic-free rule errors, and stable event order.
 
-- [ ] **Step 2: Define profile and phase contracts**
+- [x] **Step 2: Define profile and phase contracts**
 
 ```go
 type ProfileID struct {
@@ -440,7 +441,7 @@ type Profile interface {
 Add `Profile Profile` to `TickInput`. Input validation rejects a nil profile
 before any phase runs.
 
-- [ ] **Step 3: Implement the validated builder**
+- [x] **Step 3: Implement the validated builder**
 
 Expose `NewBuilder(base sim.Profile)`, `ID`, `DataDigest`, `ReplacePhase`,
 `InsertAfter`, `RegisterCommand`, `RegisterChange`, `RegisterEvent`,
@@ -448,7 +449,7 @@ Expose `NewBuilder(base sim.Profile)`, `ID`, `DataDigest`, `ReplacePhase`,
 its namespaced ID, validator, canonical encoder, and canonical decoder. `Build`
 resolves one total phase order and returns an immutable profile.
 
-- [ ] **Step 4: Implement an all-or-nothing kernel**
+- [x] **Step 4: Implement an all-or-nothing kernel**
 
 ```go
 type Kernel struct{}
@@ -458,7 +459,7 @@ func (Kernel) Step(ctx context.Context, input TickInput) (TickResult, error)
 
 Validate the complete input before the first phase. Run phases in manifest order. If a phase reports an unknown dependency, return `Incomplete` with no changes or events. If a phase returns an error or the context is cancelled, return no result that a store can apply.
 
-- [ ] **Step 5: Run focused tests**
+- [x] **Step 5: Run focused tests**
 
 Run `devbox run -- task test -- ./sim ./profile` and `devbox run -- task lint`.
 
@@ -479,7 +480,7 @@ Expected: profile validation and deterministic phase-order tests pass. Do not co
 - Consumes: `geom.AABB`, `world.View`, `entity.Body`, and `sim.Budget`.
 - Produces: `collision.Move(view world.View, body entity.Body, delta geom.Vec3, order geom.AxisOrder, budget *sim.Budget) (collision.Result, error)` and ordered contacts.
 
-- [ ] **Step 1: Write collision scenarios first**
+- [x] **Step 1: Write collision scenarios first**
 
 Cover empty space, a floor, a wall, a ceiling, a corner, a one-block step, a step blocked by a ceiling, negative coordinates, touching boxes, multiple boxes in shuffled input order, unknown collision data, and candidate-budget exhaustion.
 
@@ -498,11 +499,11 @@ func TestMoveStopsAtWall(t *testing.T) {
 Add `mustAABB` as a private test helper that calls `geom.NewAABB` and fails the
 test on invalid input.
 
-- [ ] **Step 2: Verify the scenarios fail**
+- [x] **Step 2: Verify the scenarios fail**
 
 Run `devbox run -- task test -- ./collision`.
 
-- [ ] **Step 3: Implement axis clipping and contacts**
+- [x] **Step 3: Implement axis clipping and contacts**
 
 Clip motion on each profile-supplied axis. Sort candidate boxes canonically before clipping. Record the axis, obstacle box, requested displacement, and applied displacement in each contact.
 
@@ -516,11 +517,11 @@ type Result struct {
 }
 ```
 
-- [ ] **Step 4: Add stepping and unknown propagation**
+- [x] **Step 4: Add stepping and unknown propagation**
 
 Compare the direct path with the profile-permitted step path. Choose the path with greater horizontal distance and the profile-defined tie rule. Return all dependencies and no movement result if the collision query is unknown.
 
-- [ ] **Step 5: Run focused tests and a fixed benchmark**
+- [x] **Step 5: Run focused tests and a fixed benchmark**
 
 Run `devbox run -- task test -- ./collision`, `go test -bench=BenchmarkMoveDense -benchmem ./collision` inside Devbox, and `devbox run -- task lint`.
 
@@ -546,7 +547,7 @@ Expected: shuffled candidates produce the same contacts and digest inputs. Do no
 - Consumes: `*data.Set` from `minecraft-protocol/data`.
 - Produces: `v1_8.New(*data.Set)` for Java 1.8.9 and `v26_1.New(*data.Set)` for Java 26.1.2.
 
-- [ ] **Step 1: Add the shared data dependency and import-boundary test**
+- [x] **Step 1: Add the shared data dependency and import-boundary test**
 
 Add `github.com/go-theft-craft/minecraft-protocol` to `go.mod`, using a local
 `replace` only for workspace development. Walk Go imports in
@@ -554,15 +555,15 @@ Add `github.com/go-theft-craft/minecraft-protocol` to `go.mod`, using a local
 `minecraft-protocol` import outside `profile/java` and every import below the
 protocol module other than `data`.
 
-- [ ] **Step 2: Write data rejection tests**
+- [x] **Step 2: Write data rejection tests**
 
 Reject a nil set, a mismatched Minecraft data family, missing collision shapes, an invalid box, missing player dimensions, and an unstable data digest.
 
-- [ ] **Step 3: Build simulation-owned immutable data**
+- [x] **Step 3: Build simulation-owned immutable data**
 
 Convert blocks, collision shapes, entity dimensions, materials, attributes, and fluids into private profile values. Normalize names to namespaced IDs. Sort every registry before hashing. Do not retain mutable maps or slices from `data.Set`.
 
-- [ ] **Step 4: Construct exact official identities**
+- [x] **Step 4: Construct exact official identities**
 
 In `v1_8/profile.go`:
 
@@ -580,7 +581,7 @@ func New(set *data.Set) (sim.Profile, error)
 
 Register only the collision and movement phases needed by this plan. Use constants and operation order from the approved reference notes. Keep version differences in their matching package.
 
-- [ ] **Step 5: Prove the import boundary**
+- [x] **Step 5: Prove the import boundary**
 
 Run:
 
@@ -591,7 +592,7 @@ devbox run -- task test -- ./internal/buildcheck
 
 Expected: both profiles validate, and no core package imports `minecraft-protocol`.
 
-- [ ] **Step 6: Run both data-generation gates**
+- [x] **Step 6: Run both data-generation gates**
 
 Run `devbox run -- task generate:check` in `minecraft-protocol`, then run `devbox run -- task test -- ./profile/java/...` in `minecraft-simulation`.
 
@@ -616,11 +617,11 @@ Expected: profiles use committed generated data without local edits. Do not comm
 - Consumes: collision results and profile-supplied `movement.Rules`.
 - Produces: `movement.Intent`, `movement.EntityChange`, `movement.ContactEvent`, and the player movement phase.
 
-- [ ] **Step 1: Add protocol-free golden scenarios**
+- [x] **Step 1: Add protocol-free golden scenarios**
 
 Add fixtures for idle, walk, sprint, jump, airborne input, sneak, ledge sneak, wall collision, step-up, ceiling collision, climb, water entry, water exit, external impulse, and unknown neighboring blocks. Each fixture contains the profile ID, data digest, initial state, commands, expected changes, expected events, and expected dependencies.
 
-- [ ] **Step 2: Define semantic movement input**
+- [x] **Step 2: Define semantic movement input**
 
 ```go
 type Intent struct {
@@ -637,15 +638,15 @@ type Intent struct {
 
 Reject non-finite input and values outside `[-1, 1]`. Do not include packet cadence or wire units.
 
-- [ ] **Step 3: Implement the profile-driven operation order**
+- [x] **Step 3: Implement the profile-driven operation order**
 
 Separate input acceleration, gravity, fluid response, collision, ground friction, drag, and pose changes into named internal operations. Both profiles call shared operations only where the comparison table and fixtures prove identical behavior.
 
-- [ ] **Step 4: Make unknown movement atomic**
+- [x] **Step 4: Make unknown movement atomic**
 
 If collision, fluid, or environmental data is unknown, return the sorted dependencies with no `EntityChange`, contact event, or presentation event.
 
-- [ ] **Step 5: Run both profile suites**
+- [x] **Step 5: Run both profile suites**
 
 Run `devbox run -- task test -- ./movement ./mctest ./profile/java/...`.
 
@@ -671,23 +672,23 @@ Expected: every fixture passes under both the direct kernel and shuffled interna
 - Consumes: entity state, collision queries, and version-specific item and arrow rules.
 - Produces: dropped-item state changes, arrow state changes, ordered hit events, and presentation events.
 
-- [ ] **Step 1: Add golden item and arrow scenarios**
+- [x] **Step 1: Add golden item and arrow scenarios**
 
 For items, cover throw arc, ground rest, water, lava, wall collision, and unknown ground. For arrows, cover free flight, gravity and drag, block hit, entity hit ordering, water drag, embedding, and unknown path data.
 
-- [ ] **Step 2: Implement dropped-item motion without pickup or merging**
+- [x] **Step 2: Implement dropped-item motion without pickup or merging**
 
 Apply the reviewed gravity, move, collision, and drag order for each profile. Preserve numeric narrowing points. Return an entity state change and contact events. Keep pickup delay, merging, and despawning outside this task.
 
-- [ ] **Step 3: Implement arrow motion and hit ordering**
+- [x] **Step 3: Implement arrow motion and hit ordering**
 
 Ray cast both blocks and entities over the swept path. Sort equal-distance candidates with the profile rule and stable entity ID. Emit a semantic hit event. Do not apply combat damage in this plan.
 
-- [ ] **Step 4: Register both phases in both official profiles**
+- [x] **Step 4: Register both phases in both official profiles**
 
 Insert item and arrow phases at the exact boundaries recorded in each reference note. Update profile manifest golden tests.
 
-- [ ] **Step 5: Run focused suites**
+- [x] **Step 5: Run focused suites**
 
 Run `devbox run -- task test -- ./item ./projectile ./mctest ./profile/java/...` and `devbox run -- task lint`.
 
@@ -710,11 +711,11 @@ Expected: both profile fixture families pass. Do not commit.
 - Consumes: profile type registrations, `sim.TickInput`, and `sim.TickResult`.
 - Produces: `replay.EncodeInput`, `replay.EncodeResult`, `replay.DigestResult`, `replay.Record`, `replay.Run`, and the shared fixture runner.
 
-- [ ] **Step 1: Write canonicalization tests**
+- [x] **Step 1: Write canonicalization tests**
 
 Test signed zero, map insertion order, shuffled source slices, duplicate type registrations, unknown extension types, truncated records, a mismatched profile manifest, a mismatched data digest, and a changed event order.
 
-- [ ] **Step 2: Define the recording envelope**
+- [x] **Step 2: Define the recording envelope**
 
 ```go
 type Record struct {
@@ -728,15 +729,15 @@ type Record struct {
 
 Use a length-delimited binary envelope with fixed byte order. Encode floats from `math.Float64bits` after `sim.CanonicalZero`. Encode every collection in its contract order. Do not use Go map iteration or `gob`.
 
-- [ ] **Step 3: Bind custom values to registered codecs**
+- [x] **Step 3: Bind custom values to registered codecs**
 
 Require every command, change, event, and extension component type ID to have one canonical codec in the profile registry. Reject an unregistered value before running or recording a tick.
 
-- [ ] **Step 4: Compute and verify result digests**
+- [x] **Step 4: Compute and verify result digests**
 
 Hash the profile manifest identity, base revision, tick, completeness, ordered outcomes, dependencies, changes, events, and random state with SHA-256. Set `TickResult.Digest` only after successful canonical encoding.
 
-- [ ] **Step 5: Run replay tests twice**
+- [x] **Step 5: Run replay tests twice**
 
 Run:
 
@@ -761,11 +762,11 @@ Expected: both runs produce the same fixture digests. Do not commit.
 - Consumes: `sim.Kernel`, an immutable profile, commands, and canonical change sets.
 - Produces: `runtime.Store`, `runtime.MemoryStore`, `runtime.Runtime.Advance`, snapshot publication, and stale-revision rejection.
 
-- [ ] **Step 1: Write store and runtime tests**
+- [x] **Step 1: Write store and runtime tests**
 
 Test atomic apply, stale revision, failed tick, incomplete tick, cancelled tick, scheduled command ordering, old snapshot isolation, concurrent readers, and one writer per simulation scope.
 
-- [ ] **Step 2: Define the store contract**
+- [x] **Step 2: Define the store contract**
 
 ```go
 type Store interface {
@@ -776,7 +777,7 @@ type Store interface {
 
 `Apply` compares the base revision and changes state under one write lock. It publishes the next immutable snapshot only after every change validates.
 
-- [ ] **Step 3: Implement tick advancement**
+- [x] **Step 3: Implement tick advancement**
 
 ```go
 func (r *Runtime) Advance(ctx context.Context, scope sim.Scope, commands []sim.Command) (sim.TickResult, error)
@@ -786,11 +787,11 @@ Load one snapshot, attach ordered commands, run the kernel, and apply only a com
 Set `TickInput.Profile` from the immutable profile that constructed the
 runtime before calling the kernel.
 
-- [ ] **Step 4: Add deterministic scheduling**
+- [x] **Step 4: Add deterministic scheduling**
 
 Order scheduled work by tick, phase ID, block position or entity ID, and insertion sequence. Do not use timer goroutines or wall-clock deadlines to decide simulation order.
 
-- [ ] **Step 5: Run race and replay checks**
+- [x] **Step 5: Run race and replay checks**
 
 Run `devbox run -- task test -- ./runtime ./replay ./mctest` and `devbox run -- task lint`.
 
@@ -818,7 +819,7 @@ Expected: race tests pass, stale results never mutate the store, and runtime res
 - Consumes: the official profiles, server state, client snapshots, and shared fixtures.
 - Produces: a server snapshot adapter and `prediction.Predictor` that call the same `sim.Kernel` without sharing storage implementations.
 
-- [ ] **Step 1: Align the server toolchain and add local dependencies**
+- [x] **Step 1: Align the server toolchain and add local dependencies**
 
 Update the server to Go 1.26.5 and the same `openserbia/go-flake` Go pin. Add local development requirements in both consumers:
 
@@ -830,11 +831,11 @@ replace github.com/go-theft-craft/minecraft-simulation => ../minecraft-simulatio
 
 Do not publish a tag with a local replacement.
 
-- [ ] **Step 2: Adapt server state without moving ownership**
+- [x] **Step 2: Adapt server state without moving ownership**
 
 Map `world.World.GetBlock` and shared collision data to `world.View`. Map `player.Position` and server entity state to immutable `entity.State`. Sort IDs and boxes before returning them. Keep sessions, locks, persistence, and packet writes outside the adapter.
 
-- [ ] **Step 3: Add the client prediction entry point**
+- [x] **Step 3: Add the client prediction entry point**
 
 ```go
 type Predictor struct {
@@ -850,11 +851,11 @@ Map known client blocks, entities, and collision data to immutable views. Set
 registries as unknown dependencies. Do not apply results to the observed
 authoritative snapshot.
 
-- [ ] **Step 4: Run the same fixture through both adapters**
+- [x] **Step 4: Run the same fixture through both adapters**
 
 Use one flat-world player movement fixture, one unknown-chunk fixture, one dropped-item fixture, and one arrow fixture. Assert that the server adapter and the complete client adapter produce the kernel fixture digest. Assert that the partial client fixture returns incomplete with no changes or events.
 
-- [ ] **Step 5: Run all consumer checks**
+- [x] **Step 5: Run all consumer checks**
 
 Run `devbox run -- task test -- ./internal/server/simulation` in `server`. Run `devbox run -- task test -- ./prediction` in `headless-minecraft`. Then run lint and build tasks in both repositories.
 
@@ -878,23 +879,23 @@ Expected: both consumers compile against one simulation module and pass the same
 - Consumes: controlled Java reference instances, all golden fixtures, both official profiles, and both consumer adapters.
 - Produces: evidence for the first cross-version slice and documented deferred work.
 
-- [ ] **Step 1: Capture independent controlled-world traces**
+- [x] **Step 1: Capture independent controlled-world traces**
 
 Run every player, item, and arrow scenario against controlled Java 1.8.9 and 26.1.2 instances. Record the command sequence, initial state, observed per-tick state, server corrections, artifact digest, data digest, and capture procedure. Store no packet dependency in the fixture consumed by the kernel.
 
-- [ ] **Step 2: Compare every captured tick**
+- [x] **Step 2: Compare every captured tick**
 
 Make the differential runner report the first mismatched field, phase, and tick. Correct the matching version package or fixture provenance. Do not relax comparisons with a tolerance unless the reference behavior itself has a documented range.
 
-- [ ] **Step 3: Verify cross-platform canonical output**
+- [x] **Step 3: Verify cross-platform canonical output**
 
 Run the fixture suite on Linux amd64 and Linux arm64. Save only the expected canonical digests in the conformance notes. A digest mismatch blocks completion.
 
-- [ ] **Step 4: Document public status and deferred scope**
+- [x] **Step 4: Document public status and deferred scope**
 
 Mark the module pre-alpha. List player movement, dropped-item motion, arrow motion, collision, replay, and the two official profiles as implemented. Keep fluids beyond occupancy, TNT, explosions, vehicles, block simulation, combat, and AI in `ROADMAP.md`.
 
-- [ ] **Step 5: Run every verification gate**
+- [x] **Step 5: Run every verification gate**
 
 Run `devbox run -- task verify` in this order:
 

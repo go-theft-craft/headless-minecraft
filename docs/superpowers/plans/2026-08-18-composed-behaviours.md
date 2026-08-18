@@ -18,7 +18,7 @@ Design: [composed behaviours design](../specs/2026-08-18-composed-behaviours-des
 | `geom.Behind`, `geom.Lead`, `geom.Tangent`, `AABB.Reaches` | [aiming plan](2026-08-18-aiming-and-reach-geometry.md) tasks 1 and 4 | Unblocked |
 | `navigation.Find` over movement edges | Shipped | Available |
 | `navigation.EdgePlace`, `EdgePillar` | [mutating edges plan](2026-08-18-mutating-edges-pillar.md) tasks 4 and 5 | Blocks tasks 5 only |
-| A captured fishing trace per version | M9.1 live check and M9.1b | **Neither has run.** Blocks task 6 |
+| A captured fishing trace per version | The M9.1 and M9.1b capture lanes | Both lanes have run; **nobody has captured fishing through them.** Blocks task 6 |
 
 Tasks 1 through 4 are unblocked once the interaction primitives land.
 
@@ -650,7 +650,11 @@ git commit -m "feat(behaviour): execute bridge and pillar edges"
 **Interfaces:**
 - Produces: `func NewFish(Deps, FishConfig) (*Fish, error)`, `type BiteDetector interface { Bit(before, after world.Entity) bool }`.
 
-**Blocked** on a captured trace per version. M9.1's live check has not run and M9.1b does not exist, so neither trace can be taken today.
+**Blocked** on a captured trace per version. The instrument is no longer the
+problem: M9.1's live check ran on 2026-08-17 and M9.1b's 775 check ran with it,
+both recorded in `relay/docs/verification/2026-08-17-capture-oracle.md`. What is
+missing is a session in which somebody fished, on each version, so the bite
+signal stays unmeasured until one is taken.
 
 **No packet in either protocol says a fish bit.** What a client observes is the bobber entity's motion changing as it dips, and a splash sound at its position. Which of those is reliable, how much motion counts as a dip, and whether 26.1.2 signals it differently are measurements. M8.4 found that two of eight careful prose readings of vanilla behaviour were wrong, and replaced prose with fixtures the game generates. This follows that.
 
@@ -712,8 +716,9 @@ func TestTheBiteDetectorAgreesWithACapturedTrace(t *testing.T) {
 
 			trace, err := loadTrace(t, "fish-"+version+".trace")
 			if errors.Is(err, fs.ErrNotExist) {
-				t.Skipf("no captured fishing trace for %s: M9.1's live check has not run "+
-					"and M9.1b does not exist, so the bite signal is unmeasured", version)
+				t.Skipf("no captured fishing trace for %s: the capture lane exists, "+
+					"but no session with a rod in it has been recorded, so the bite "+
+					"signal is unmeasured", version)
 			}
 			if err != nil {
 				t.Fatalf("loadTrace: %v", err)

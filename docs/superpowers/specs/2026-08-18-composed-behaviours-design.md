@@ -125,10 +125,10 @@ that careful readings of vanilla behaviour were wrong often enough that M8.4
 replaced them with fixtures the game generates.
 
 So `Fish` ships with its bite detector behind an interface and **one captured
-trace per version as its gate**, taken through the M9.1 capture lane. Until
-that lane has run live — the master plan records M9.1's live check as still
-open — `Fish` is not claimed to work, and no test asserts a threshold nobody
-measured.
+trace per version as its gate**, taken through the M9.1 capture lane. That lane
+has run live, on both versions, and no session in it involved a fishing rod.
+Until one does, `Fish` is not claimed to work, and no test asserts a threshold
+nobody measured.
 
 This is the same discipline the navigation design applies to break times, and
 it is the reason `Fish` is last in the sequencing below despite being the

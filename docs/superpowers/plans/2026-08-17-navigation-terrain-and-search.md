@@ -3,8 +3,8 @@
 > **Status: complete, 2026-08-18.** Shipped in `minecraft-simulation/navigation`:
 > `terrain`, the frontier and search, `Capability`, `Posture`, `Path`, and the
 > four read-only edge kinds `EdgeWalk`, `EdgeStep`, `EdgeFall`, and `EdgeSwim`.
-> The checkboxes below were never ticked and are not evidence. What this plan
-> deferred is open elsewhere: `JumpGap` and the missing postures in
+> The boxes below are ticked by outcome, checked against those packages on
+> 2026-08-18. What this plan deferred is open elsewhere: `JumpGap` and the missing postures in
 > [navigation edge completion](2026-08-18-navigation-edge-completion.md), the
 > mutating edges in [mutating edges and pillar](2026-08-18-mutating-edges-pillar.md),
 > and the `examples/orbit` rewrite in
@@ -82,7 +82,7 @@ Tests live beside their subject as `_test.go` in the same package, matching the 
 - Consumes: `geom.AABB`, `geom.Vec3`, `geom.BlockPos`, `world.BlockView`, `collision.Gather`
 - Produces: `terrain.Body{HalfWidth, Height, StepHeight float64}`, `terrain.Body.BoxAt(feet geom.Vec3) geom.AABB`, `terrain.FeetOf(cell geom.BlockPos) geom.Vec3`, `terrain.Fit` with `FitUnknown`/`FitClear`/`FitBlocked`, `terrain.Query{View world.View, Facts Facts, Body Body, Limit int}`, `terrain.Query.Fits(feet geom.Vec3) (Fit, error)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `terrain/query_test.go`:
 
@@ -181,12 +181,12 @@ func TestFitsReportsUnknownForAnUndescribedCell(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./terrain/ -v`
 Expected: FAIL — the package does not exist.
 
-- [ ] **Step 3: Write the package doc and the Facts oracle**
+- [x] **Step 3: Write the package doc and the Facts oracle**
 
 Create `terrain/terrain.go`:
 
@@ -248,7 +248,7 @@ type Facts interface {
 }
 ```
 
-- [ ] **Step 4: Write the body**
+- [x] **Step 4: Write the body**
 
 Create `terrain/body.go`:
 
@@ -293,7 +293,7 @@ func FeetOf(cell geom.BlockPos) geom.Vec3 {
 }
 ```
 
-- [ ] **Step 5: Write the query and the fit test**
+- [x] **Step 5: Write the query and the fit test**
 
 Create `terrain/query.go`:
 
@@ -371,12 +371,12 @@ func (q Query) Fits(feet geom.Vec3) (Fit, error) {
 }
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./terrain/ -v`
 Expected: PASS, five tests.
 
-- [ ] **Step 7: Lint and commit**
+- [x] **Step 7: Lint and commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -397,7 +397,7 @@ git commit -m "feat(terrain): report whether a body fits a position"
 - Consumes: `terrain.Query`, `terrain.Ground`, `groundProbe` from Task 1
 - Produces: `terrain.Query.Ground(feet geom.Vec3) (Ground, error)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `terrain/query_test.go`:
 
@@ -443,12 +443,12 @@ func TestGroundReportsUnknownForAnUndescribedFloor(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./terrain/ -run TestGround -v`
 Expected: FAIL — `query.Ground undefined`.
 
-- [ ] **Step 3: Implement Ground**
+- [x] **Step 3: Implement Ground**
 
 Append to `terrain/query.go`:
 
@@ -487,12 +487,12 @@ func (q Query) Ground(feet geom.Vec3) (Ground, error) {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./terrain/ -v`
 Expected: PASS, eight tests.
 
-- [ ] **Step 5: Lint and commit**
+- [x] **Step 5: Lint and commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -513,7 +513,7 @@ git commit -m "feat(terrain): report whether anything holds a body up"
 - Consumes: `terrain.Query.Fits`, `terrain.Query.Ground`, `terrain.FeetOf` from Tasks 1 and 2
 - Produces: `terrain.Passability` with `Unknown`/`Clear`/`Steppable`/`Blocked`, `terrain.Passability.String() string`, `terrain.Query.Passable(cell geom.BlockPos) (Passability, error)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `terrain/passability_test.go`:
 
@@ -649,12 +649,12 @@ func TestPassabilityStringNamesEveryValue(t *testing.T) {
 var _ world.View = (*world.Blocks)(nil)
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./terrain/ -run TestPassab -v`
 Expected: FAIL — `undefined: Clear`.
 
-- [ ] **Step 3: Implement passability**
+- [x] **Step 3: Implement passability**
 
 Create `terrain/passability.go`:
 
@@ -770,12 +770,12 @@ func (q Query) stepped(feet geom.Vec3) (Passability, error) {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./terrain/ -v`
 Expected: PASS, fifteen tests.
 
-- [ ] **Step 5: Lint and commit**
+- [x] **Step 5: Lint and commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -798,7 +798,7 @@ git commit -m "feat(terrain): classify a cell as clear, steppable, blocked, or u
 
 Both report the lookup alongside the answer so a caller can tell "no hazard" from "nobody described this cell". Lava has no collision shape, so a body that only consulted geometry walks into it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `terrain/hazard_test.go`:
 
@@ -915,12 +915,12 @@ func TestFluidAtReportsLava(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./terrain/ -run "TestHazardAt|TestFluidAt" -v`
 Expected: FAIL — `query.HazardAt undefined`.
 
-- [ ] **Step 3: Implement the lookups**
+- [x] **Step 3: Implement the lookups**
 
 Append to `terrain/query.go`:
 
@@ -951,12 +951,12 @@ func (q Query) FluidAt(cell geom.BlockPos) (Fluid, world.Lookup, error) {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./terrain/ -v`
 Expected: PASS, twenty-one tests.
 
-- [ ] **Step 5: Lint and commit**
+- [x] **Step 5: Lint and commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -978,7 +978,7 @@ git commit -m "feat(terrain): report block hazards and fluids through a profile 
 - Consumes: `terrain.Body`, `terrain.Facts`, `geom.BlockPos`
 - Produces: `navigation.Posture` with `PostureStand`/`PostureSwim`; `navigation.Capability{Body terrain.Body, SafeFall float64, CanSwim bool, WalkTicks, StepTicks, FallTicks, SwimTicks float64, CandidateLimit int}`; `navigation.Capability.cheapest() float64`; `navigation.EdgeKind` with `EdgeWalk`/`EdgeStep`/`EdgeFall`/`EdgeSwim`; `navigation.Edge{Kind EdgeKind, From, To geom.BlockPos, Posture Posture, Cost float64}`; `navigation.Reason` with `ReasonFound`/`ReasonBudget`/`ReasonCeiling`/`ReasonUnreachable`; `navigation.Path{Edges []Edge, Cost float64, Complete bool, Reason Reason}`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `navigation/edge_test.go`:
 
@@ -1032,12 +1032,12 @@ func TestCheapestIsTheLowestEnabledEdgeCost(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -v`
 Expected: FAIL — the package does not exist.
 
-- [ ] **Step 3: Write the package doc, posture, and capability**
+- [x] **Step 3: Write the package doc, posture, and capability**
 
 Create `navigation/navigation.go`:
 
@@ -1136,7 +1136,7 @@ func (c Capability) query(view terrainView, facts terrain.Facts) terrain.Query {
 }
 ```
 
-- [ ] **Step 4: Write the edge vocabulary**
+- [x] **Step 4: Write the edge vocabulary**
 
 Create `navigation/edge.go`:
 
@@ -1262,12 +1262,12 @@ func (p Path) End(start geom.BlockPos) geom.BlockPos {
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -v`
 Expected: PASS, three tests.
 
-- [ ] **Step 6: Lint and commit**
+- [x] **Step 6: Lint and commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -1290,7 +1290,7 @@ git commit -m "feat(navigation): declare the edge, path, and capability vocabula
 
 The frontier is its own task because its contract is a property — equal priorities pop in one fixed order — and that property is what the whole determinism gate rests on. A reviewer can accept or reject it without reading the search.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `navigation/frontier_test.go`:
 
@@ -1371,12 +1371,12 @@ func TestNodeLessOrdersByPositionThenPosture(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -run "TestFrontier|TestNodeLess" -v`
 Expected: FAIL — `undefined: node`.
 
-- [ ] **Step 3: Implement the frontier**
+- [x] **Step 3: Implement the frontier**
 
 Create `navigation/frontier.go`:
 
@@ -1475,12 +1475,12 @@ func (f *frontier) pop() (node, bool) {
 func (f *frontier) len() int { return f.queue.Len() }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -v`
 Expected: PASS, six tests.
 
-- [ ] **Step 5: Lint and commit**
+- [x] **Step 5: Lint and commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -1501,7 +1501,7 @@ git commit -m "feat(navigation): add a frontier whose ties break on a total node
 - Consumes: everything from Tasks 1 through 6
 - Produces: `navigation.Budget{Nodes int, Ceiling float64}`, `navigation.Find(ctx context.Context, view world.View, facts terrain.Facts, capability Capability, from, goal geom.BlockPos, budget Budget) (Path, error)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `navigation/search_test.go`:
 
@@ -1710,12 +1710,12 @@ func TestFindHonoursACancelledContext(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -run TestFind -v`
 Expected: FAIL — `undefined: Find`.
 
-- [ ] **Step 3: Implement the search**
+- [x] **Step 3: Implement the search**
 
 Create `navigation/search.go`:
 
@@ -1966,17 +1966,17 @@ func (c Capability) fall(query terrain.Query, from, neighbour geom.BlockPos) (Ed
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -v`
 Expected: PASS, fourteen tests.
 
-- [ ] **Step 5: Run the whole suite under the race detector**
+- [x] **Step 5: Run the whole suite under the race detector**
 
 Run: `cd <minecraft-simulation> && devbox run -- task test`
 Expected: PASS, every package.
 
-- [ ] **Step 6: Lint and commit**
+- [x] **Step 6: Lint and commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -1999,7 +1999,7 @@ git commit -m "feat(navigation): search walk, step, and fall routes with a bound
 
 Water carries no collision shape, so `Passable` already reports a flooded cell as `Clear` or `Blocked` on geometry alone. The swim edge is what distinguishes a body that may enter it from one that may not, and it is why `Facts` exists.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `navigation/search_test.go`:
 
@@ -2132,12 +2132,12 @@ import (
 )
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -run "Water|Swim|Fire" -v`
 Expected: FAIL — the swimmer's route contains no `EdgeSwim`, the walker enters the water, and the route walks through fire.
 
-- [ ] **Step 3: Implement the swim edge**
+- [x] **Step 3: Implement the swim edge**
 
 In `navigation/search.go`, replace the `case terrain.Clear:` arm of `expand` with a call to a new helper, and add the helper:
 
@@ -2208,12 +2208,12 @@ func (c Capability) enter(query terrain.Query, from, to geom.BlockPos) (Edge, bo
 
 Add `"github.com/go-theft-craft/minecraft-simulation/world"` to the imports of `navigation/search.go`.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -v`
 Expected: PASS, seventeen tests.
 
-- [ ] **Step 5: Lint and commit**
+- [x] **Step 5: Lint and commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -2235,7 +2235,7 @@ git commit -m "feat(navigation): cross water only when the body can swim, and ne
 
 The single-path tests in Task 7 check one route each. These check the invariants every route must hold, which is what catches a search that returns a plausible path with a hole in it.
 
-- [ ] **Step 1: Write the property tests**
+- [x] **Step 1: Write the property tests**
 
 Create `navigation/property_test.go`:
 
@@ -2398,17 +2398,17 @@ func search(t *testing.T, blocks *world.Blocks) Path {
 }
 ```
 
-- [ ] **Step 2: Run the property tests**
+- [x] **Step 2: Run the property tests**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -run "TestPath|TestEvery|TestSearchesAreReproducible" -v`
 Expected: PASS, five tests. If `TestSearchesAreReproducible` fails, a map is reaching an output ordering — find it and sort the iteration or replace the map.
 
-- [ ] **Step 3: Run the whole suite under the race detector**
+- [x] **Step 3: Run the whole suite under the race detector**
 
 Run: `cd <minecraft-simulation> && devbox run -- task test`
 Expected: PASS, every package.
 
-- [ ] **Step 4: Lint and commit**
+- [x] **Step 4: Lint and commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -2428,7 +2428,7 @@ git commit -m "test(navigation): assert path contiguity, cost, legality, and rep
 
 The design's non-goal list currently excludes pathfinding. Leaving it while shipping a pathfinder makes the repository contradict itself, and a reader who found the contradiction would not know which side was current.
 
-- [ ] **Step 1: Add the packages to the README table**
+- [x] **Step 1: Add the packages to the README table**
 
 In `minecraft-simulation/README.md`, add two rows to the package table, after `collision`:
 
@@ -2437,7 +2437,7 @@ In `minecraft-simulation/README.md`, add two rows to the package table, after `c
 | `navigation` | The edge vocabulary, a body's capability, and a bounded deterministic route search |
 ```
 
-- [ ] **Step 2: Extend the dependency chart**
+- [x] **Step 2: Extend the dependency chart**
 
 In `minecraft-simulation/README.md`, replace the dependency chart with:
 
@@ -2462,7 +2462,7 @@ block's hazard through an oracle the profile supplies. That is what lets one
 search serve a 1.8.9 mob and a 26.1.2 bot.
 ```
 
-- [ ] **Step 3: Amend the design's non-goals**
+- [x] **Step 3: Amend the design's non-goals**
 
 In `headless-minecraft/docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md`, replace the non-goal line:
 
@@ -2479,7 +2479,7 @@ capability, which is the same kind of rule as collision; what stays excluded is
 deciding where to go.
 ```
 
-- [ ] **Step 4: Record the change in the changelog**
+- [x] **Step 4: Record the change in the changelog**
 
 In `minecraft-simulation/CHANGELOG.md`, under `## Unreleased` / `### Added`:
 
@@ -2493,12 +2493,12 @@ In `minecraft-simulation/CHANGELOG.md`, under `## Unreleased` / `### Added`:
   identical searches return identical paths.
 ```
 
-- [ ] **Step 5: Verify every gate**
+- [x] **Step 5: Verify every gate**
 
 Run: `cd <minecraft-simulation> && devbox run -- task verify`
 Expected: lint, secrets, test, vuln, and build all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd <minecraft-simulation>

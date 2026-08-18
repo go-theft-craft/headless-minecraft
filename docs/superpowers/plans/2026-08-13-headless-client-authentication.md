@@ -1,13 +1,15 @@
 # Headless Client and Authentication Implementation Plan
 
-> **Status: complete apart from M6.4, 2026-08-18.** The lifecycle, the offline
-> provider, and the login exchange shipped as M6.3; the client connects,
-> reaches play, publishes session events, and closes once. The Microsoft
-> device-code half did not ship and is postponed, not blocked: it has its own
-> plan at
-> [2026-08-15-microsoft-authentication.md](2026-08-15-microsoft-authentication.md).
-> The checkboxes below were never ticked and are not evidence of what remains;
-> `MASTER_PLAN.md` is.
+> **Status: complete apart from tasks 3, 4, and 5, 2026-08-18.** The lifecycle,
+> the offline provider, and the login exchange shipped as M6.3; the client
+> connects, reaches play, publishes session events, and closes once. Those
+> boxes are ticked by outcome, checked against this repository on 2026-08-18.
+> Three tasks never shipped and stay unticked. `auth` holds `Identity`,
+> `Provider`, and `Offline` and nothing else, so pluggable token storage
+> (task 3) has no code at all, and the Microsoft device-code half (tasks 4
+> and 5) is postponed rather than blocked: it has its own plan at
+> [2026-08-15-microsoft-authentication.md](2026-08-15-microsoft-authentication.md),
+> whose own boxes are open for the same reason.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -47,7 +49,7 @@
 **Interfaces:**
 - Produces: module `github.com/go-theft-craft/headless-minecraft` and the standard Devbox and Task workflow.
 
-- [ ] **Step 1: Initialize Git and add repository files**
+- [x] **Step 1: Initialize Git and add repository files**
 
 Run `git init -b main .`. Keep the existing ignored design and plan files. Add the sibling module during local development:
 
@@ -57,7 +59,7 @@ require github.com/go-theft-craft/minecraft-protocol v0.0.0
 replace github.com/go-theft-craft/minecraft-protocol => ../minecraft-protocol
 ```
 
-- [ ] **Step 2: Add Devbox and direnv configuration**
+- [x] **Step 2: Add Devbox and direnv configuration**
 
 Use the same pinned Go and tooling versions as `minecraft-protocol`. Add:
 
@@ -67,11 +69,11 @@ Use the same pinned Go and tooling versions as `minecraft-protocol`. Add:
 eval "$(devbox generate direnv --print-envrc)"
 ```
 
-- [ ] **Step 3: Add standard tasks and expected failing import test**
+- [x] **Step 3: Add standard tasks and expected failing import test**
 
 Add `deps`, `fmt`, `lint`, `test`, `test:race`, `build`, and `verify`. The build check imports future `auth`, `client`, and `event` packages.
 
-- [ ] **Step 4: Verify the baseline failure**
+- [x] **Step 4: Verify the baseline failure**
 
 Run `devbox run -- task test`.
 
@@ -88,11 +90,11 @@ Expected: compilation fails because the public packages do not exist.
 **Interfaces:**
 - Produces: `auth.Provider`, `auth.Identity`, and `auth.Offline`.
 
-- [ ] **Step 1: Write identity and offline UUID tests**
+- [x] **Step 1: Write identity and offline UUID tests**
 
 Verify username validation, deterministic UUID generation from `OfflinePlayer:<username>`, no token fields, and context cancellation before work.
 
-- [ ] **Step 2: Define the provider contract**
+- [x] **Step 2: Define the provider contract**
 
 ```go
 type Provider interface {
@@ -109,11 +111,11 @@ type Identity struct {
 
 Keep sensitive fields out of `String`, `GoString`, JSON, and error formatting.
 
-- [ ] **Step 3: Implement offline authentication**
+- [x] **Step 3: Implement offline authentication**
 
 Use the Minecraft offline UUID algorithm based on MD5 name UUID bytes and set RFC 4122 version and variant bits correctly.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run `devbox run -- task test -- ./auth`.
 
@@ -238,15 +240,15 @@ Run `devbox run -- task test:race -- ./auth/...`.
 **Interfaces:**
 - Produces: `event.Hub`, `Subscription`, `Publish`, `Subscribe`, and package-level generic `event.Next[T]`.
 
-- [ ] **Step 1: Write ordering and overflow tests**
+- [x] **Step 1: Write ordering and overflow tests**
 
 Test publication order, filtering by concrete type, cancellation, explicit unsubscribe, immutable payload expectations, slow-subscriber closure with `ErrSubscriptionOverflow`, and hub shutdown.
 
-- [ ] **Step 2: Implement bounded subscriptions**
+- [x] **Step 2: Implement bounded subscriptions**
 
 Publishing must not invoke user callbacks. Each subscription has a fixed buffer. An overflow records the error and closes only that subscription.
 
-- [ ] **Step 3: Add the generic helper**
+- [x] **Step 3: Add the generic helper**
 
 ```go
 func Next[T Event](ctx context.Context, sub *Subscription) (T, error)
@@ -254,7 +256,7 @@ func Next[T Event](ctx context.Context, sub *Subscription) (T, error)
 
 Implement this as a package-level function while Go 1.27 generic methods remain unavailable in the stable toolchain.
 
-- [ ] **Step 4: Run race tests**
+- [x] **Step 4: Run race tests**
 
 Run `devbox run -- task test:race -- ./event`.
 
@@ -270,11 +272,11 @@ Run `devbox run -- task test:race -- ./event`.
 **Interfaces:**
 - Produces: `client.Adapter`, `client.Result`, `client.Reducer`, advanced raw `client.WithProtocol`, `client.WithReducer`, and the default Java 26.1 protocol 775 adapter. The later constructed-components plan wraps these in complete `client.WithVersion` conformance profiles before enabling high-level gameplay APIs.
 
-- [ ] **Step 1: Test option validation**
+- [x] **Step 1: Test option validation**
 
 Require address and authentication. Verify default current protocol, paired custom protocol and adapter, injected dialer, limits, logger, and rejection of a Java adapter paired with a custom edition. Mark direct `WithProtocol` construction as raw lifecycle and packet access only; it must not imply vanilla-compatible gameplay semantics.
 
-- [ ] **Step 2: Define the adapter contract**
+- [x] **Step 2: Define the adapter contract**
 
 ```go
 type Adapter interface {
@@ -296,11 +298,11 @@ type Reducer interface {
 
 Keep wire encoding in `minecraft-protocol`. The adapter handles connection-control packets. Optional reducers observe packets in registration order and produce normalized state events without owning the network stream.
 
-- [ ] **Step 3: Implement the current adapter skeleton**
+- [x] **Step 3: Implement the current adapter skeleton**
 
 Handle login-ready, configuration-ready, play-ready, keepalive, disconnect, system chat, and raw packet events. Return `ErrUnsupportedPacket` only for packets required to maintain the connection. Optional unknown packets still publish raw events. Run registered reducers after connection-control handling and before publishing the result's events.
 
-- [ ] **Step 4: Run adapter tests**
+- [x] **Step 4: Run adapter tests**
 
 Run `devbox run -- task test -- ./client ./internal/adapter/java`.
 
@@ -318,11 +320,11 @@ Run `devbox run -- task test -- ./client ./internal/adapter/java`.
 **Interfaces:**
 - Produces: `client.New`, `(*Client).Run`, `WaitReady`, `Send`, `Events`, `Snapshot`, and idempotent `Close`.
 
-- [ ] **Step 1: Write lifecycle transcript tests**
+- [x] **Step 1: Write lifecycle transcript tests**
 
 Test offline login to play, online encryption and session join callback, configuration completion, keepalive priority, raw events, callback return cleanup, context cancellation, server disconnect, partial write, and double close.
 
-- [ ] **Step 2: Implement gotd-style scoped use**
+- [x] **Step 2: Implement gotd-style scoped use**
 
 ```go
 bot, err := client.New(options...)
@@ -337,11 +339,11 @@ err = bot.Run(ctx, func(ctx context.Context) error {
 
 The client is usable only inside `Run`. Returning from the callback closes the session and waits for owned goroutines. Do not reconnect.
 
-- [ ] **Step 3: Compose shared login and stream helpers**
+- [x] **Step 3: Compose shared login and stream helpers**
 
 Authenticate before dialing. Use `java/login` for handshake through configuration, then start the shared managed stream for play. For online mode, call the Mojang session join endpoint through an injected, tested HTTP client before completing encrypted login.
 
-- [ ] **Step 4: Run lifecycle race tests**
+- [x] **Step 4: Run lifecycle race tests**
 
 Run `devbox run -- task test:race -- ./client ./internal/session ./mctest`.
 
@@ -357,20 +359,20 @@ Run `devbox run -- task test:race -- ./client ./internal/session ./mctest`.
 **Interfaces:**
 - Produces: runnable examples for high-level lifecycle, Microsoft device flow, and unrestricted raw packet access.
 
-- [ ] **Step 1: Add compile tests for examples**
+- [x] **Step 1: Add compile tests for examples**
 
 Make `task build` build all example packages. Examples read address, username, Microsoft client ID, and token-store choice from flags. They never contain credentials.
 
-- [ ] **Step 2: Document the three usage levels**
+- [x] **Step 2: Document the three usage levels**
 
 README sections show raw codec use in `minecraft-protocol`, managed stream use, and full headless client use. Use `devbox run -- task` in all development commands.
 
-- [ ] **Step 3: Run the full verification gate**
+- [x] **Step 3: Run the full verification gate**
 
 Run `devbox run -- task verify` in `minecraft-protocol` and `headless-minecraft`.
 
 Expected: generation, source validation, formatting, lint, tests, race tests, and builds pass.
 
-- [ ] **Step 4: Inspect final scope**
+- [x] **Step 4: Inspect final scope**
 
 Run `git status --short` and `git diff --check` in both repositories. Confirm that no token value can be formatted through public identity or error types. Do not commit.

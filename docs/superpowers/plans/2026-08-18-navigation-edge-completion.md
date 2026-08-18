@@ -18,7 +18,7 @@ The navigation plan of 2026-08-17 deferred `JumpGap` and gave a reason this plan
 
 That still stands. Task 1 builds the reach table by running the kernel; no later task takes a gap distance from anywhere else.
 
-The same plan lists `data.Block.Falling` and the `examples/orbit` rewrite as deferred. Neither blocks this plan: no edge here digs, and the orbit rewrite is the [aiming plan](2026-08-18-aiming-and-reach-geometry.md)'s task 6. **The climbable block property does block task 5**, and it is extracted in `minecraft-protocol` by the [mutating edges plan](2026-08-18-mutating-edges-pillar.md)'s task 1, because it is the same extraction pass as `Falling`.
+The same plan lists `data.Block.Falling` and the `examples/orbit` rewrite as deferred. Neither blocks this plan: no edge here digs, and the orbit rewrite is the [aiming plan](2026-08-18-aiming-and-reach-geometry.md)'s task 6. **The climbable block property does block task 5.** It is extracted in `minecraft-protocol` by the [mutating edges plan](2026-08-18-mutating-edges-pillar.md)'s task 1, because it is the same extraction pass as `Falling`, and that landed on 2026-08-18 as `BlockMovementRegistry.ClimbableByState`. It is not released yet, so `minecraft-simulation` still cannot see it; task 5 now waits on that plan's task 2, not its task 1.
 
 ## Global Constraints
 
@@ -609,10 +609,10 @@ git commit -m "feat(navigation): drop past the safe fall into deep water"
 - Test: `terrain/passability_test.go`, `navigation/vertical_test.go`
 
 **Interfaces:**
-- Consumes: the climbable block property, extracted by the [mutating edges plan](2026-08-18-mutating-edges-pillar.md) task 1.
+- Consumes: the climbable block property, extracted by the [mutating edges plan](2026-08-18-mutating-edges-pillar.md) task 1 and released by its task 2.
 - Produces: `terrain.Facts.Climbable`, `EdgeClimb`, `Capability.ClimbTicks float64`, `Capability.CanClimb bool`.
 
-**Blocked** until that extraction lands and `minecraft-protocol` releases it. Do not start otherwise.
+**Blocked** until `minecraft-protocol` releases it. The extraction itself landed on 2026-08-18; what is missing is the tag and `minecraft-simulation`'s `go.mod` bump. Do not start otherwise.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -874,4 +874,4 @@ git commit -m "feat(navigation): open doors on the route"
 | The new edges break the frontier's total order and the determinism gate fails intermittently | `task determinism` runs at the end of tasks 2, 3, 6, and 7; the jump expansion appends in step order then increasing distance |
 | Appending posture or edge constants renumbers a shipped value | Both tasks append after the existing members and say so explicitly |
 | `EdgeDoor` turns out to need the overlay after it has shipped | Task 7's first step is the conflict test, before the implementation, with an explicit stop instruction |
-| Task 5 starts before the climbable property exists | Marked blocked, with the extraction named as the other plan's task 1 |
+| Task 5 starts before the climbable property is consumable | Marked blocked. The extraction landed 2026-08-18; the release that carries it into `minecraft-simulation` is the other plan's task 2 |

@@ -2,8 +2,10 @@
 
 > **Status: complete, 2026-08-18.** Shipped as M0 in `minecraft-protocol` and
 > M3 and M6.1 in `server`, which now owns no wire code at all: `pkg/protocol`
-> and `pkg/gamedata` are gone. The checkboxes below were never ticked and are
-> not evidence; do not re-run this plan.
+> and `pkg/gamedata` are gone. The legacy proxy takes its wire primitives from
+> the shared module too, which is what closes task 7. The boxes below are
+> ticked by outcome, checked against those working trees on 2026-08-18. Do not
+> re-run this plan.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -63,7 +65,7 @@ factory uses the stable target key `java/1.8.9`.
 **Interfaces:**
 - Produces: module `github.com/go-theft-craft/minecraft-protocol` and tasks `deps`, `fmt`, `lint`, `test`, `test:race`, `build`, and `verify`.
 
-- [ ] **Step 1: Initialize the repository and add the failing build check**
+- [x] **Step 1: Initialize the repository and add the failing build check**
 
 Run `git init -b main minecraft-protocol`. Add a test that imports the packages planned for later tasks:
 
@@ -85,7 +87,7 @@ func TestPublicPackagesExist(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Add the pinned development environment**
+- [x] **Step 2: Add the pinned development environment**
 
 Use `openserbia/go-flake` pins for Go `1.26.5`, golangci-lint `2.12.2`, gofumpt `0.10.0`, govulncheck `1.6.0`, gopls `0.22.0`, and Delve `1.27.0`. Use nixpkgs packages only for go-task and gci. Add this `.envrc`:
 
@@ -97,17 +99,17 @@ eval "$(devbox generate direnv --print-envrc)"
 
 Ignore `build/`, `coverage.out`, `vendor/`, `.env`, and `docs/`.
 
-- [ ] **Step 3: Add Task targets**
+- [x] **Step 3: Add Task targets**
 
 Make `task verify` depend on `lint`, `test`, `test:race`, and `build`. Task 4 adds `generate:check` after generation exists. All Go commands use `-mod=vendor` after `task deps` creates `vendor/modules.txt`.
 
-- [ ] **Step 4: Verify the expected failure**
+- [x] **Step 4: Verify the expected failure**
 
 Run `devbox run -- task test`.
 
 Expected: compilation fails because `data`, `protocol`, and `wire/java` do not exist.
 
-- [ ] **Step 5: Record the checkpoint**
+- [x] **Step 5: Record the checkpoint**
 
 Run `git -C minecraft-protocol status --short` and inspect the complete diff. Do not commit.
 
@@ -128,7 +130,7 @@ Run `git -C minecraft-protocol status --short` and inspect the complete diff. Do
 **Interfaces:**
 - Produces: `protocol.Packet`, `protocol.Version`, `java.DefaultLimits`, `java.ReadVarInt`, `java.WriteVarInt`, `java.Marshal`, `java.Unmarshal`, `java.ReadRawPacket`, `java.WriteRawPacket`, `java.ReadPacket`, and `java.WritePacket`.
 
-- [ ] **Step 1: Define packet and version contracts**
+- [x] **Step 1: Define packet and version contracts**
 
 ```go
 package protocol
@@ -143,7 +145,7 @@ type Version struct {
 }
 ```
 
-- [ ] **Step 2: Write boundary tests before porting code**
+- [x] **Step 2: Write boundary tests before porting code**
 
 Test VarInt round trips for `0`, `1`, `127`, `128`, `math.MaxInt32`, and `-1`. Test rejection of a six-byte VarInt. Test a declared frame length of `MaxFrameSize+1`. Test short reads with a reader that returns one byte per call.
 
@@ -158,13 +160,13 @@ func TestReadRawPacketRejectsOversizedFrame(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run tests and verify failure**
+- [x] **Step 3: Run tests and verify failure**
 
 Run `devbox run -- task test -- -run 'Test(ReadRawPacket|VarInt)' ./wire/java`.
 
 Expected: failure because the Java wire functions do not exist.
 
-- [ ] **Step 4: Port the existing implementation and add limits**
+- [x] **Step 4: Port the existing implementation and add limits**
 
 Port behavior from `server/pkg/protocol`. Replace the hard-coded `1<<21` check with:
 
@@ -182,13 +184,13 @@ func DefaultLimits() Limits {
 
 Use `io.ReadFull` for declared payload lengths. Ensure `WriteRawPacket` uses a full-write helper so a short `Write` cannot truncate a frame silently.
 
-- [ ] **Step 5: Run focused and race tests**
+- [x] **Step 5: Run focused and race tests**
 
 Run `devbox run -- task test -- ./wire/java` and `devbox run -- task test:race -- ./wire/java`.
 
 Expected: all Java wire tests pass.
 
-- [ ] **Step 6: Record the checkpoint**
+- [x] **Step 6: Record the checkpoint**
 
 Inspect `git -C minecraft-protocol diff --check` and `git -C minecraft-protocol status --short`. Do not commit.
 
@@ -218,7 +220,7 @@ Inspect `git -C minecraft-protocol diff --check` and `git -C minecraft-protocol 
 **Interfaces:**
 - Produces: `data.Set`, typed registry interfaces, `data.Register`, `data.Load`, and `data.RegisteredVersions`.
 
-- [ ] **Step 1: Write loader isolation tests**
+- [x] **Step 1: Write loader isolation tests**
 
 Test duplicate registration rejection, sorted version names, unknown-version errors, and factory isolation. `Load` must return distinct `*Set` values for two calls.
 
@@ -233,23 +235,23 @@ func TestRegisteredVersionsSorted(t *testing.T) {
 
 Use standard-library comparisons if adding `testify` would be the only external dependency.
 
-- [ ] **Step 2: Run the tests and verify failure**
+- [x] **Step 2: Run the tests and verify failure**
 
 Run `devbox run -- task test -- ./data`.
 
 Expected: failure because the registry types do not exist.
 
-- [ ] **Step 3: Port and tighten the data model**
+- [x] **Step 3: Port and tighten the data model**
 
 Port the public structs and registry interfaces from `server/pkg/gamedata`. Rename `GameData` to `Set`. Make registration return an error on duplicate keys. Sort `RegisteredVersions`. Keep returned slices and maps isolated from internal generated storage.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run `devbox run -- task test -- ./data`.
 
 Expected: all data tests pass.
 
-- [ ] **Step 5: Record the checkpoint**
+- [x] **Step 5: Record the checkpoint**
 
 Run `git -C minecraft-protocol diff --check`. Do not commit.
 
@@ -276,19 +278,19 @@ Run `git -C minecraft-protocol diff --check`. Do not commit.
 - Consumes: `data` contracts and Java wire package.
 - Produces: `mcdata-gen` flags `-source`, `-out`, `-package`, and `-version`, plus `generated/java/v1_8.Data()`.
 
-- [ ] **Step 1: Copy the pinned Java 1.8 source and generator tests**
+- [x] **Step 1: Copy the pinned Java 1.8 source and generator tests**
 
 Copy the files from `server/scheme/pc-1.8` into `source/java/1.8`. Add a manifest with edition `java`, Minecraft version `1.8.9`, protocol `47`, source repository `https://github.com/PrismarineJS/minecraft-data`, and SHA-256 for every copied file.
 
 Write a golden test that generates into `t.TempDir()` and compares every file with `generated/java/v1_8`.
 
-- [ ] **Step 2: Run the golden test and verify failure**
+- [x] **Step 2: Run the golden test and verify failure**
 
 Run `devbox run -- task test -- ./internal/codegen/generator`.
 
 Expected: failure because the generator has not been ported.
 
-- [ ] **Step 3: Port the generator and templates**
+- [x] **Step 3: Port the generator and templates**
 
 Move schema and template behavior from `server/cmd/codegen`. Change imports to the shared module. Generate package `v1_8`, register it as `java/1.8.9`, and expose:
 
@@ -299,17 +301,17 @@ func Version() protocol.Version
 
 Keep generated files deterministic. Do not include local paths or wall-clock timestamps in Go output.
 
-- [ ] **Step 4: Add generation tasks**
+- [x] **Step 4: Add generation tasks**
 
 `task generate` writes `generated/java/v1_8`. `task generate:check` generates into a temporary directory and fails on any diff. Both tasks validate the source manifest before generation.
 
-- [ ] **Step 5: Generate and test**
+- [x] **Step 5: Generate and test**
 
 Run `devbox run -- task generate`, `devbox run -- task generate:check`, and `devbox run -- task test -- ./generated/java/v1_8 ./internal/codegen/generator`.
 
 Expected: generated output matches and all tests pass.
 
-- [ ] **Step 6: Record the checkpoint**
+- [x] **Step 6: Record the checkpoint**
 
 Inspect all generated changes and manifest checksums. Do not commit.
 
@@ -325,11 +327,11 @@ Inspect all generated changes and manifest checksums. Do not commit.
 **Interfaces:**
 - Produces: `protocol.Edition`, `protocol.Role`, `protocol.Codec`, `protocol.Protocol`, and registry lookup by stable ID.
 
-- [ ] **Step 1: Write registry tests**
+- [x] **Step 1: Write registry tests**
 
 Test stable ID `java/1.8.9`, edition `java`, protocol number `47`, client and server codec creation, duplicate registration rejection, and unknown lookup.
 
-- [ ] **Step 2: Define the contracts**
+- [x] **Step 2: Define the contracts**
 
 ```go
 type Edition string
@@ -354,13 +356,13 @@ type Protocol interface {
 
 `Codec` exposes packet creation and payload encode/decode by state and direction. It does not own I/O or goroutines.
 
-- [ ] **Step 3: Implement and test the Java 1.8 descriptor**
+- [x] **Step 3: Implement and test the Java 1.8 descriptor**
 
 Run `devbox run -- task test -- ./protocol ./generated/java/v1_8`.
 
 Expected: all registry and descriptor tests pass.
 
-- [ ] **Step 4: Run the shared verification gate**
+- [x] **Step 4: Run the shared verification gate**
 
 Run `devbox run -- task verify`.
 
@@ -380,7 +382,7 @@ Expected: generation, formatting, lint, tests, race tests, and build pass.
 - Consumes: shared `wire/java`, `data`, and `generated/java/v1_8` packages.
 - Produces: server behavior with no imports of its local protocol or game-data packages.
 
-- [ ] **Step 1: Add the local shared dependency**
+- [x] **Step 1: Add the local shared dependency**
 
 Add:
 
@@ -390,7 +392,7 @@ require github.com/go-theft-craft/minecraft-protocol v0.0.0
 replace github.com/go-theft-craft/minecraft-protocol => ../minecraft-protocol
 ```
 
-- [ ] **Step 2: Migrate imports without deleting old packages**
+- [x] **Step 2: Migrate imports without deleting old packages**
 
 Map local imports as follows:
 
@@ -402,17 +404,17 @@ server/pkg/gamedata/versions/pc_1_8         -> minecraft-protocol/generated/java
 
 Rename identifiers only where `GameData` became `Set`.
 
-- [ ] **Step 3: Update server generation tasks**
+- [x] **Step 3: Update server generation tasks**
 
 Replace the local codegen command with `go run github.com/go-theft-craft/minecraft-protocol/cmd/mcdata-gen` or call `task generate` in the sibling repository through an explicit `PROTOCOL_DIR` variable. Do not hard-code an absolute path.
 
-- [ ] **Step 4: Refresh dependencies and run tests**
+- [x] **Step 4: Refresh dependencies and run tests**
 
 Run `devbox run -- task deps`, `devbox run -- task fmt`, `devbox run -- task lint`, `devbox run -- task test`, and `devbox run -- task build` in `server`.
 
 Expected: all commands pass while the old packages still exist but have no importers.
 
-- [ ] **Step 5: Prove local packages have no consumers**
+- [x] **Step 5: Prove local packages have no consumers**
 
 Run:
 
@@ -435,21 +437,21 @@ Expected: no matches.
 - Consumes: `github.com/go-theft-craft/minecraft-protocol/wire/java` primitives.
 - Preserves: custom legacy codec and generated packet packages.
 
-- [ ] **Step 1: Add the local shared dependency**
+- [x] **Step 1: Add the local shared dependency**
 
 Add the same `v0.0.0` requirement and `../minecraft-protocol` replacement used by the server.
 
-- [ ] **Step 2: Replace only shared primitive imports**
+- [x] **Step 2: Replace only shared primitive imports**
 
 Change imports of `github.com/go-theft-craft/server/pkg/protocol` to `github.com/go-theft-craft/minecraft-protocol/wire/java`. Do not move or rewrite `proxy/internal/legacy`.
 
-- [ ] **Step 3: Run the legacy codec tests first**
+- [x] **Step 3: Run the legacy codec tests first**
 
 Run `devbox run -- task test -- ./internal/legacy/...` in `proxy`.
 
 Expected: legacy codec and generated packet tests pass unchanged.
 
-- [ ] **Step 4: Run the full proxy gate**
+- [x] **Step 4: Run the full proxy gate**
 
 Run `devbox run -- task deps`, `devbox run -- task lint`, `devbox run -- task test`, and `devbox run -- task build`.
 
@@ -470,20 +472,20 @@ Expected: all commands pass.
 **Interfaces:**
 - Produces: a single owner for shared protocol and data code.
 
-- [ ] **Step 1: Delete only proven-unreferenced duplicates**
+- [x] **Step 1: Delete only proven-unreferenced duplicates**
 
 Remove the listed directories after Tasks 6 and 7 pass. Preserve unrelated server world and proxy legacy packages.
 
-- [ ] **Step 2: Update repository guidance**
+- [x] **Step 2: Update repository guidance**
 
 Document that shared Java protocols and PrismarineJS data live in `minecraft-protocol`. Document the exact `devbox run -- task generate` and `generate:check` commands there. Keep legacy generation instructions in proxy.
 
-- [ ] **Step 3: Run all verification gates**
+- [x] **Step 3: Run all verification gates**
 
 Run `devbox run -- task verify` in `minecraft-protocol`, then run lint, test, and build tasks in `server` and `proxy`.
 
 Expected: every command passes and no deleted package import remains.
 
-- [ ] **Step 4: Inspect final scope**
+- [x] **Step 4: Inspect final scope**
 
 Run `git status --short` separately in all three repositories. Confirm that only shared extraction, import migration, tooling, and documentation changes are present. Do not commit.

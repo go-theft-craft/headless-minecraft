@@ -1,13 +1,20 @@
 # Constructed Components, World State, and Operations Implementation Plan
 
-> **Status: tasks 1 through 6 complete; task 7 open, 2026-08-18.** Tasks 1
-> through 6 shipped as M7 (eight observed domains, wire-ordered reducers on
-> both protocols) and the outbound action path, `Client.Do`, which has since
-> gained `ActionRespawn` and the interaction primitives. **Task 7 is the one
-> piece still open**: `movement.Strategy` is not exported, so nothing proves a
-> strategy defined outside the library works, and `examples/orbit` is the first
-> caller to need it. The checkboxes below were never ticked; read the task
-> list, not the boxes.
+> **Status: tasks 1 through 6 complete; tasks 7 through 11 open, 2026-08-18.**
+> Tasks 1 through 6 shipped as M7 (eight observed domains, wire-ordered
+> reducers on both protocols) and the outbound action path, `Client.Do`, which
+> has since gained `ActionRespawn` and the interaction primitives. Their boxes
+> are ticked by outcome, checked against this repository on 2026-08-18.
+>
+> Nothing from task 7 on was built here: there is no `movement`, `inventory`,
+> `crafting`, `operation`, `digging`, `building`, or `container` package in the
+> tree. **Task 7 is the one whose absence is felt now**, because
+> `movement.Strategy` is not exported, nothing proves a strategy defined
+> outside the library works, and `examples/orbit` is the first caller to need
+> it. Tasks 8 through 11 were overtaken rather than dropped: the mechanics they
+> describe are now planned as M9.4 (digging), M9.5 (building), M9.7 (containers
+> and inventory), and M9.8 (crafting), against a simulation kernel that did not
+> exist when this plan was written.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or execute this plan inline one task at a time. Keep every checkbox current.
 
@@ -54,11 +61,11 @@
 
 **Produces:** `world.Snapshot`, `world.Reducer`, atomic snapshot publication, and `Client.Snapshot()`.
 
-- [ ] **Step 1: Write isolation and publication tests**
+- [x] **Step 1: Write isolation and publication tests**
 
 Test that an old snapshot remains unchanged after later reductions, returned collections cannot mutate stored state, concurrent readers pass the race detector, and one inbound packet publishes exactly one revision before its normalized events.
 
-- [ ] **Step 2: Add core value types and immutable indexes**
+- [x] **Step 2: Add core value types and immutable indexes**
 
 ```go
 type Vec3 struct{ X, Y, Z float64 }
@@ -74,11 +81,11 @@ type Snapshot struct {
 
 Keep large maps and slices unexported. Expose focused lookup and range methods that return values or owned copies.
 
-- [ ] **Step 3: Implement transactional reduction**
+- [x] **Step 3: Implement transactional reduction**
 
 Clone only changed indexes, reject malformed packets without publication, increment the revision once, atomically publish, and only then release normalized events.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run `devbox run -- task test:race -- ./world ./client`.
 
@@ -106,11 +113,11 @@ Run `devbox run -- task test:race -- ./world ./client`.
 
 **Produces:** typed component factories, complete version profiles, `client.Components`, strict default safeguards, scoped server authorization, circuit breakers, dependency validation, and construction-time replacement options.
 
-- [ ] **Step 1: Write construction failure tests**
+- [x] **Step 1: Write construction failure tests**
 
 Cover a missing required factory, incomplete version profile, incompatible protocol and adapter, unsupported inventory semantics, limits above hard ceilings, duplicate provider, undeclared dependency access, dependency cycle, wrong produced type, factory error, panic containment, and an automation scope without endpoint authorization. Assert that no auth provider, resolver, dialer, or goroutine starts after validation fails.
 
-- [ ] **Step 2: Define factory contracts**
+- [x] **Step 2: Define factory contracts**
 
 ```go
 type Descriptor struct {
@@ -126,7 +133,7 @@ type Factory[T any] interface {
 
 Provide a package-level generic `component.Require[T]` helper because Go 1.26 does not support generic methods. `Dependencies` exposes core ports and only the component kinds declared by the factory.
 
-- [ ] **Step 3: Define the standard graph**
+- [x] **Step 3: Define the standard graph**
 
 ```go
 type Components struct {
@@ -147,21 +154,21 @@ type Components struct {
 
 Supply `DefaultComponents()` with `safety.Strict()` and focused `WithMovement`, `WithContainers`, and equivalent options. Avoid an untyped `map[string]any` public API.
 
-- [ ] **Step 4: Define complete version profiles**
+- [x] **Step 4: Define complete version profiles**
 
 Make `client.WithVersion` accept the protocol, adapter, physics, collision, inventory synchronization, action ordering, capability defaults, and requested limits as one validated value. Supply separate built-in Java 1.8 and Java 26.1 profiles. Allow explicit copy-and-override construction for modded servers and a complete custom implementation. Gameplay packages consume profile interfaces and never branch on protocol numbers.
 
-- [ ] **Step 5: Define strict authorization and recovery**
+- [x] **Step 5: Define strict authorization and recovery**
 
 Bind an authorization declaration to the normalized endpoint and explicit scopes such as observe, move, inventory, interact, dig, and build. Require it before high-level automation. Define typed outcomes, safety events, component-local uncertainty states, and manually acknowledged circuit breakers. Strict mode allows one unresolved state-changing operation per component and no automatic retry, reconnect, resume, or breaker reset.
 
 Do not add anti-cheat detection, threshold tuning, timing randomization, proactive bot announcements, vanilla-brand spoofing, or false identity metadata. The default adapter sends only fields and payloads required by the selected protocol.
 
-- [ ] **Step 6: Build once in `client.New`**
+- [x] **Step 6: Build once in `client.New`**
 
 Topologically validate and construct the graph. Components receive stable state, sender, clock, protocol-capability, and data ports, not `*client.Client`. Freeze the graph before returning the client. Do not expose a runtime replace method.
 
-- [ ] **Step 7: Verify**
+- [x] **Step 7: Verify**
 
 Run `devbox run -- task test:race -- ./component ./version ./safety ./client`.
 
@@ -195,27 +202,27 @@ Run `devbox run -- task test:race -- ./component ./version ./safety ./client`.
 
 **Produces:** observed player facts, a replaceable revision-aware capability engine, replaceable body, physics, and collision models, and versioned vanilla defaults that defer to observed values.
 
-- [ ] **Step 1: Add ordered transcript tests**
+- [x] **Step 1: Add ordered transcript tests**
 
 Feed join, position correction, health, experience, ability, attribute, effect, equipment, held-item, environment, custom payload, respawn, time, and weather packets. Include unknown namespaced attributes and custom payload-derived abilities. Assert exact revisions.
 
-- [ ] **Step 2: Implement player reducers**
+- [x] **Step 2: Implement player reducers**
 
 Confirm teleport IDs before publishing corrected position. Replace dimension-scoped state on respawn while preserving account identity. Keep raw unknown facts alongside normalized known fields.
 
-- [ ] **Step 3: Implement dynamic capability evaluation**
+- [x] **Step 3: Implement dynamic capability evaluation**
 
 Evaluate equipment, held items, effects, attributes, abilities, pose, environment, dimension, game mode, session registries, and custom payloads for one snapshot revision. Provide typed known capabilities plus immutable namespaced raw values. Give each typed capability explicit replace, add, multiply, min, max, enable, or disable semantics. Preserve the ordered contribution trace and provenance for each result. Cache only by revision.
 
-- [ ] **Step 4: Define mechanics independently from observations**
+- [x] **Step 4: Define mechanics independently from observations**
 
 The body model resolves dimensions, eye height, poses, collision shape, and scale. The physics model resolves gravity, step height, acceleration, movement speed, jump strength, air control, flight, and jump count. The collision model resolves version-specific block shapes, fluids, unloaded boundaries, coordinate rules, and swept-body tests. They receive a snapshot and profile data and return immutable values.
 
-- [ ] **Step 5: Test changing mechanics**
+- [x] **Step 5: Test changing mechanics**
 
 Add fixtures for a one-block-tall body, custom scale, equipment-granted flight, water-only diving, velocity modifiers, non-vanilla gravity, double jump, and a potion that raises jump height to two blocks. Remove or expire each source and assert the next revision loses the capability. Verify provenance and custom plugin rules.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run `devbox run -- task test:race -- ./world ./capability ./body ./physics ./collision ./internal/adapter/java`.
 
@@ -237,23 +244,23 @@ Run `devbox run -- task test:race -- ./world ./capability ./body ./physics ./col
 
 **Produces:** immutable entity lookup, per-session registry overlays, loaded chunks, block lookup, block entities, and lighting.
 
-- [ ] **Step 1: Add entity lifecycle tests**
+- [x] **Step 1: Add entity lifecycle tests**
 
 Cover spawn, relative move, teleport, velocity, rotation, metadata, unknown metadata, attributes, equipment, passengers, events, removal, and runtime-ID reuse.
 
-- [ ] **Step 2: Add bounded chunk fixtures**
+- [x] **Step 2: Add bounded chunk fixtures**
 
 Cover single-value, indirect, and direct palettes; negative dimension height; boundary coordinates; updates; block entities; lighting; unload; truncated data; and oversized declared collections.
 
-- [ ] **Step 3: Implement immutable indexes and overlay precedence**
+- [x] **Step 3: Implement immutable indexes and overlay precedence**
 
 Remove runtime-ID and UUID indexes together. Deep-copy mutable metadata and NBT. Resolve session registry data before generated static data.
 
-- [ ] **Step 4: Decode palettes with explicit limits**
+- [x] **Step 4: Decode palettes with explicit limits**
 
 Validate bit widths, palette lengths, backing-long counts, section counts, and state IDs before allocation or indexing. Apply updates with structural sharing.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run `devbox run -- task test:race -- ./world ./internal/adapter/java` and `devbox run -- task fuzz:smoke -- ./internal/adapter/java`.
 
@@ -273,15 +280,15 @@ Run `devbox run -- task test:race -- ./world ./internal/adapter/java` and `devbo
 
 **Produces:** observed raw container state, generic click access, semantic slot references, dynamic inventory topology, and an injectable menu-driver registry.
 
-- [ ] **Step 1: Write actual-open-screen tests**
+- [x] **Step 1: Write actual-open-screen tests**
 
 Cover full content, single-slot updates, carried stack, state ID, integer properties, open, close, rejected clicks, corrections, response timeout, and a block interaction that opens an unexpected modded menu. Assert that the returned type is the server's actual namespaced menu type. A rejection or ambiguous timeout must discard pending projections and block writes until a complete authoritative state arrives.
 
-- [ ] **Step 2: Implement safe stack ownership**
+- [x] **Step 2: Implement safe stack ownership**
 
 Represent empty slots explicitly. Deep-copy item components and NBT. Compare stacks by item identity, count, and complete component data.
 
-- [ ] **Step 3: Define raw and semantic APIs**
+- [x] **Step 3: Define raw and semantic APIs**
 
 ```go
 type SlotRef struct {
@@ -299,11 +306,11 @@ The generic driver accepts protocol slot indices for every menu. Specialized dri
 
 Layouts distinguish server-advertised slots from rule-enabled slot groups. Recompute enabled groups for the current snapshot revision. Test worn equipment that enables extra inventory capacity, removal that disables it, and a correction that invalidates an in-flight slot choice. Never create a writable slot absent from the server-advertised layout.
 
-- [ ] **Step 4: Add custom-driver registration**
+- [x] **Step 4: Add custom-driver registration**
 
 Reject duplicate menu types unless replacement is explicit at construction. Freeze the registry after construction. Do not infer a layout from title text.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run `devbox run -- task test:race -- ./world ./container ./internal/adapter/java`.
 
@@ -323,19 +330,19 @@ Run `devbox run -- task test:race -- ./world ./container ./internal/adapter/java
 
 **Produces:** bounded primitive packet operations, version-defined action ordering and barriers, and keyed server-confirmation waits.
 
-- [ ] **Step 1: Write validation and confirmation tests**
+- [x] **Step 1: Write validation and confirmation tests**
 
 Cover closed and pre-ready clients, missing authorization scope, stale revisions, unloaded targets, reach, unsupported capability, queue backpressure, context cancellation, disconnect, response-before-wait, independent concurrent waits, correction, uncertain outcome, blocked component, manual breaker acknowledgement, version-specific packet ordering and barriers, and sequence wrap.
 
-- [ ] **Step 2: Define primitives**
+- [x] **Step 2: Define primitives**
 
 Include chat, command, movement update, look, stance, use block, use item, place, attack, interact entity, dig phase, select held slot, raw container click, drop, and close. Primitives carry explicit positions, faces, hands, sequence IDs, and expected snapshot revision where applicable. The selected profile maps each operation to its required ordered packet sequence and synchronization barriers.
 
-- [ ] **Step 3: Implement all-or-none packet enqueue**
+- [x] **Step 3: Implement all-or-none packet enqueue**
 
 Encode against one snapshot, register confirmation keys before enqueue, and enqueue every packet in a primitive or none. Bound pending confirmation registrations and preserve server corrections through the inbound reducer. Emit a structured safety outcome for rejection, correction, timeout, cancellation, and disconnect. Never infer success from local projection and never retry automatically.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run `devbox run -- task test:race -- ./interaction ./internal/session ./internal/adapter/java`.
 

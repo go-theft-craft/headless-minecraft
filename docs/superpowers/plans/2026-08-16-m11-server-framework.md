@@ -3,8 +3,9 @@
 > **Status: complete, 2026-08-18.** Shipped in `server` as M11.1 through M11.7,
 > each under its own plan in that repository. `server` is a framework:
 > composable seams, a version-neutral world model, storage, world generation,
-> provenance, observability, and commands. The checkboxes below were never
-> ticked and are not evidence; do not re-run this plan.
+> provenance, observability, and commands. The boxes below are ticked by
+> outcome, checked against the `server` working tree on 2026-08-18, not as a
+> record that each step ran as written. Do not re-run this plan.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or execute this plan inline one task at a time. Keep every checkbox current.
 
@@ -89,7 +90,7 @@ or silently clamping, which is how `headless-minecraft`'s client options already
 behave. `New` performs no network, no disk, and no key generation: it validates
 and constructs, and `Start` does the rest.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestNewRejectsABadListenAddress(t *testing.T) {
@@ -125,12 +126,12 @@ func TestNewDoesNoIO(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `devbox run -- task test -- .`
 Expected: FAIL, `undefined: server.New`.
 
-- [ ] **Step 3: Implement options and the constructor**
+- [x] **Step 3: Implement options and the constructor**
 
 ```go
 var ErrInvalidServer = errors.New("invalid server configuration")
@@ -164,12 +165,12 @@ func New(opts ...Option) (*Server, error) {
 Move key generation out of `main` and into `Start`, where the failure is the
 server's rather than the application's.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `devbox run -- task test -- .`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server.go options.go options_test.go doc.go internal/
@@ -240,7 +241,7 @@ the word in an options API. `CommandSet` costs seven characters and is the name
 a reader can guess. If the design's name is preferred, change it here before
 Task 2 rather than after M11.7 has rendered it to a brigadier tree.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestEverySeamHasAWorkingDefault(t *testing.T) {
@@ -257,24 +258,24 @@ func TestEverySeamHasAWorkingDefault(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `devbox run -- task test -- .`
 Expected: FAIL, `undefined: server.NoStore`.
 
-- [ ] **Step 3: Implement the defaults**
+- [x] **Step 3: Implement the defaults**
 
 `NoStore` keeps chunks in memory and discards them on close. `EmptyGenerator`
 returns air. `NoObserver` drops samples. `NoCommands` resolves nothing. Each is
 a few lines, and each is what makes `server.New()` with no options a running
 server rather than a configuration exercise.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `devbox run -- task test -- .`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add seams.go seams_test.go && git commit -m "feat(server): declare the framework seams"
@@ -303,7 +304,7 @@ A framework whose only example is the full server has not shown that its pieces
 come apart. That is what `minimal` and `flat` are for, and neither is a
 demonstration: both are compiled and run by CI.
 
-- [ ] **Step 1: Create the examples module**
+- [x] **Step 1: Create the examples module**
 
 ```bash
 mkdir -p examples/vanilla examples/minimal examples/flat
@@ -311,7 +312,7 @@ cd examples && go mod init github.com/go-theft-craft/server/examples
 go mod edit -replace github.com/go-theft-craft/server=../
 ```
 
-- [ ] **Step 2: Write `minimal`, the smallest thing that runs**
+- [x] **Step 2: Write `minimal`, the smallest thing that runs**
 
 ```go
 func main() {
@@ -332,14 +333,14 @@ func main() {
 If `minimal` needs more than this to accept a login, a default is missing and
 Task 2 is not finished.
 
-- [ ] **Step 3: Move `vanilla` verbatim**
+- [x] **Step 3: Move `vanilla` verbatim**
 
 Copy `cmd/server/main.go` to `examples/vanilla/main.go` and rewrite its
 construction to use `server.New` with options rather than
 `internal/server.New`. Every flag keeps its name and its default: the byte-parity
 fixtures invoke this binary and a renamed flag breaks them for no reason.
 
-- [ ] **Step 4: Repoint the harness**
+- [x] **Step 4: Repoint the harness**
 
 Update the Taskfile, the CI workflows, and `interop/node_client_test.go` to
 build and run `examples/vanilla`. Add an `examples` task that lints, tests, and
@@ -347,7 +348,7 @@ vets the nested module, and call it from `verify` — `go test ./...` from the
 root does not descend into a nested module, so without this the examples rot
 silently.
 
-- [ ] **Step 5: Run the harness gates**
+- [x] **Step 5: Run the harness gates**
 
 Run: `devbox run -- task verify`
 Run: `devbox run -- task test:parity`
@@ -355,7 +356,7 @@ Run: `devbox run -- task test:interop`
 Expected: PASS, with byte-parity fixtures unchanged. If a fixture moved, stop:
 the refactor changed behaviour and that is the one outcome M11.1 may not have.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add examples Taskfile.yml .github interop && git rm -r cmd
@@ -377,7 +378,7 @@ Per-chunk and per-feature attribution is **not** in M11.1. It is sequenced after
 M11.2, because measuring a chunk model that is about to be replaced produces
 numbers that expire. The counters below do not expire.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestTheTickLoopSamplesItsOwnDuration(t *testing.T) {
@@ -413,23 +414,23 @@ func TestNoObserverCostsNothingPerTick(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `devbox run -- task test -- ./observe`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement the counters**
+- [x] **Step 3: Implement the counters**
 
 Sample tick duration in the existing `tickLoop`, and CPU, memory, and network
 on a slower cadence. Guard every sample construction behind a check for the
 no-op observer so the off path builds nothing.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `devbox run -- task test -- ./observe`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add observe internal/ && git commit -m "feat(observe): sample tick, CPU, memory, and network"

@@ -1,13 +1,15 @@
 # M9 Gameplay Mechanics Implementation Plan
 
-> **Status: M9.1 complete but for its live check, 2026-08-18.** Every automated
-> gate is green against a stub upstream; the recording sink, trace extraction,
-> replay gate, and `mcrelay trace` / `mcrelay verify` shipped in `relay`. What
-> remains is the manual check — one real 1.8.9 client through the proxy to a
-> pinned offline vanilla server — whose procedure is in
+> **Status: M9.1 complete, 2026-08-18.** The recording sink, trace extraction,
+> replay gate, and `mcrelay trace` / `mcrelay verify` shipped in `relay`, and
+> the live check ran on 2026-08-17 against a real 1.8.9 client and a pinned
+> offline vanilla server. It found one defect: a capture taken from a server
+> with compression enabled did not replay, because the frame that turns
+> compression on was withheld as though it were key material. With that fixed,
+> a fresh capture at vanilla's default threshold replays to its own digest and
+> traces. Recordings taken before the fix stay unreadable. The record is
 > `../relay/docs/verification/2026-08-17-capture-oracle.md`. M9.2 through M9.8
-> have their own stage plans; the unticked commit steps below are bookkeeping,
-> not work.
+> have their own stage plans.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or execute this plan inline one task at a time. Keep every checkbox current.
 
@@ -199,7 +201,7 @@ worse relay than the one that shipped.
 Run: `devbox run -- task verify`
 Expected: PASS, core and examples both.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add examples/minecraft && git commit -m "fix(minecraft): follow the protocol's transitions so captures decode"
@@ -284,7 +286,7 @@ Expected: PASS. `TestEndToEndRecording` drives a real status exchange through
 the proxy and asserts the recording holds named packets — a file of the right
 size full of unidentified frames is the failure Task 2 existed to close.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add examples/minecraft && git commit -m "feat(capture): record both directions to a replayable file"
@@ -335,7 +337,7 @@ trajectories into one nobody followed.
 Run: `devbox run -- task test:examples -- ./minecraft/trace/`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add examples/minecraft/trace && git commit -m "feat(trace): extract absolute entity traces from a recording"
@@ -389,7 +391,7 @@ login exchanges no keys, and the proxy cannot stand between an online one.
 Run: `devbox run -- task test:examples -- ./minecraft/replaycheck/`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add examples/minecraft/replaycheck && git commit -m "feat(replaycheck): gate a recording on deterministic replay"
@@ -429,18 +431,24 @@ Subcommand dispatch ahead of the relay flags, each mode owning its own
 Run: `devbox run -- task verify`
 Expected: PASS, core and examples.
 
-- [ ] **Step 5: Capture one real session**
+- [x] **Step 5: Capture one real session**
 
-**Not run — this needs a real client and a pinned vanilla server, which no
-automated step can stand in for.** The procedure is written out in
+**Run 2026-08-17, against a real 1.8.9 client and a pinned offline vanilla
+server.** The procedure and its results are in
 `relay/docs/verification/2026-08-17-capture-oracle.md`, including the flag that
 is easy to miss: `-protocol java/1.8.9`, because the default is 775 and a 47
 session recorded under a 775 header will not replay.
 
-Until this runs, M9.1's gate is met against a stub upstream whose packets this
-repository generated, which is exactly the agreement an oracle cannot rely on.
+It found what the stub could not. Every capture from a server with compression
+at its default threshold failed to replay, because the frame that turns
+compression on was being withheld as though it were key material. No automated
+test saw it, since the stub and the recorder shared the misunderstanding.
+With the fix in, a fresh capture replays to its own digest and traces, and
+`examples/minecraft/login_test.go` now drives four threshold scripts through the
+same gate so the defect cannot come back quietly. Recordings taken before the
+fix stay unreadable and cannot be repaired.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add . && git commit -m "feat(mcrelay): add trace extraction and the replay gate"

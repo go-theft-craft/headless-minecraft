@@ -138,8 +138,9 @@ below are what is left of them.
   7 tasks). `JumpGap` and the missing postures, plus the read-only edges the
   navigation design never named. Task 1 builds the jump reach table by running
   the movement kernel; no later task takes a gap distance from anywhere else.
-  Task 5 was blocked on the climbable-block property; that extraction landed on
-  2026-08-18, so nothing outside this plan blocks it now.
+  Task 5 is blocked on the climbable-block property. The extraction landed on
+  2026-08-18, but `minecraft-protocol` has not released it, so what task 5 now
+  waits on is the mutating-edges plan's task 2.
 - [ ] **Mutating edges and pillar**
   ([plan](docs/superpowers/plans/2026-08-18-mutating-edges-pillar.md),
   6 tasks, task 1 done). `EdgePlace` and `EdgePillar` do not exist:
@@ -268,27 +269,30 @@ through 26.2, and the repository is released at `v1.0.1`.
 
 ---
 
-## Plans whose checkboxes are stale
+## Plans whose checkboxes were stale
 
-These plans have unticked steps and shipped anyway. Each one now opens with a
-status header saying what shipped and where, added 2026-08-18 in its own
-repository, so the correction survives without this file. Read the header and
-the code, not the boxes; do not re-run them.
+Fixed 2026-08-18. Each of these shipped with unticked steps, because it was
+executed in another repository under another plan, and anyone reading the boxes
+concluded the opposite. The boxes are now ticked by outcome, checked against the
+working trees, rather than as a record that each step ran as written; where a
+later stage plan did the work differently, that plan is the record of how. Every
+one still opens with a status header saying what shipped and where.
 
-| Plan | Boxes | Why it is done |
+| Plan | Boxes | State |
 | --- | --- | --- |
-| `headless-minecraft` shared-protocol extraction, stream toolkit, immutable data contracts, reference extraction, simulation foundation | 0 of 41/39/26/46/62 | M0, M2, M8.1 and M8 are complete in the owning repositories |
-| `headless-minecraft` world-state and actions | 0 of 56 | Tasks 1–6 shipped as M7; **task 7, `movement.Strategy`, is genuinely open** and listed above |
-| `headless-minecraft` headless-client authentication | 0 of 35 | M6.3 shipped; the device-code half is M6.4, listed above |
-| `headless-minecraft` M11 server framework umbrella | 0 of 21 | M11.1–M11.7 complete in `server` |
-| `headless-minecraft` navigation terrain and search | 0 of 54 | `minecraft-simulation/navigation` carries `search.go`, `frontier.go`, `edge.go`, and the four read-only edge kinds |
-| `headless-minecraft` M10 conformance and releases (2026-08-16) | 0 of 33 | Superseded by the 2026-08-18 reconciliation above |
-| `minecraft-protocol` protocol 47 codecs, managed stream, encryption lifecycle, schema-first codegen | 0 of 27/97/85/27 | M0, M1, M2, M2.5 complete; the roadmap's "modern-login transitions" bullet was closed by M4 |
-| `minecraft-protocol` relay proxy framework | 0 of 106 | Shipped as the `relay` repository, now at 0.4.x |
-| `minecraft-protocol` routing, capture, replay, CLI | 1 of 52 | Its one open step is marked "not done, deliberately" |
-| `server` protocol migration, play migration, M11.1 framework shape | 0 of 106, 21 of 44, 0 of 45 | M3, M6.1, and M11.1 are complete — `pkg/protocol` and `pkg/gamedata` no longer exist. The play-migration plan's own "Task 5 is in progress" note is stale; confirm nothing was left behind when M10 Task 5 freezes the surface |
-| `minecraft-simulation` M8.1 ground truth, M8.2 geometry and collision | 0 of 51/57 | Both complete and gated against a real server jar |
-| `minecraft-reference` standalone release, stable family support | 8 of 16, 0 of 51 | The repository is standalone, released, and its generated support table is populated |
+| `headless-minecraft` shared-protocol extraction, stream toolkit, immutable data contracts, reference extraction, simulation foundation | 39/39, 41/41, 26/26, 46/46, 62/62 | M0, M2, M8.1 and M8 are complete in the owning repositories |
+| `headless-minecraft` world-state and actions | 31 of 56 | Tasks 1–6 shipped as M7. **Tasks 7 through 11 are open**; task 7, `movement.Strategy`, is listed above, and 8 through 11 are now M9.4, M9.5, M9.7, and M9.8 |
+| `headless-minecraft` headless-client authentication | 24 of 35 | M6.3 shipped. Tasks 3, 4, and 5 are open: `auth` has no token storage at all, and the device-code half is M6.4, listed above |
+| `headless-minecraft` M9 gameplay umbrella | 32/32 | M9.1's live check ran 2026-08-17 and found the compression defect; M9.2 onward have their own stage plans |
+| `headless-minecraft` M11 server framework umbrella | 21/21 | M11.1–M11.7 complete in `server` |
+| `headless-minecraft` navigation terrain and search | 54/54 | `minecraft-simulation/navigation` carries `search.go`, `frontier.go`, `edge.go`, and the four read-only edge kinds |
+| `headless-minecraft` M10 conformance and releases (2026-08-16) | 0 of 33, deliberately | Superseded by the 2026-08-18 reconciliation above. Nothing in it ran, so nothing in it is ticked |
+| `minecraft-protocol` protocol 47 codecs, managed stream, encryption lifecycle, schema-first codegen | 27/27, 97/97, 85/85, 27/27 | M0, M1, M2, M2.5 complete; the roadmap's "modern-login transitions" bullet was closed by M4 |
+| `minecraft-protocol` relay proxy framework | 0 of 106, deliberately | The copy here is the draft. The executed copy lives in `relay` with every step ticked, and three later documents there amend it |
+| `minecraft-protocol` routing, capture, replay, CLI | 51 of 52 | Its one open step is marked "not done, deliberately" |
+| `server` protocol migration, play migration, M11.1 framework shape | 106/106, 44/44, 45/45 | M3, M6.1, and M11.1 are complete — `pkg/protocol` and `pkg/gamedata` no longer exist. Confirm nothing was left behind when M10 Task 5 freezes the surface |
+| `minecraft-simulation` M8.1 ground truth, M8.2 geometry and collision | 51/51, 57/57 | Both complete and gated against a real server jar |
+| `minecraft-reference` standalone release, stable family support | 16/16, 51/51 | The repository is standalone, released, and its generated support table is populated |
 
 ---
 
