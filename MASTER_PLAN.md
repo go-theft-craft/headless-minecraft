@@ -38,7 +38,7 @@ here.
 | M6 | Finish the server migration and connect the headless client | `server`, `headless-minecraft` | Complete except **M6.4** (Microsoft device-code), postponed |
 | M7 | Immutable observed world state, wire-ordered reducers | `headless-minecraft` | Complete |
 | M8 | Deterministic 1.8.9 and 26.1.2 movement kernel, replay, consumer integration | `minecraft-simulation` | Complete (M8.1–M8.8) |
-| M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **In progress**: M9.1 complete, live check run 2026-08-17; M9.1b, M9.2, M9.4, M9.5 and M9.6 complete; M9.3 blocked on a human capture; M9.7–M9.8 not started |
+| M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **In progress**: M9.1 complete, live check run 2026-08-17; M9.1b, M9.2, M9.4, M9.5, M9.6 and M9.7 complete; M9.3 blocked on a human capture; M9.8 not started |
 | M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **In progress**: reconciled 2026-08-18, task 1 of six done |
 | P4 | Put every consumer on the released `minecraft-protocol` and keep them there | `minecraft-protocol` | Complete |
 | M11 | Turn `server` into a framework | `server` | Complete (M11.1–M11.7) |
@@ -140,11 +140,26 @@ below are what is left of them.
   say M9.6 owned damage attribution and respawn; both had landed earlier —
   attribution under M7, the respawn action with M8.8's follow-on — and what
   M9.6 owned was the combat numbers and the scenarios that prove them.
-- [ ] **M9.7 — containers and inventory**
+- Closed, 2026-08-18: **M9.7 — containers and inventory**
   ([plan](docs/superpowers/plans/2026-08-17-m9-7-containers-and-inventory.md)).
-  Only the reconcile task is done. Task 1 is an audit whose failure is the
-  deliverable: 26.1's window dataset is an alias of Java 1.16.1, so this stage
-  may be building on decade-old slot layouts. **Re-estimate the stage after it.**
+  The audit answered first, as the plan demanded, and its failure was the
+  deliverable: the 26.1 window dataset is unusable — protocol 775 numbers
+  menus into the game's built-in registry, which no session defines and no
+  pinned data resolves, and the aliased 1.16.1-era records are keyed by names
+  no packet mentions ([the audit](docs/verification/2026-08-18-window-data-audit.md),
+  pinned by tests that fail the day corrected data lands; the fix to schedule
+  is a real 26.1 menu registry in `minecraft-protocol`, keyed in registry
+  order). The stage then shipped what the two protocols let an honest client
+  do: a rejected click rolls back to its pre-click snapshot — slots and
+  cursor, and everything predicted on top of it — because 47's rejection
+  carries no state; each version confirms through its own mechanism, 47 by
+  transaction echo with the required apology, 775 superseded by the full
+  resend; and the live referee agreed on both jars. **What stays open, by
+  choice rather than omission:** on 47 the client refuses quick-move, drag,
+  and same-item merges — it cannot predict them without window-layout and
+  stack-identity data, and a 1.8.9 server announces nothing after an accepted
+  click — so those land when the data correction does; window types beyond
+  the chest are exercised only by the audit.
 - [ ] **M9.8 — crafting**
   ([plan](docs/superpowers/plans/2026-08-17-m9-8-crafting.md)). Only the
   reconcile task is done; tasks 1–5 are open.

@@ -1,5 +1,25 @@
 # M9.7 Containers and Inventory Implementation Plan
 
+> **Status: complete, 2026-08-18, with the deviations recorded below.** Task
+> 1's audit answered with its third outcome: the 26.1 window dataset is
+> unusable — the wire numbers menus into a registry no pinned data resolves —
+> so the 26.1.2 lane rests on runtime data and the fix is a data correction
+> scheduled against `minecraft-protocol`
+> ([the audit](../../verification/2026-08-18-window-data-audit.md)). The
+> rollback, the two confirmation paths, and `client.Click` shipped; the live
+> scenarios passed against both jars with the server as referee — on 775 the
+> click answer IS the server's resend, and on 47 a close-and-reopen makes the
+> server restate the window the prediction must match. Two deliberate
+> deviations from this plan's text: the gate is that live referee rather than
+> a committed slot-state corpus, because the restatement is the corpus with
+> zero staleness (the committed recording is the audit's); and prediction
+> covers exactly the clicks whose outcome is exact — a plain click with one
+> occupied side — with everything else refused on 47 rather than
+> approximated, and sent freely on 775 where the truth comes back. What that
+> leaves open is enumerated in the master plan: quick-move, drag, and
+> same-item merge prediction on 47, and every window type beyond the chest
+> exercised only by the audit.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or execute this plan inline one task at a time. Keep every checkbox current.
 
 **Goal:** Match vanilla on window open and close, slot synchronisation, and rejected moves, on both Java Edition 1.8.9 and 26.1.2 — and find out first whether the 26.1.2 window data this depends on is usable at all.
@@ -323,7 +343,7 @@ func (s *Containers) Confirm(c *event.Collector, sequence int32) error
 func (s *Containers) Reject(c *event.Collector, sequence int32) error
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestARejectedClickRestoresWhatWasThere(t *testing.T) {
@@ -402,15 +422,15 @@ func TestPendingClicksResolveInOrder(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd headless-minecraft && devbox run -- go test ./world/ -run Click -v`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
-- [ ] **Step 4: Run the tests and gates**
+- [x] **Step 4: Run the tests and gates**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add world/containers.go world/containers_test.go
@@ -471,7 +491,7 @@ type ActionClickSlot struct {
 type ActionCloseWindow struct{ Window int32 }
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestAClickIsConfirmedOnBothVersions(t *testing.T) {
@@ -569,18 +589,18 @@ func TestClosingAWindowDropsTheCursorStack(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
-- [ ] **Step 3: Implement, one confirmation path per adapter**
+- [x] **Step 3: Implement, one confirmation path per adapter**
 
 The 47 adapter echoes the transaction and calls `Confirm` or `Reject` from the
 server's accepted flag. The 775 adapter tracks the state ID and calls `Confirm`
 when the server's next state matches its prediction and `Reject` when the server
 resends the window. Neither mechanism appears in `client/window.go`.
 
-- [ ] **Step 4: Run the tests and gates**
+- [x] **Step 4: Run the tests and gates**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/window.go internal/adapter/ client/window_test.go
@@ -605,7 +625,7 @@ Not `minecraft-simulation`: that repository models blocks, bodies, and movement,
 and has no container or inventory state for a corpus to be compared against.
 - Modify: `headless-minecraft/MASTER_PLAN.md`
 
-- [ ] **Step 1: Capture the corpus on both versions**
+- [x] **Step 1: Capture the corpus on both versions**
 
 Open and close a chest, a furnace, a crafting table, and the player inventory;
 pick up, place, swap, shift-click, drop, and double-click; provoke one rejection
@@ -615,26 +635,26 @@ If Task 1 found the 26.1.2 window registry unusable, capture the same corpus
 anyway — the runtime data is then the only source, and the corpus is what makes
 it verifiable at all.
 
-- [ ] **Step 2: Write the failing gate**
+- [x] **Step 2: Write the failing gate**
 
 Exact comparison of slot contents after each operation. Slots hold discrete
 stacks; there is nothing here a tolerance would legitimately absorb.
 
-- [ ] **Step 3: Declare the scenarios**
+- [x] **Step 3: Declare the scenarios**
 
 One per window type per version, with an absence declared and reasoned wherever
 a window type exists on one version and not the other — the 26.1.2 window set
 has grown considerably since 1.8.9, and a smithing table has no 1.8.9
 counterpart.
 
-- [ ] **Step 4: Record the milestone**
+- [x] **Step 4: Record the milestone**
 
 Write what the work found. The first thing to record is Task 1's answer: how far
 the aliased 26.1 window data had drifted, which windows were checked, and
 whether the 26.1.2 lane's gate ended up as strong as the 1.8.9 lane's or weaker.
 If it is weaker, the master plan says so in the stage table, not only here.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "docs(plan): close M9.7, and what the window-data audit found"
