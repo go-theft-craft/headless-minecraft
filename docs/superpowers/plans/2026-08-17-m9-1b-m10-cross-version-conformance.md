@@ -1127,7 +1127,7 @@ M10 Task 1's `Artifact` shape already carries what is needed — `Name`,
 that the manifest must hold a 26.1.2 entry everywhere it holds a 1.8.9 one, and
 that a manifest missing one is a failure rather than a smaller matrix.
 
-- [ ] **Step 1: Add the completeness test to M10 Task 1**
+- [x] **Step 1: Add the completeness test to M10 Task 1**
 
 Insert into Task 1's step list, as a new failing test:
 
@@ -1172,7 +1172,7 @@ func gameVersion(artifactVersion string) string
 func keys(set map[string]bool) []string
 ```
 
-- [ ] **Step 2: Amend Task 1's `Artifact` documentation**
+- [x] **Step 2: Amend Task 1's `Artifact` documentation**
 
 Add to the `Name` field comment the kinds this now implies:
 `"paper"`, `"vanilla-server"`, `"vanilla-client"`, `"node-minecraft-protocol"`,
@@ -1182,7 +1182,7 @@ the game build (`"1.8.9-build-445"`, `"26.1.2-build-74"`) and that
 the dataset and a patch version appears only where a specific build is meant,
 so the manifest is one of the places the patch version is meant.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-08-16-m10-conformance-releases.md
@@ -1204,7 +1204,7 @@ Two rows in that matrix are silently single-version. The `headless-minecraft`
 row names "pinned Paper" without a version, and the `minecraft-simulation` row
 names "traces from the M9.1 capture repository", which is protocol 47 only.
 
-- [ ] **Step 1: Replace the matrix table**
+- [x] **Step 1: Replace the matrix table**
 
 | Under test | Driven against | Proves |
 | --- | --- | --- |
@@ -1218,7 +1218,7 @@ names "traces from the M9.1 capture repository", which is protocol 47 only.
 | `minecraft-simulation` | Protocol 775 traces from the capture oracle (M9.1b) | The kernel reproduces vanilla 26.1.2 trajectories |
 | `headless-minecraft` | Pinned Paper with an open-source anti-cheat | Ordinary automation draws no alerts |
 
-- [ ] **Step 2: Record what the Node lane may not be able to do**
+- [x] **Step 2: Record what the Node lane may not be able to do**
 
 M4 already found that upstream Node `minecraft-protocol` had no 775 support and
 that the differential suite waits on it. Add a sentence to Task 2 saying so: if
@@ -1227,7 +1227,7 @@ implementation available" with the date checked, and the 775 codecs rest on the
 live client and server lanes alone. An absent lane that says why is evidence; an
 absent lane that says nothing reads as coverage.
 
-- [ ] **Step 3: Add the matrix-completeness test to Task 2**
+- [x] **Step 3: Add the matrix-completeness test to Task 2**
 
 This test reads the lanes as data, which M10 Task 2 does not currently produce —
 its lanes are prose in a table. Add this to that task's `Produces` block:
@@ -1270,7 +1270,7 @@ func TestEveryVersionedLaneRunsOnBothVersions(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-08-16-m10-conformance-releases.md

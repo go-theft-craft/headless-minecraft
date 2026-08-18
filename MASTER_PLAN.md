@@ -513,7 +513,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M8.6 | Canonical recording and replay, and a six-target determinism matrix | `minecraft-simulation` | Complete; all six targets agree, and the matrix found an arm64 fused-multiply-add bug | M8.3 for encoding, M8.4 for the matrix | [M8.6 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-6-replay-and-determinism.md) |
 | M8.7 | `profile/java/v26_1` for the player, plus a 26.1.2 physics dumper and dataset | `minecraft-reference`, `minecraft-protocol`, `minecraft-simulation` | Complete; 4,800 ticks agree with a real 26.1.2 server, and four rules the reading got wrong were found by asking it | M8.4, M4 | [M8.7 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-7-v26-1-player-movement.md) |
 | M8.8 | One kernel driven by client prediction and server authority, gated on zero corrections from vanilla | `minecraft-simulation`, `headless-minecraft`, `server` | Complete; zero corrections from a real 1.8.9 server and a real 26.1.2 server, in offline mode | M8.4, M6, M7 | [M8.8 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) |
-| M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic, each verified against both 1.8.9 and 26.1.2 | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.1b planned; M9.3–M9.8 plans drafted ahead of their prerequisites, each with a reconcile-first task; M9.2 unblocked by M8.4 and awaiting M8.8 | M9.1 on M5 and `relay` v0.2.0; M9.1b on M9.1 and M4; M9.2–M9.8 on M8.8, M9.1, and M9.1b | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite), [M9.1b–M10 cross-version plan](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) |
+| M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic, each verified against both 1.8.9 and 26.1.2 | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.1b complete, so both versions have an oracle and a gate harness; M9.3–M9.8 plans drafted ahead of their prerequisites, each with a reconcile-first task; M9.2 next | M9.1 on M5 and `relay` v0.2.0; M9.1b on M9.1 and M4; M9.2–M9.8 on M8.8, M9.1, and M9.1b | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite), [M9.1b–M10 cross-version plan](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps, [M10 plan](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) |
 | M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | Complete: M11.1 through M11.7 | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), six sub-milestone designs, and a plan for each, [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) |
 
@@ -1439,7 +1439,7 @@ independently verifiable against a vanilla server.
 | Stage | Deliverable | Exit criterion |
 | --- | --- | --- |
 | M9.1 | Entity-trace capture in a new protocol 47 proxy repository | A captured trace replays deterministically from its recording |
-| M9.1b | The same capture oracle on protocol 775, against a pinned 26.1.2 server | A 775 trace replays deterministically, and the replay tolerance is derived from 775's position encoding rather than 1.8's |
+| M9.1b | The same capture oracle on protocol 775, against a pinned 26.1.2 server | Complete 2026-08-18. Three 26.1.2 recordings replay to their own digests. The relative move is 4096 units a block, measured from two arrows landing on one surface; the tolerance is zero at an absolute sample, because 775 sends `float64`, and 1/4096 per relative move, against 47's 1/32 everywhere |
 | M9.2 | Dropped item and arrow rules, both profiles | Captured traces replay within tolerance on 1.8.9 and 26.1.2 |
 | M9.3 | Movement scenarios | Correction, teleport, and disconnect mid-action behave as vanilla on 1.8.9 and 26.1.2 |
 | M9.4 | Digging and block breaking | Break times match vanilla for tool, block, and effect combinations on 1.8.9 and 26.1.2 |
@@ -1468,16 +1468,19 @@ affect later stages:
 
 Two further constraints belong to the cross-version gates above:
 
-- **The capture oracle is protocol 47 only.** M9.1 builds a proxy that speaks
-  47, in front of a pinned 1.8.9 server, and every stage from M9.2 on is judged
-  against traces it produces. Nothing verifies 26.1.2 behavior until a 775
-  capture lane exists. M9.1b is that lane, and it gates M9.2 onward just as
-  M9.1 does.
+- **The capture oracle reads both versions, as of 2026-08-18.** M9.1 built a
+  proxy speaking 47 in front of a pinned 1.8.9 server; M9.1b added 775 against a
+  pinned 26.1.2 one, as a second implementation rather than a flag, because the
+  packet sets, the coordinate scales, and the spawn packets all differ. A
+  version with no registered extractor now fails rather than being decoded by
+  another version's rules.
 - **Some mechanics have no 1.8.9 counterpart, and that is a finding, not a
   failure.** The attack cooldown M9.6 names is a 1.9 addition; 1.8.9 has none.
   A per-version gate must be allowed to say "this behavior does not exist in
   this version" and record why, rather than forcing a shared expectation onto
-  two games that disagree.
+  two games that disagree. `relay/examples/minecraft/conform` is where that is
+  enforced: a scenario naming no lane for a readable version fails to run, and
+  an absent lane must carry a reason.
 
 Drafting the M9.3–M9.8 stage plans surfaced three more, worth carrying here
 because each one changes what a stage costs:
@@ -1558,12 +1561,42 @@ because each one changes what a stage costs:
   offline vanilla server, verified and traced. Procedure in
   `../relay/docs/verification/2026-08-17-capture-oracle.md`. Until it runs, the
   oracle is only known to agree with our own encoder.
-- [ ] Extend the capture oracle to protocol 775 against a pinned vanilla 26.1.2
+- [x] Extend the capture oracle to protocol 775 against a pinned vanilla 26.1.2
   server, derive that version's replay tolerance from its own position
   encoding, and build the two-version gate harness M9.2–M9.8 share (M9.1b).
-  Plan in
-  `docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md`.
-  Until it lands, "match vanilla" in the M9 stages means 1.8.9 alone.
+  Done 2026-08-18. The extractor is now one implementation per version behind a
+  registry, so an unregistered version fails at `ErrUnsupportedProtocol` rather
+  than being decoded by another version's rules. Three recordings from a real
+  26.1.2 server replay to their own digests, which is the gate.
+
+  The relative-move scale is measured, not assumed: two arrows summoned onto one
+  flat surface three blocks apart in height each reported its whole fall as a
+  single `int16` delta, of 20275 and 32563 units, so a block is
+  (32563 − 20275) / 3 = 4096 units — and both landings then resolve to
+  y = −59.949951171875, the same number from two different heights. 47's scale
+  is 32 with an `int8` delta, so a shared implementation would have shrunk every
+  775 move by a factor of 128. The tolerances follow from the encodings: 47 gets
+  1/32 of a block everywhere, 775 gets zero at an absolute sample, because its
+  position packets are `float64`, and 1/4096 per relative move.
+
+  What surprised the work: 775 consolidated 47's five spawn packets into one
+  carrying an entity type, so the family a trace reports is now a registry
+  lookup rather than packet identity, and the extractor loads 26.1's data set to
+  do it. And the velocities a real server sends do not decode — values repeat to
+  sixteen digits across unrelated entities, and a velocity packet disagrees with
+  the sync packet that follows it for the same entity, whose own `float64` delta
+  is plausible. The suspect is `minecraft-protocol`'s `lpVec3` codec, whose
+  encoder and decoder agree with each other so every round-trip test passes.
+  Positions are unaffected. **M9.2 must not rest on a 775 sample's `Velocity`
+  until that codec is checked against vanilla's own encoder.** Recorded in
+  `../relay/docs/verification/2026-08-17-capture-oracle.md`, evidence in
+  `../oracle-evidence/2026-08-18-relay-775/`.
+
+  Still open: no real vanilla 26.1.2 client was available, so the capture was
+  taken with this repository's own headless client. That leaves the packet mix a
+  real client sends unexercised; the wire format itself comes from the server's
+  frames.
+
   M9.1b also inherits three measurements nobody owned, because its pinned
   26.1.2 server is the first real 775 peer any of this code meets: the largest
   play-state frame and decompressed body a real server sends — M4 measured
@@ -2127,7 +2160,7 @@ The three worth carrying furthest:
 - [M9.6 attack, damage, and knockback](docs/superpowers/plans/2026-08-17-m9-6-attack-damage-knockback.md) — drafted; owns the respawn primitive, and demonstrates the harness's `Absent` outcome on the attack cooldown
 - [M9.7 containers and inventory](docs/superpowers/plans/2026-08-17-m9-7-containers-and-inventory.md) — drafted; opens with an audit task because the 26.1 window dataset is an alias of Java 1.16.1
 - [M9.8 crafting](docs/superpowers/plans/2026-08-17-m9-8-crafting.md) — drafted; closes M9, and requires every stage's lanes to be accounted for before it does
-- [M9.1b and M10 cross-version conformance](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) — planned. The protocol 775 capture oracle, per-version replay tolerances, the two-version gate harness, and the M10 matrix rows that close the 1.8-only gap
+- [M9.1b and M10 cross-version conformance](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) — complete. The protocol 775 capture oracle, per-version replay tolerances measured from each version's own encoding, the two-version gate harness M9.2–M9.8 share, and the M10 matrix rows that close the 1.8-only gap
 - [M10 conformance and releases](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) — planned; its Tasks 1 and 2 are amended by the cross-version plan above
 - [M11 server framework](docs/superpowers/plans/2026-08-16-m11-server-framework.md) — planned
 - [M11.2 world model plan](../server/docs/superpowers/plans/2026-08-17-m11-2-world-model.md) — 9 tasks; the override map goes last, behind two shims
