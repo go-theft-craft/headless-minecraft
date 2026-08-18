@@ -1,0 +1,17 @@
+{
+  "source": "confirmed against pinned vanilla 1.8.9 and 26.1.2 servers on 2026-08-18 by client's TestVanillaMirroringMatchesTheCorpus and its 26 variant: the mirrored grid crafted and the flipped one did not, on both",
+  "cases": [
+    {
+      "name": "wooden axe, mirrored horizontally",
+      "grid": ["pp.", "sp.", "s.."],
+      "vanillaCrafts": true,
+      "why": "both jars try every shaped recipe in both horizontal orientations: 1.8.9's ShapedRecipes.matches checks each offset mirrored and not, and 26.1.2's ShapedRecipePattern does the same"
+    },
+    {
+      "name": "wooden axe, flipped vertically",
+      "grid": [".s.", "ps.", "pp."],
+      "vanillaCrafts": false,
+      "why": "neither jar flips a pattern vertically; a matcher that did would craft tools from upside-down grids vanilla refuses"
+    }
+  ]
+}

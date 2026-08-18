@@ -4,6 +4,8 @@
 package crafting_test
 
 import (
+	"encoding/json"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -438,5 +440,62 @@ func TestShiftCraftingAnEmptyGridProducesNothingRatherThanLooping(t *testing.T) 
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("ShiftCraft on an empty grid did not terminate")
+	}
+}
+
+// mirrorCase is one row of the committed mirror corpus.
+type mirrorCase struct {
+	Name          string   `json:"name"`
+	Grid          []string `json:"grid"`
+	VanillaCrafts bool     `json:"vanillaCrafts"`
+	Why           string   `json:"why"`
+}
+
+// loadMirrorCorpus reads the corpus the live lane confirmed against both jars.
+func loadMirrorCorpus(t *testing.T) []mirrorCase {
+	t.Helper()
+
+	content, err := os.ReadFile("testdata/mirror.json")
+	if err != nil {
+		t.Fatalf("read the mirror corpus: %v", err)
+	}
+	var corpus struct {
+		Source string       `json:"source"`
+		Cases  []mirrorCase `json:"cases"`
+	}
+	if err := json.Unmarshal(content, &corpus); err != nil {
+		t.Fatalf("decode the mirror corpus: %v", err)
+	}
+	if len(corpus.Cases) == 0 {
+		t.Fatal("the mirror corpus holds no cases")
+	}
+
+	return corpus.Cases
+}
+
+func TestMirroringMatchesVanillaRatherThanAnAssumption(t *testing.T) {
+	t.Parallel()
+
+	// This package does not state a mirroring rule of its own, because
+	// getting it wrong in either direction is silent: a matcher that mirrors
+	// too little refuses grids vanilla crafts, and one that mirrors too much
+	// crafts tools from upside-down grids. The corpus says what vanilla does
+	// — confirmed live against both jars — and this test reads the corpus.
+	axeLegend := map[rune]crafting.Cell{
+		'p': {ID: planksID, Metadata: 0, Count: 1},
+		's': {ID: stickID, Count: 1},
+	}
+
+	for _, c := range loadMirrorCorpus(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
+
+			g := grid3x3(t, strings.Join(c.Grid, " "), axeLegend)
+			_, ok := crafting.Match(registry1_8(t), v1_8.Ingredients{}, g)
+			if ok != c.VanillaCrafts {
+				t.Fatalf("the matcher says %v and vanilla says %v: %s",
+					ok, c.VanillaCrafts, c.Why)
+			}
+		})
 	}
 }

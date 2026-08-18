@@ -51,19 +51,18 @@ func (c *Client) Click(
 		return fmt.Errorf("click window %d: %w", window, ErrUnknownContainer)
 	}
 
-	claim, described := view.Slots[int32(slot)]
-	predicted, cursorAfter, exact := c.predictClick(view, snapshot, slot, button, mode, described)
-	if !exact && c.profile.ID == protocol47 {
+	plan := c.planClick(view, snapshot, window, slot, button, mode)
+	if !plan.exact && c.profile.ID == protocol47 {
 		return fmt.Errorf("click %s slot %d: %w", mode, slot, ErrUnpredictable)
 	}
 
 	sequence := int16(c.clicks.Add(1))
 	pending := world.Pending{}
 	events, err := c.world.Amend(func(s *world.Containers, collector *event.Collector) error {
-		pending = s.Snapshot(int32(sequence), window, int32(slot))
-		s.Click(collector, pending, predicted)
-		if exact {
-			s.CursorChanged(collector, cursorAfter.Item, cursorAfter.Held)
+		pending = s.Snapshot(int32(sequence), window, plan.snapshotSlots...)
+		s.Click(collector, pending, plan.predicted)
+		if plan.exact {
+			s.CursorChanged(collector, plan.cursor.Item, plan.cursor.Held)
 		}
 
 		return nil
@@ -75,7 +74,7 @@ func (c *Client) Click(
 
 	if err := c.Do(ctx, version.ActionClickSlot{
 		Window: window, Slot: slot, Button: button, Mode: mode,
-		Sequence: sequence, Claim: claim,
+		Sequence: sequence, Claim: plan.claim,
 	}); err != nil {
 		// The click never reached the wire, so nothing will ever answer it.
 		// Its prediction rolls back now rather than standing forever.
@@ -119,46 +118,123 @@ func (c *Client) CloseWindow(ctx context.Context, window int32) error {
 	return nil
 }
 
-// predictClick computes the exact outcomes this client will claim to know.
-//
-// Only a plain left click with exactly one occupied side is exact: the whole
-// stack crosses, no arithmetic, no identity question. A click on two occupied
-// sides merges or swaps depending on whether the stacks are the same item,
-// and "the same item" is a question about a decoded wire value this
-// version-neutral code cannot answer; a quick-move's destination depends on
-// the window's layout, which M9.7's audit found no trustworthy data for.
-// Those return exact=false, and the caller decides per version whether to
-// send anyway.
-func (c *Client) predictClick(
-	view world.ContainerView, snapshot world.ContainersView,
-	slot int16, button int8, mode version.ClickMode, described bool,
-) (predicted []world.SlotSnapshot, cursorAfter world.SlotSnapshot, exact bool) {
-	if mode != version.ClickPickup || button != 0 || !described {
-		return nil, world.SlotSnapshot{}, false
-	}
+// clickPlan is everything one click commits to before it is sent: the claim,
+// the prediction, and the slots whose prior contents the rollback keeps.
+type clickPlan struct {
+	claim         any
+	predicted     []world.SlotSnapshot
+	cursor        world.SlotSnapshot
+	snapshotSlots []int32
+	exact         bool
+}
 
+// planClick computes the exact outcomes this client will claim to know.
+//
+// Two paths are exact. A plain left click with exactly one occupied side —
+// the whole stack crosses, no arithmetic, no identity question. And a plain
+// left click on the result slot of a crafting menu, when the adapter can
+// predict the craft: protocol 47's server never sends the result slot, so the
+// prediction is the only truth a client there will ever have, and the claim
+// it carries is what the server compares its own computation against.
+//
+// Everything else — merges, swaps, quick-moves, drags — returns exact=false,
+// and the caller decides per version whether to send anyway: 775 answers
+// every click by resending the truth, 47 answers an accepted click with
+// nothing.
+func (c *Client) planClick(
+	view world.ContainerView, snapshot world.ContainersView,
+	window int32, slot int16, button int8, mode version.ClickMode,
+) clickPlan {
+	claim := view.Slots[int32(slot)]
+	inexact := clickPlan{claim: claim, snapshotSlots: []int32{int32(slot)}}
+
+	if mode != version.ClickPickup || button != 0 {
+		return inexact
+	}
 	stacks, ok := c.profile.Adapter.(version.Stacks)
 	if !ok {
-		return nil, world.SlotSnapshot{}, false
+		return inexact
+	}
+	cursorEmpty := !snapshot.CursorHeld || stacks.StackEmpty(snapshot.Cursor)
+
+	if crafter, crafts := c.profile.Adapter.(version.Crafter); crafts && cursorEmpty {
+		if layout, isCraft := crafter.CraftingLayout(view.MenuType, window); isCraft &&
+			layout.Result == int32(slot) {
+			return planResultClick(crafter, layout, view)
+		}
 	}
 
-	item := view.Slots[int32(slot)]
+	item := claim
 	slotEmpty := stacks.StackEmpty(item)
-	cursorEmpty := !snapshot.CursorHeld || stacks.StackEmpty(snapshot.Cursor)
 
 	switch {
 	case cursorEmpty && !slotEmpty:
 		// Pick the stack up.
-		return []world.SlotSnapshot{{Slot: int32(slot), Held: false, Known: true}},
-			world.SlotSnapshot{Item: item, Held: true}, true
+		return clickPlan{
+			claim:         claim,
+			predicted:     []world.SlotSnapshot{{Slot: int32(slot), Held: false, Known: true}},
+			cursor:        world.SlotSnapshot{Item: item, Held: true},
+			snapshotSlots: []int32{int32(slot)},
+			exact:         true,
+		}
 	case !cursorEmpty && slotEmpty:
 		// Place the whole cursor stack.
-		return []world.SlotSnapshot{{Slot: int32(slot), Item: snapshot.Cursor, Held: true, Known: true}},
-			world.SlotSnapshot{Held: false}, true
+		return clickPlan{
+			claim: claim,
+			predicted: []world.SlotSnapshot{
+				{Slot: int32(slot), Item: snapshot.Cursor, Held: true, Known: true},
+			},
+			cursor:        world.SlotSnapshot{Held: false},
+			snapshotSlots: []int32{int32(slot)},
+			exact:         true,
+		}
 	case cursorEmpty && slotEmpty:
 		// A click on nothing changes nothing, exactly.
-		return nil, world.SlotSnapshot{Held: false}, true
+		return clickPlan{claim: claim, snapshotSlots: []int32{int32(slot)}, exact: true}
 	default:
-		return nil, world.SlotSnapshot{}, false
+		return inexact
+	}
+}
+
+// planResultClick predicts a pickup from a crafting menu's result slot: the
+// craft the grid produces, the grid one item lighter, and the next result the
+// lighter grid produces — because the game refills the slot while the grid
+// still matches.
+func planResultClick(
+	crafter version.Crafter, layout version.CraftingLayout, view world.ContainerView,
+) clickPlan {
+	grid := make([]any, 0, len(layout.Grid))
+	for _, at := range layout.Grid {
+		grid = append(grid, view.Slots[at])
+	}
+
+	snapshotSlots := append([]int32{layout.Result}, layout.Grid...)
+	result, remaining, ok := crafter.PredictCraft(grid)
+	if !ok {
+		// A grid that crafts nothing has an empty result slot, and clicking
+		// it changes nothing — exactly. The claim is the emptiness itself.
+		return clickPlan{snapshotSlots: snapshotSlots, exact: true}
+	}
+
+	predicted := make([]world.SlotSnapshot, 0, len(layout.Grid)+1)
+	for at, cell := range remaining {
+		predicted = append(predicted, world.SlotSnapshot{
+			Slot: layout.Grid[at], Item: cell, Held: cell != nil, Known: true,
+		})
+	}
+	next, _, refills := crafter.PredictCraft(remaining)
+	predicted = append(predicted, world.SlotSnapshot{
+		Slot: layout.Result, Item: next, Held: refills, Known: true,
+	})
+
+	return clickPlan{
+		// The server compares the claim against what its own craft computed,
+		// and what it computed is the result — not whatever stale value the
+		// slot showed.
+		claim:         result,
+		predicted:     predicted,
+		cursor:        world.SlotSnapshot{Item: result, Held: true},
+		snapshotSlots: snapshotSlots,
+		exact:         true,
 	}
 }
