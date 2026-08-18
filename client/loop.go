@@ -200,6 +200,7 @@ func (c *Client) runLoop(
 		// on Connect has already seen everything the placing batch produced.
 		published := collector.Events(revision)
 		c.events.publish(published)
+		c.noteEnd(published)
 		c.watchTerrain(watch, published, revision)
 
 		if state.Ready && !readySent {
@@ -219,6 +220,25 @@ func (c *Client) runLoop(
 			default:
 			}
 		}
+	}
+}
+
+// noteEnd records that the server has said why the session is ending.
+//
+// It is what keeps a kick from being reported twice: the adapter publishes the
+// server's own reason, the loop then reads EOF, and the transport report at the
+// end of the loop has to know the ending has already been accounted for.
+func (c *Client) noteEnd(published []event.Event) {
+	for _, one := range published {
+		if one.Name() != event.NameSessionDisconnected {
+			continue
+		}
+
+		c.mu.Lock()
+		c.reportedEnd = true
+		c.mu.Unlock()
+
+		return
 	}
 }
 

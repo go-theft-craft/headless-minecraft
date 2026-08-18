@@ -64,9 +64,13 @@ type Client struct {
 	writer sender
 	// inPlay records that the server placed the player. Before that, an action
 	// packet is a protocol error rather than a move.
-	inPlay    bool
-	loopError error
-	stop      func()
+	inPlay bool
+	// reportedEnd records that a disconnect has already been published for this
+	// session, so that a connection ending after the server said why does not
+	// report the ending twice.
+	reportedEnd bool
+	loopError   error
+	stop        func()
 	// loop closes when the read loop stops; done closes when Close finishes.
 	// They are separate because a session can end without anyone calling
 	// Close, and Close must still be able to run afterwards.

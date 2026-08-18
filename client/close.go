@@ -40,15 +40,35 @@ func (c *Client) loopFinished(err error) {
 //
 // A kick already produced a Disconnected from the adapter's handler, and the
 // loop then ends on EOF. Reporting a transport loss as well would tell a
-// subscriber the connection died twice, so a clean end publishes nothing.
+// subscriber the connection died twice, so what has already been said is what
+// this checks — not whether the loop ended with an error.
+//
+// Those are different questions, and taking the second for the first left the
+// worst case silent. A server that is killed rather than kicking sends no
+// disconnect packet, so the loop reads EOF and stops with no error at all: a
+// subscriber was told the connection died only when it died in a way that
+// produced an error, and the case with nothing to read it from published
+// nothing. That is precisely what DisconnectByTransport is named for — "a
+// connection loss with no disconnect packet".
 func (c *Client) publishDisconnect(err error, stream *protocol.Stream) {
-	if ignoreEnded(err) == nil {
+	c.mu.Lock()
+	reported := c.reportedEnd
+	c.mu.Unlock()
+
+	if reported {
 		return
+	}
+
+	// An EOF is the connection ending rather than failing, so it has no message
+	// of its own worth repeating. The reason says what happened instead.
+	reason := "the connection ended without a disconnect"
+	if ignoreEnded(err) != nil {
+		reason = err.Error()
 	}
 
 	c.events.publish(event.One(event.Disconnected{
 		Source: event.DisconnectByTransport,
-		Reason: err.Error(),
+		Reason: reason,
 		State:  string(currentState(context.Background(), stream)),
 	}, unrevised))
 }

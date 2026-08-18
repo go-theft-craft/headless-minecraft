@@ -35,6 +35,15 @@ type Script struct {
 	ThenKick string
 	// ThenDropConn closes the transport without a disconnect packet.
 	ThenDropConn bool
+	// ThenHangUp closes the transport gracefully and without a disconnect
+	// packet, so the client reads EOF rather than an error.
+	//
+	// It is not a gentler ThenDropConn. A reset gives the client an error to
+	// report the loss from; a graceful close gives it nothing at all, and a
+	// client that only reports what it can name an error for goes silent in
+	// exactly this case. It is what a killed server leaves behind once the
+	// operating system closes its sockets.
+	ThenHangUp bool
 	// ThenWorld sends a world script after the client is placed: a chunk, two
 	// entities, a move, a container, and a weather change in one wave, then a
 	// second wave that takes all of it away. It is what the observed-world
@@ -202,7 +211,7 @@ func play(ctx context.Context, stream *protocol.Stream, conn net.Conn, script Sc
 		}
 	}
 
-	if !script.ThenDropConn && script.ThenKick == "" {
+	if !script.ThenDropConn && !script.ThenHangUp && script.ThenKick == "" {
 		return nil
 	}
 
@@ -210,6 +219,11 @@ func play(ctx context.Context, stream *protocol.Stream, conn net.Conn, script Sc
 	// lands after it is placed rather than racing the placement.
 	if _, err := stream.Read(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		return err
+	}
+
+	if script.ThenHangUp {
+		// A graceful close: the client reads EOF, with nothing said about why.
+		return conn.Close()
 	}
 
 	if script.ThenDropConn {

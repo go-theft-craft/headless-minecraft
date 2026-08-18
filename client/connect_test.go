@@ -292,3 +292,79 @@ func TestWaitReturnsWhenTheServerEndsTheSession(t *testing.T) {
 		t.Errorf("Wait after a clean kick returned %v, want nil", err)
 	}
 }
+
+func TestAServerThatHangsUpSilentlyStillReportsTheDisconnect(t *testing.T) {
+	t.Parallel()
+
+	// The case that published nothing. A server that is killed rather than one
+	// that kicks sends no disconnect packet and resets nothing: the socket is
+	// closed by the operating system, the client reads EOF, and the read loop
+	// stops with no error to report. Reporting the loss only when there was an
+	// error to name left a subscriber told about every ending except the one it
+	// could not find out about any other way.
+	addr, stop := fixture.Start(t, fixture.Script{
+		ThroughReady: true,
+		ThenHangUp:   true,
+	})
+	defer stop()
+
+	bot := connectTo(t, addr, 5*time.Second)
+	sub, _ := bot.Subscribe(event.DomainSession, 64)
+
+	if err := bot.Connect(t.Context()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	_ = bot.Wait()
+	_ = bot.Close()
+
+	var found bool
+	for _, e := range drain(sub) {
+		d, ok := e.(event.Disconnected)
+		if !ok {
+			continue
+		}
+		found = true
+		if d.Source != event.DisconnectByTransport {
+			t.Errorf("source is %q, want a transport loss", d.Source)
+		}
+		if d.Reason == "" {
+			t.Error("the disconnect carries no reason at all")
+		}
+	}
+	if !found {
+		t.Fatal("a server that hung up without a disconnect packet published nothing; " +
+			"a subscriber has no other way to learn the connection is gone")
+	}
+}
+
+func TestAKickIsNotReportedTwice(t *testing.T) {
+	t.Parallel()
+
+	// The other side of the same change. A kick publishes the server's own
+	// reason and the loop then reads EOF, so a transport report at the end of
+	// the loop would tell a subscriber the connection died twice.
+	addr, stop := fixture.Start(t, fixture.Script{
+		ThroughReady: true,
+		ThenKick:     "server closing",
+	})
+	defer stop()
+
+	bot := connectTo(t, addr, 5*time.Second)
+	sub, _ := bot.Subscribe(event.DomainSession, 64)
+
+	if err := bot.Connect(t.Context()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	_ = bot.Wait()
+	_ = bot.Close()
+
+	var disconnects int
+	for _, e := range drain(sub) {
+		if _, ok := e.(event.Disconnected); ok {
+			disconnects++
+		}
+	}
+	if disconnects != 1 {
+		t.Errorf("a kick published %d disconnects, want exactly 1", disconnects)
+	}
+}
