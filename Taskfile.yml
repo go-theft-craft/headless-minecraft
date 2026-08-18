@@ -77,6 +77,18 @@ tasks:
     cmds:
       - go test -race -run 'TestEndToEnd' ./client/...
 
+  test:vanilla:
+    desc: Run the vanilla conformance lane; needs a prepared 1.8.9 server jar
+    # The only check that survives being wrong in the fifteenth decimal place.
+    # It starts a real server, so it is behind a build tag and out of verify: an
+    # ordinary run stays fast and offline, and this runs when someone asks.
+    #
+    # It skips rather than fetches when the jar is absent. Run `task
+    # server:vanilla` once to have mcreference prepare one.
+    deps: [deps]
+    cmds:
+      - go test ./client/ -run TestVanilla -tags vanilla -timeout 20m -v {{.CLI_ARGS}}
+
   examples:
     desc: Lint and test the examples module
     # examples/ is its own module, so `go test ./...` from the root does not
