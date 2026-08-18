@@ -15,12 +15,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-theft-craft/minecraft-protocol/data"
 	gen "github.com/go-theft-craft/minecraft-protocol/generated/java/v1_8"
+	gen26 "github.com/go-theft-craft/minecraft-protocol/generated/java/v26_1"
 	simentity "github.com/go-theft-craft/minecraft-simulation/entity"
 	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
 	simmovement "github.com/go-theft-craft/minecraft-simulation/movement"
 	v1_8 "github.com/go-theft-craft/minecraft-simulation/profile/java/v1_8"
+	v26_1 "github.com/go-theft-craft/minecraft-simulation/profile/java/v26_1"
 	simulation "github.com/go-theft-craft/minecraft-simulation/sim"
+	simworld "github.com/go-theft-craft/minecraft-simulation/world"
 
 	"github.com/go-theft-craft/headless-minecraft/auth"
 	"github.com/go-theft-craft/headless-minecraft/client"
@@ -388,4 +392,178 @@ func tail(log string, lines int) string {
 	}
 
 	return strings.Join(all[len(all)-lines:], "\n")
+}
+
+// The 26.1.2 lane. Same six scenarios, same criterion, a different game.
+const (
+	jar26       = "../../minecraft-simulation/reference/work/versions/26.1.2/server/executable.jar"
+	libraries26 = "../../minecraft-simulation/reference/work/versions/26.1.2/libraries"
+)
+
+// TestVanilla26MovementDrawsNoCorrections runs the same gate against a real
+// 26.1.2 server.
+//
+// This is the second half of the milestone's claim: one kernel, two versions,
+// and each one checked against its own game. The profile it predicts with was
+// gated against that version's own bytecode by M8.7, so a failure here is more
+// likely to be about the wire than about the physics — which is the reverse of
+// what a version with no jar-backed oracle would have faced.
+func TestVanilla26MovementDrawsNoCorrections(t *testing.T) {
+	server := vanilla.Start(t, vanilla.Options{
+		Jar:       jar26,
+		Libraries: libraries26,
+		LevelType: "minecraft:flat",
+		// A modern server generates more before it answers, and it does it on a
+		// cold cache the first time.
+		Ready: 5 * time.Minute,
+	})
+
+	for _, scenario := range vanillaScenarios() {
+		t.Run(scenario.name, func(t *testing.T) {
+			runVanilla26Scenario(t, server, scenario)
+		})
+	}
+}
+
+func runVanilla26Scenario(t *testing.T, server *vanilla.Server, scenario vanillaScenario) {
+	t.Helper()
+
+	set, err := gen26.Data()
+	if err != nil {
+		t.Fatalf("load the 26.1.2 data set: %v", err)
+	}
+	profile, err := v26_1.New(set)
+	if err != nil {
+		t.Fatalf("build the 26.1.2 profile: %v", err)
+	}
+
+	bot := connect26ForMovement(t, server.Addr())
+
+	raw, err := bot.Subscribe(event.DomainRaw, 8192)
+	if err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
+	defer cancel()
+
+	if err := bot.Connect(ctx); err != nil {
+		t.Fatalf("Connect: %v\n%s", err, tail(server.Log(), 25))
+	}
+	defer func() { _ = bot.Close() }()
+
+	waitForTerrain(t, server, bot)
+
+	loop, err := predict.New(predict.Options{
+		Actor:   bot,
+		Profile: profile,
+		// This version's protocol carries the flattened state identifier, which
+		// is the identity the profile's own table is keyed by.
+		Blocks: predict.FlattenedBlocks(func(state data.BlockStateID) (simworld.BlockRef, bool) {
+			return v26_1.RefState(profile, state)
+		}),
+		Spawn: func(pos simgeom.Vec3, yaw, pitch float32) (
+			simentity.State, simmovement.Locomotion, bool,
+		) {
+			return v26_1.Spawn(profile, pos, yaw, pitch)
+		},
+	})
+	if err != nil {
+		t.Fatalf("predict.New: %v", err)
+	}
+	defer func() { _ = loop.Close() }()
+
+	if err := loop.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	for tick := range scenarioTicks {
+		loop.Input(scenario.input(tick))
+		time.Sleep(50 * time.Millisecond)
+	}
+	_ = loop.Close()
+	time.Sleep(500 * time.Millisecond)
+
+	events := drainEvents(raw)
+	sent := map[string]int{}
+	received := map[string]int{}
+	for _, one := range events {
+		switch value := one.(type) {
+		case event.PacketSent:
+			sent[value.Packet]++
+		case event.PacketReceived:
+			received[value.Packet]++
+		}
+	}
+	t.Logf("%s: %d events, loop err %v, reconciled %d\n  sent %v\n  received %v",
+		scenario.name, len(events), loop.Err(), loop.Corrections(), sent, received)
+
+	if corrections := countCorrections26(events); corrections > 0 {
+		t.Errorf("the server corrected the client %d times\n%s",
+			corrections, tail(server.Log(), 40))
+	}
+	for _, complaint := range []string{"moved wrongly", "moved too quickly"} {
+		if lines := server.Matching(complaint); len(lines) > 0 {
+			t.Errorf("the server logged %q %d times:\n%s",
+				complaint, len(lines), strings.Join(lines, "\n"))
+		}
+	}
+	if sent := countSent(events); sent < scenarioTicks/2 {
+		t.Errorf("the client sent %d movement packets over %d ticks", sent, scenarioTicks)
+	}
+}
+
+// countCorrections26 counts this protocol's own correction packet.
+//
+// Protocol 775 names it player_position rather than position, and it carries a
+// teleport identifier the client answers. The boundary is the same: a position
+// before the client has reported one is the login sequence.
+func countCorrections26(events []event.Event) int {
+	var acknowledged bool
+	var corrections int
+
+	for _, one := range events {
+		switch value := one.(type) {
+		case event.PacketSent:
+			switch value.Packet {
+			case "position", "position_look", "look", "flying",
+				"move_player_pos", "move_player_pos_rot", "move_player_rot", "move_player_status_only":
+				acknowledged = true
+			}
+		case event.PacketReceived:
+			if acknowledged && (value.Packet == "position" || value.Packet == "player_position") {
+				corrections++
+			}
+		}
+	}
+
+	return corrections
+}
+
+// connect26ForMovement builds a client speaking this version's protocol.
+func connect26ForMovement(t *testing.T, addr string) *client.Client {
+	t.Helper()
+
+	provider, err := auth.Offline("conformance")
+	if err != nil {
+		t.Fatalf("Offline: %v", err)
+	}
+	authz, err := safety.Authorize(addr, safety.ScopeObserve, safety.ScopeMove)
+	if err != nil {
+		t.Fatalf("Authorize: %v", err)
+	}
+
+	bot, err := client.New(
+		client.WithWorld(world.New()),
+		client.WithAddress(addr),
+		client.WithAuth(provider),
+		client.WithVersion(java.Current()),
+		client.WithAuthorization(authz),
+		client.WithConnectTimeout(90*time.Second),
+	)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	return bot
 }

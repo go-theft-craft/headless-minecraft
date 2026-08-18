@@ -56,6 +56,13 @@ type Options struct {
 	// Properties overrides or adds server.properties entries, after the
 	// defaults below are written.
 	Properties map[string]string
+	// Libraries is a directory of jars to put on the classpath, for a version
+	// whose server names its dependencies rather than shading them. When it is
+	// set the server is started as a class rather than as an executable jar,
+	// because that is the only way to add to a jar's own classpath.
+	Libraries string
+	// MainClass is what to run when Libraries is set.
+	MainClass string
 }
 
 // DefaultJar is where minecraft-reference leaves a prepared 1.8.9 server, in the
@@ -129,11 +136,26 @@ func Start(t *testing.T, options Options) *Server {
 	// "Unable to access address of buffer" and no client ever completes a
 	// handshake. Forcing the portable transport and disabling the unsafe path
 	// costs some throughput and buys a server that works.
-	cmd := exec.Command(java,
-		"-Xms256M", "-Xmx1G",
+	arguments := []string{
+		"-Xms256M", "-Xmx2G",
 		"-Dio.netty.transport.noNative=true",
 		"-Dio.netty.noUnsafe=true",
-		"-jar", jar, "nogui")
+	}
+	if options.Libraries == "" {
+		arguments = append(arguments, "-jar", jar, "nogui")
+	} else {
+		classpath, err := classpathFor(jar, options.Libraries)
+		if err != nil {
+			t.Skipf("no prepared libraries at %s: %v", options.Libraries, err)
+		}
+		main := options.MainClass
+		if main == "" {
+			main = "net.minecraft.server.Main"
+		}
+		arguments = append(arguments, "-cp", classpath, main, "nogui")
+	}
+
+	cmd := exec.Command(java, arguments...)
 	cmd.Dir = dir
 
 	stdout, err := cmd.StdoutPipe()
@@ -231,6 +253,36 @@ func (s *Server) Stop() {
 		_ = s.cmd.Process.Kill()
 		<-done
 	}
+}
+
+// classpathFor joins a jar with every jar in a directory tree.
+//
+// A modern server jar names its dependencies rather than shading them, so
+// running it needs the libraries the workspace already downloaded beside it.
+func classpathFor(jar, libraries string) (string, error) {
+	root, err := filepath.Abs(libraries)
+	if err != nil {
+		return "", err
+	}
+
+	entries := []string{jar}
+	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(path, ".jar") {
+			entries = append(entries, path)
+		}
+
+		return nil
+	}); err != nil {
+		return "", err
+	}
+	if len(entries) == 1 {
+		return "", fmt.Errorf("%w: no jars under %s", ErrServer, root)
+	}
+
+	return strings.Join(entries, string(os.PathListSeparator)), nil
 }
 
 // read collects the server's output and closes ready when it announces itself.
