@@ -1289,14 +1289,14 @@ test failure."
 **Files:**
 - Modify: `headless-minecraft/MASTER_PLAN.md`
 
-- [ ] **Step 1: Update the M9 stage tables**
+- [x] **Step 1: Update the M9 stage tables**
 
 Mark M9.1b complete in both the milestone table row and the M9 stage table, and
 record the measured relative-move scale and the derived 775 tolerance next to
 the one-thirty-second note, so the next reader finds both numbers together with
 their derivations.
 
-- [ ] **Step 2: Write what the work found**
+- [x] **Step 2: Write what the work found**
 
 Add a session-findings entry in the established shape: what was built, what it
 cost that was not budgeted, and what surprised you. Candidates, if they hold:
@@ -1305,7 +1305,7 @@ consolidated in a way that lost information the 47 extractor had; whether the
 proxy's 775 login walk needed anything the 47 one did not. Write what happened,
 not what the plan hoped.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add MASTER_PLAN.md
