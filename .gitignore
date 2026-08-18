@@ -38,3 +38,6 @@ go.work.sum
 .idea/
 .vscode/
 
+# The mcreference workspace task server:vanilla prepares: Mojang jars and
+# decompiled sources stay local, always.
+/reference/

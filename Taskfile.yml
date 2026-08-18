@@ -129,9 +129,15 @@ tasks:
     # COMPRESSION.
     vars:
       VERSION: '{{.VERSION | default "1.8.9"}}'
-      # Where mcreference keeps prepared versions. The default is the sibling
-      # checkout that already has them, so a first run usually costs nothing.
-      WORKSPACE: '{{.WORKSPACE | default "../minecraft-simulation"}}'
+      # Where mcreference keeps prepared versions: this repository's own
+      # reference/ by default, gitignored, so the vanilla lane never reads a
+      # sibling repository's ignored directory. Point WORKSPACE at another
+      # checkout that already has the jars to skip the download; the test
+      # lanes honour the same choice through MCREFERENCE_WORKSPACE.
+      # VERSION takes 1.8.9 and 26.1.2 — the two pinned versions the lane
+      # runs — and preparing either is the whole answer to the lane's skip
+      # message.
+      WORKSPACE: '{{.WORKSPACE | default "."}}'
       VANILLA_JAR: '{{.VANILLA_JAR | default ""}}'
       MCREFERENCE: '{{.MCREFERENCE | default ""}}'
       # The JVM that runs the server, which is the version Minecraft requires:

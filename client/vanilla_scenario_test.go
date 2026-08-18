@@ -74,8 +74,10 @@ type lane struct {
 
 func lane1_8() lane {
 	return lane{
-		name:    "1.8.9",
-		start:   func(t *testing.T) *vanilla.Server { return vanilla.Start(t, vanilla.Options{}) },
+		name: "1.8.9",
+		start: func(t *testing.T) *vanilla.Server {
+			return vanilla.Start(t, laneBuild(t, "1.8.9").startOptions())
+		},
 		connect: connectForMovement,
 		predictOn: func(
 			t *testing.T, bot *client.Client, on func(predict.Correction),
@@ -125,12 +127,10 @@ func lane26() lane {
 	return lane{
 		name: "26.1.2",
 		start: func(t *testing.T) *vanilla.Server {
-			return vanilla.Start(t, vanilla.Options{
-				Jar:       jar26,
-				Libraries: libraries26,
-				LevelType: "minecraft:flat",
-				Ready:     5 * time.Minute,
-			})
+			options := laneBuild(t, "26.1.2").startOptions()
+			options.Ready = 5 * time.Minute
+
+			return vanilla.Start(t, options)
 		},
 		connect: connect26ForMovement,
 		predictOn: func(

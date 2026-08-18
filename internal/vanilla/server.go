@@ -39,7 +39,10 @@ var ErrServer = errors.New("vanilla: server")
 
 // Options configures one server.
 type Options struct {
-	// Jar is the server to run. When empty, DefaultJar is used.
+	// Jar is the server to run. It is required: the lanes resolve it from a
+	// prepared reference workspace — see client/vanilla_workspace_test.go —
+	// and a default that pointed into a sibling repository's ignored
+	// directory is exactly what this replaced.
 	Jar string
 	// Java is the command that runs it. When empty, "java" from PATH.
 	Java string
@@ -64,10 +67,6 @@ type Options struct {
 	// MainClass is what to run when Libraries is set.
 	MainClass string
 }
-
-// DefaultJar is where minecraft-reference leaves a prepared 1.8.9 server, in the
-// sibling checkout this repository's own tasks already point at.
-const DefaultJar = "../../minecraft-simulation/reference/work/versions/1.8.9/server/original.jar"
 
 // Server is a running server and the log it has written.
 type Server struct {
@@ -95,7 +94,8 @@ func Start(t *testing.T, options Options) *Server {
 	t.Helper()
 
 	if options.Jar == "" {
-		options.Jar = DefaultJar
+		t.Fatal("vanilla.Start needs a jar; resolve one from a prepared " +
+			"reference workspace rather than defaulting to a path")
 	}
 	jar, err := filepath.Abs(options.Jar)
 	if err != nil {

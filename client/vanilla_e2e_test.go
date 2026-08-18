@@ -112,7 +112,7 @@ func vanillaScenarios() []vanillaScenario {
 // Offline mode is a limitation of the whole lane and it is stated rather than
 // hidden: nothing measured here says anything about online-mode behaviour.
 func TestVanillaMovementDrawsNoCorrections(t *testing.T) {
-	server := vanilla.Start(t, vanilla.Options{})
+	server := vanilla.Start(t, laneBuild(t, "1.8.9").startOptions())
 
 	for _, scenario := range vanillaScenarios() {
 		t.Run(scenario.name, func(t *testing.T) {
@@ -394,11 +394,10 @@ func tail(log string, lines int) string {
 	return strings.Join(all[len(all)-lines:], "\n")
 }
 
-// The 26.1.2 lane. Same six scenarios, same criterion, a different game.
-const (
-	jar26       = "../../minecraft-simulation/reference/work/versions/26.1.2/server/executable.jar"
-	libraries26 = "../../minecraft-simulation/reference/work/versions/26.1.2/libraries"
-)
+// The 26.1.2 lane. Same six scenarios, same criterion, a different game. Its
+// jar and libraries come from the prepared reference workspace like the
+// 1.8.9 lane's — see vanilla_workspace_test.go — never from a path into a
+// sibling repository.
 
 // TestVanilla26MovementDrawsNoCorrections runs the same gate against a real
 // 26.1.2 server.
@@ -409,14 +408,11 @@ const (
 // likely to be about the wire than about the physics — which is the reverse of
 // what a version with no jar-backed oracle would have faced.
 func TestVanilla26MovementDrawsNoCorrections(t *testing.T) {
-	server := vanilla.Start(t, vanilla.Options{
-		Jar:       jar26,
-		Libraries: libraries26,
-		LevelType: "minecraft:flat",
-		// A modern server generates more before it answers, and it does it on a
-		// cold cache the first time.
-		Ready: 5 * time.Minute,
-	})
+	options := laneBuild(t, "26.1.2").startOptions()
+	// A modern server generates more before it answers, and it does it on a
+	// cold cache the first time.
+	options.Ready = 5 * time.Minute
+	server := vanilla.Start(t, options)
 
 	for _, scenario := range vanillaScenarios() {
 		t.Run(scenario.name, func(t *testing.T) {
