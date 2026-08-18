@@ -280,12 +280,23 @@ func TestAServerPositionAfterTheBoundaryIsACorrection(t *testing.T) {
 	observed.Player().Move(collector, 4.5, 1, 4.5, 0, 0, world.Relative{})
 	client.setWorld(observed.Snapshot())
 
-	waitFor(t, func() bool { return loop.Corrections() >= 1 })
+	// Wait on the publication rather than on the count. The loop increments
+	// its counter while it holds its own lock and calls back after releasing
+	// it — deliberately, so that a caller who asks the loop what it now
+	// believes does not deadlock — so a test that waits on the counter and
+	// then asserts on the callback is racing that gap. It fails about one run
+	// in twenty.
+	waitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+
+		return len(seen) >= 1
+	})
 
 	mu.Lock()
 	defer mu.Unlock()
-	if len(seen) == 0 {
-		t.Fatal("a correction was counted but not published")
+	if loop.Corrections() == 0 {
+		t.Fatal("a correction was published but not counted")
 	}
 	if seen[0].To != (simgeom.Vec3{X: 4.5, Y: 1, Z: 4.5}) {
 		t.Errorf("the correction reports %+v as the server's position", seen[0].To)
