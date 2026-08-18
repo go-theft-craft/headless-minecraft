@@ -536,14 +536,28 @@ func NewNavigator(legacy bool, bounds Bounds) (Navigator, error) {
 		budget:  navigation.Budget{Nodes: routeNodes},
 		capability: navigation.Capability{
 			Body: body,
-			// It cannot fall either, for the same reason it cannot step: a
-			// drop is something a body does under gravity, and this one has
-			// none, so a route down a ledge would have it walking out over
-			// the edge and reporting itself still on the ground. Nor does it
-			// swim. Both are the shape of this bot rather than facts about
-			// the game.
+			// It cannot fall, for the same reason it cannot step: a drop is
+			// something a body does under gravity, and this one has none, so a
+			// route down a ledge would have it walking out over the edge and
+			// reporting itself still on the ground.
 			SafeFall: 0,
-			CanSwim:  false,
+			// It can swim, and that is a fix rather than a flourish.
+			//
+			// With this off the planner refused every water cell, which is
+			// right for a body that would drown and wrong for this one. The
+			// consequence was a bot that walked into a pool on purpose — that
+			// is what Dousing does, it stands in water to put a fire out — and
+			// then could not leave it. A body in the middle of a pool has water
+			// on all four sides, every neighbour was refused, the frontier
+			// emptied, and the route came back unreachable. It stood in the
+			// water until the run ended.
+			//
+			// Crossing water horizontally is the one fluid thing this bot can
+			// honestly do: it holds a depth rather than choosing one, which is
+			// what swimming level looks like, and needs none of the gravity it
+			// does not have. Descending into water still does not — see
+			// WaterLandingDepth below.
+			CanSwim: true,
 			// Costs in ticks, from the speed this bot walks at. One block at
 			// WalkSpeed blocks a second takes 20/WalkSpeed ticks, and a step
 			// up and a drop are charged the same because this bot has no
@@ -551,13 +565,68 @@ func NewNavigator(legacy bool, bounds Bounds) (Navigator, error) {
 			WalkTicks: ticksPerBlock(bounds),
 			StepTicks: ticksPerBlock(bounds),
 			FallTicks: ticksPerBlock(bounds),
-			SwimTicks: ticksPerBlock(bounds),
+			// Swimming is priced above walking so the planner treats a pool as
+			// expensive and goes round one it can walk around, reaching for the
+			// water only when there is no dry way.
+			//
+			// The multiple is a preference and not a measurement. The game does
+			// swim slower than it walks, and by how much is a number the
+			// movement kernel's fluid rules own; this bot does not run them, so
+			// it says "dearer than walking" and declines to say by how much.
+			// The bot's actuator still reports one speed either way, because it
+			// has one.
+			SwimTicks: ticksPerBlock(bounds) * swimPenalty,
+			// Keep off the edge of anything it could not survive, and cross one
+			// crouched when there is no way round.
+			//
+			// It matters more for this bot than for one with legs. The planner
+			// works in cells, but the actuator walks in fifths of a block
+			// toward a target, so a route that hugs a drop can put the body's
+			// box over the edge between two cells. Staying a cell back is the
+			// cheap version of the gravity it does not have.
+			AvoidLedges: true,
+			SneakTicks:  ticksPerBlock(bounds) * sneakPenalty,
+			// Every remaining edge the vocabulary now carries stays off, and
+			// each one waits on the same thing: a body that moves under its own
+			// physics rather than a position this bot asserts.
+			//
+			//   JumpReach and JumpRise — an arc. The bot would report itself
+			//     walking level across the hole it was supposed to jump.
+			//   CanClimb — vertical movement. Nothing here changes its own Y.
+			//   CrawlHeight — a posture. The bot has one shape.
+			//   CanPlace — an inventory, which this bot does not have, and the
+			//     placement actions to go with it.
+			//   WaterLandingDepth — a descent, which is gravity again.
+			//
+			// Turning any of them on without that is the mistake StepHeight
+			// above records: the planner was told the bot could route a
+			// one-block step, it routed one, and the bot walked horizontally
+			// into the raised block until the breaker ended the run. A route is
+			// only as true as the body it was planned for.
+			//
+			// CanOpenDoors is the exception worth noting: a door needs no
+			// physics, only a right-click, so it waits on an actuator method
+			// rather than on a movement kernel.
 		},
 	}, nil
 }
 
 // ticksPerBlock is how long this bot takes to cross one block, in ticks.
 func ticksPerBlock(bounds Bounds) float64 { return 1 / bounds.Step() }
+
+const (
+	// swimPenalty and sneakPenalty are what the planner charges for crossing a
+	// block of water, and for crossing one beside a killing drop, as multiples
+	// of a walk.
+	//
+	// They are preferences rather than measurements, and they are constants
+	// here rather than fields on Bounds because nothing tunes them: their whole
+	// job is to be greater than one, so a route prefers dry level ground and
+	// takes the other two only when that is the choice. A measured swim speed
+	// belongs to the movement kernel's fluid rules, and this bot runs none.
+	swimPenalty  = 2
+	sneakPenalty = 3
+)
 
 // routeNodes bounds one search. The circle's waypoints are about five blocks
 // apart, so a route between two of them is short; this is loose enough for a

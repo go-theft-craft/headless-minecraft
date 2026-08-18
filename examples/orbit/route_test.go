@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
+	"github.com/go-theft-craft/minecraft-simulation/navigation"
 	"github.com/go-theft-craft/minecraft-simulation/terrain"
 	simworld "github.com/go-theft-craft/minecraft-simulation/world"
 )
@@ -158,5 +159,211 @@ func TestThePlannerIsNotToldTheBotCanStepOrFall(t *testing.T) {
 	}
 	if got := navigator.capability.Body.Height; got <= 1.79 || got >= 1.81 {
 		t.Errorf("height is %v, want the player's 1.8", got)
+	}
+}
+
+// waterSlab is a floor with a pool of water sitting on it.
+//
+// Water carries no collision shape, so it is reported as air with a handle the
+// facts call water — which is the whole reason terrain needs Facts at all: a
+// body fits inside water perfectly well, and geometry cannot tell a pool from
+// an empty room.
+type waterSlab struct {
+	*slab
+	wet map[simgeom.BlockPos]bool
+}
+
+const waterRef simworld.BlockRef = 77
+
+func (w waterSlab) BlockState(pos simgeom.BlockPos) (simworld.BlockRef, simworld.Lookup) {
+	if w.wet[pos] {
+		return waterRef, simworld.LookupAir
+	}
+
+	return w.slab.BlockState(pos)
+}
+
+// pool returns a view with a square of water centred on the origin cell, and
+// the cell the bot stands in at the middle of it.
+func pool(radius int32) waterSlab {
+	wet := map[simgeom.BlockPos]bool{}
+	for x := -radius; x <= radius; x++ {
+		for z := -radius; z <= radius; z++ {
+			wet[simgeom.BlockPos{X: x, Y: 64, Z: z}] = true
+		}
+	}
+
+	return waterSlab{slab: newSlab(), wet: wet}
+}
+
+// TestABotInWaterFindsAWayOut is the regression test for a bot that stood in a
+// pool until the run ended.
+//
+// Dousing walks the bot into water on purpose, to put a fire out. With swimming
+// refused, every cell around it in the middle of a pool was refused too, the
+// frontier emptied, and the route came back unreachable — so the thing the bot
+// had deliberately walked into was a thing it could not walk out of.
+//
+// Both halves are asserted, because only the pair says the swim is what fixed
+// it: the same world, the same start, the same goal, and the one field between
+// them.
+func TestABotInWaterFindsAWayOut(t *testing.T) {
+	t.Parallel()
+
+	navigator, err := NewNavigator(false, DefaultBounds())
+	if err != nil {
+		t.Fatalf("NewNavigator: %v", err)
+	}
+
+	view := pool(2)
+	facts := Facts{water: map[simworld.BlockRef]bool{waterRef: true}}
+
+	// The middle of the pool, out to dry ground past its edge.
+	from := simgeom.BlockPos{X: 0, Y: 64, Z: 0}
+	goal := simgeom.BlockPos{X: 4, Y: 64, Z: 0}
+	budget := navigation.Budget{Nodes: routeNodes}
+
+	swimmer := navigator.capability
+	if !swimmer.CanSwim {
+		t.Fatal("the shipped capability cannot swim, so this test proves nothing")
+	}
+
+	out, err := navigation.Find(t.Context(), view, facts, swimmer, from, goal, budget)
+	if err != nil {
+		t.Fatalf("Find with a swim: %v", err)
+	}
+	if !out.Complete {
+		t.Fatalf("a bot in the middle of a pool found no way out: %v", out.Reason)
+	}
+
+	var swum int
+	for _, edge := range out.Edges {
+		if edge.Kind == navigation.EdgeSwim {
+			swum++
+		}
+	}
+	if swum == 0 {
+		t.Fatalf("left the pool without a swim edge: %v", out.Edges)
+	}
+
+	// The same world with swimming taken away, which is what the bot shipped
+	// with and what stranded it.
+	stuck := swimmer
+	stuck.CanSwim = false
+
+	trapped, err := navigation.Find(t.Context(), view, facts, stuck, from, goal, budget)
+	if err != nil {
+		t.Fatalf("Find without a swim: %v", err)
+	}
+	if trapped.Complete {
+		t.Fatal("a bot that cannot swim crossed a pool; the fix is not what made the difference")
+	}
+}
+
+// TestWaterCostsMoreThanDryGround pins that swimming is priced above walking.
+//
+// Making water passable is not the same as making it attractive. A planner that
+// charged the same for both would send the bot straight through a pond it could
+// have walked around, which is slower in the game and looks like a bot that
+// cannot tell water from grass.
+func TestWaterCostsMoreThanDryGround(t *testing.T) {
+	t.Parallel()
+
+	navigator, err := NewNavigator(false, DefaultBounds())
+	if err != nil {
+		t.Fatalf("NewNavigator: %v", err)
+	}
+
+	capability := navigator.capability
+	if capability.SwimTicks <= capability.WalkTicks {
+		t.Errorf("a block of water costs %v and a block of ground costs %v; water should cost more",
+			capability.SwimTicks, capability.WalkTicks)
+	}
+	if capability.SneakTicks <= capability.WalkTicks {
+		t.Errorf("crossing a ledge costs %v and open ground costs %v; the ledge should cost more",
+			capability.SneakTicks, capability.WalkTicks)
+	}
+}
+
+// TestABotRoutesRoundAPoolItCouldWalkAround is the other half of the pricing.
+//
+// The pool has to be long for the detour to win, and that is the pricing working
+// rather than a quirk of the fixture. One block of water costs one extra walk to
+// cross and two extra walks to go around, so a puddle is correctly swum — a
+// planner that waded round every wet cell would be as wrong as one that swam
+// every lake. It is the fifth block of water that makes the long way cheaper.
+func TestABotRoutesRoundAPoolItCouldWalkAround(t *testing.T) {
+	t.Parallel()
+
+	navigator, err := NewNavigator(false, DefaultBounds())
+	if err != nil {
+		t.Fatalf("NewNavigator: %v", err)
+	}
+
+	// A channel five long on the direct line, with dry ground one cell beside
+	// it: straight through is five swims, and round is seven walks.
+	wet := map[simgeom.BlockPos]bool{}
+	for x := int32(1); x <= 5; x++ {
+		wet[simgeom.BlockPos{X: x, Y: 64, Z: 0}] = true
+	}
+	view := waterSlab{slab: newSlab(), wet: wet}
+	facts := Facts{water: map[simworld.BlockRef]bool{waterRef: true}}
+
+	path, err := navigation.Find(
+		t.Context(), view, facts, navigator.capability,
+		simgeom.BlockPos{X: 0, Y: 64, Z: 0}, simgeom.BlockPos{X: 6, Y: 64, Z: 0},
+		navigation.Budget{Nodes: routeNodes},
+	)
+	if err != nil {
+		t.Fatalf("Find: %v", err)
+	}
+	if !path.Complete {
+		t.Fatalf("no route past a five-cell channel: %v", path.Reason)
+	}
+	for _, edge := range path.Edges {
+		if edge.Kind == navigation.EdgeSwim {
+			t.Fatalf("swam a five-cell channel it could have walked around in two more steps: %v", path.Edges)
+		}
+	}
+}
+
+// TestAPuddleIsCrossedRatherThanCircled is the finding the test above rests on.
+//
+// It is asserted rather than assumed because it is the half a reader doubts: the
+// point of pricing water above ground is not that the bot avoids water, it is
+// that it weighs it.
+func TestAPuddleIsCrossedRatherThanCircled(t *testing.T) {
+	t.Parallel()
+
+	navigator, err := NewNavigator(false, DefaultBounds())
+	if err != nil {
+		t.Fatalf("NewNavigator: %v", err)
+	}
+
+	view := waterSlab{slab: newSlab(), wet: map[simgeom.BlockPos]bool{
+		{X: 2, Y: 64, Z: 0}: true,
+	}}
+	facts := Facts{water: map[simworld.BlockRef]bool{waterRef: true}}
+
+	path, err := navigation.Find(
+		t.Context(), view, facts, navigator.capability,
+		simgeom.BlockPos{X: 0, Y: 64, Z: 0}, simgeom.BlockPos{X: 4, Y: 64, Z: 0},
+		navigation.Budget{Nodes: routeNodes},
+	)
+	if err != nil {
+		t.Fatalf("Find: %v", err)
+	}
+	if !path.Complete {
+		t.Fatalf("no route across a one-cell puddle: %v", path.Reason)
+	}
+
+	var swum int
+	for _, edge := range path.Edges {
+		if edge.Kind == navigation.EdgeSwim {
+			swum++
+		}
+	}
+	if swum != 1 {
+		t.Fatalf("crossed a one-cell puddle with %d swim edges, want one: %v", swum, path.Edges)
 	}
 }
