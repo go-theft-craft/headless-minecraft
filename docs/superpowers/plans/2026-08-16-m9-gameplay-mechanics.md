@@ -1,6 +1,13 @@
 # M9 Gameplay Mechanics Implementation Plan
 
-> **Status: M9.1 complete, 2026-08-18.** The recording sink, trace extraction,
+> **Status: complete except M9.3's human-gated corpus, 2026-08-18.** M9.1,
+> M9.1b, M9.2, and M9.4 through M9.8 are closed — each stage plan carries its
+> own record — and M9.3's correction, teleport, and disconnect scenarios (its
+> stated gate) are done, with its 26.1.2 player-trace corpus still blocked on
+> a person with a paid account. The consolidated findings and the weaker
+> gates are collected in the master plan under "What M9 found".
+>
+> **Original M9.1 record:** The recording sink, trace extraction,
 > replay gate, and `mcrelay trace` / `mcrelay verify` shipped in `relay`, and
 > the live check ran on 2026-08-17 against a real 1.8.9 client and a pinned
 > offline vanilla server. It found one defect: a capture taken from a server

@@ -38,7 +38,7 @@ here.
 | M6 | Finish the server migration and connect the headless client | `server`, `headless-minecraft` | Complete except **M6.4** (Microsoft device-code), postponed |
 | M7 | Immutable observed world state, wire-ordered reducers | `headless-minecraft` | Complete |
 | M8 | Deterministic 1.8.9 and 26.1.2 movement kernel, replay, consumer integration | `minecraft-simulation` | Complete (M8.1–M8.8) |
-| M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **In progress**: M9.1 complete, live check run 2026-08-17; M9.1b, M9.2, M9.4, M9.5, M9.6 and M9.7 complete; M9.3 blocked on a human capture; M9.8 not started |
+| M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **Complete except one human-gated corpus**: M9.1–M9.2 and M9.4–M9.8 closed; M9.3's correction, teleport, and disconnect scenarios — its stated gate — done, with its 26.1.2 player-trace corpus blocked on a person with a paid account. The weaker gates are named under "What M9 found" below |
 | M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **In progress**: reconciled 2026-08-18, task 1 of six done |
 | P4 | Put every consumer on the released `minecraft-protocol` and keep them there | `minecraft-protocol` | Complete |
 | M11 | Turn `server` into a framework | `server` | Complete (M11.1–M11.7) |
@@ -160,9 +160,49 @@ below are what is left of them.
   stack-identity data, and a 1.8.9 server announces nothing after an accepted
   click — so those land when the data correction does; window types beyond
   the chest are exercised only by the audit.
-- [ ] **M9.8 — crafting**
-  ([plan](docs/superpowers/plans/2026-08-17-m9-8-crafting.md)). Only the
-  reconcile task is done; tasks 1–5 are open.
+- Closed, 2026-08-18: **M9.8 — crafting**
+  ([plan](docs/superpowers/plans/2026-08-17-m9-8-crafting.md)). The matcher
+  trims the grid instead of sliding the pattern, pairs shapeless ingredients
+  with backtracking, and owns nothing version-specific except ingredient
+  equality — 1.8.9's metadata variants with the -1 wildcard, 26.1.2's
+  flattened item IDs. The gate is live and it is sharp on the version that
+  matters: a 1.8.9 server never sends the result slot, so the client computes
+  it locally and the result click's claim is the matcher's answer — the
+  server's accept is a bit-exact agreement with its own craft. Both jars
+  agreed on every scenario, including the mirror corpus: the horizontally
+  mirrored axe crafts on both, the vertically flipped one on neither.
+
+**What M9 found, collected.** The six mechanic stages in one place, with the
+weaker gates named — a `v1.0.0` that presented two unequal lanes as equal
+would be a promise the evidence does not support, so M10's notes inherit this
+list:
+
+- **Both versions' generated data gets shears wrong** against leaves and wool
+  (M9.4), pinned per version in the break-time corpus; the fix is upstream.
+- **1.8.9's handles name a block state rather than a block** since M9.5,
+  which is what let a placement put its answer somewhere and fixed a top slab
+  colliding as a bottom one.
+- **A silent client on 1.8.9 is never told it died** (M9.6): that server
+  syncs health only from inside the handler the client's own idle reports
+  drive. The scenarios idle like a vanilla client now.
+- **Protocol 47 names no attacker** (M9.6, restating M7's finding where it
+  bit): orbit fights on 26.1.2 and cannot be provoked on 1.8.9, by design
+  rather than omission.
+- **The 26.1 window dataset is unusable** (M9.7): the wire numbers menus into
+  a registry no pinned data resolves. The fix to schedule is a real 26.1 menu
+  registry in `minecraft-protocol`, keyed in registry order; the audit's pins
+  fail the day it lands.
+- **A 1.8.9 server answers an accepted click with nothing** (M9.7, M9.8), so
+  the client predicts exactly or refuses: quick-move, drag, and same-item
+  merges are refused on 47 until the window data correction lands, and the
+  crafting result is computed locally because the server never sends it.
+- **The weaker gates, by name:** M8.7's 26.1.2 constants (measured, not
+  dumped); M9.3's 26.1.2 lane (no human capture yet); M9.6's 26.1.2 lane
+  (the damage composition is transcribed, not executed — its hurt path needs
+  a real `ServerLevel`; the sprint/enchant knockback bonus and airborne lift
+  diverge and are recorded on `combat.Knockback`); M9.7's 26.1.2 lane
+  (runtime data only); M9.8's coverage (a logged sample of registries holding
+  thousands, with recipe-book gating observed and not acted on).
 Closed, 2026-08-18: **the flake read as "the hangup fixture closes while the
 client is still writing".** It was not the fixture. The client acknowledged its
 placement, the server received the acknowledgement and hung up, and the client's
