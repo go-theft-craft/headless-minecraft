@@ -135,13 +135,17 @@ below are what is left of them.
 - [ ] **M9.8 — crafting**
   ([plan](docs/superpowers/plans/2026-08-17-m9-8-crafting.md)). Only the
   reconcile task is done; tasks 1–5 are open.
-- [ ] **The hangup fixture closes while the client is still writing.**
-  `TestAServerThatHangsUpSilentlyStillReportsTheDisconnect` fails at `Connect`
-  with `write position_look: managed stream is closed` about twenty times in
-  nine hundred runs under a 24-way CPU load, at the same rate before and after
-  everything above. The fixture waits for one packet from the client and calls
-  that the acknowledgement, and the client has more than one to send. It is the
-  only flake left in that lane.
+Closed, 2026-08-18: **the flake read as "the hangup fixture closes while the
+client is still writing".** It was not the fixture. The client acknowledged its
+placement, the server received the acknowledgement and hung up, and the client's
+own `Write` reported the frame the server already had as refused — so `Connect`
+failed on a session the server had seen through. Three windows in
+`minecraft-protocol`, closed across `v0.7.1` and `v0.7.2`: an observation that
+could not be charged to a budget closing with the transport, a write pump that
+dropped the outcome of a frame it had written, and — the one that survived
+`v0.7.1` — a coordinator that gave up on the stop while the frame was still
+inside the transport call. Bytes reach a peer before the call that sent them
+returns, so "no result yet" never meant "nothing was sent".
 
 Closed, 2026-08-18: **`Connect` reporting a placed session as one that never
 was.** `awaitReady` selected between the readiness signal and the loop ending,
@@ -158,8 +162,10 @@ delivered when the transport goes, so a disconnect could name the state before
 the one the session was in. The read loop records the state each packet arrives
 in, which needs nothing that can be gone by then.
 
-Measured, 900 sessions of each affected test per arm, interleaved so both arms
-saw the same machine: four failures of those two kinds before, none after.
+Measured, 600 sessions of each of the three teardown tests per arm, interleaved
+so both arms saw the same machine: thirty-two failures across four kinds on the
+commit that took `v0.7.0`, none on `v0.7.2` with these fixes. That lane has no
+known flake left.
 
 Closed, 2026-08-18: **a kicked session reporting the state it ended in as
 `unknown`.** Both halves of it, and neither was where the first reading put it.
