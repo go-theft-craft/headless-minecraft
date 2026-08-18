@@ -20,10 +20,13 @@ import (
 // own and comparing two is comparing two integers, where naming a block per cell
 // would put a string lookup inside the innermost loop of an A*.
 type Facts struct {
-	burn    map[simworld.BlockRef]bool
-	contact map[simworld.BlockRef]bool
-	water   map[simworld.BlockRef]bool
-	lava    map[simworld.BlockRef]bool
+	burn      map[simworld.BlockRef]bool
+	contact   map[simworld.BlockRef]bool
+	water     map[simworld.BlockRef]bool
+	lava      map[simworld.BlockRef]bool
+	climbable map[simworld.BlockRef]bool
+	operable  map[simworld.BlockRef]bool
+	locked    map[simworld.BlockRef]bool
 }
 
 // Hazard implements terrain.Facts.
@@ -47,6 +50,28 @@ func (f Facts) Fluid(ref simworld.BlockRef) terrain.Fluid {
 		return terrain.FluidLava
 	default:
 		return terrain.FluidNone
+	}
+}
+
+// Climbable implements terrain.Facts.
+//
+// Unlike the two above, this set is not a list this example wrote down. It is
+// the measurement minecraft-protocol takes out of the game's own jar, asked per
+// state, which is the only honest source for it: a ladder's collision box is
+// empty, so nothing in the geometry tells one from air, and the two versions do
+// not agree about the answer — 1.8.9 has two climbable blocks and 26.1.2 has
+// nine.
+func (f Facts) Climbable(ref simworld.BlockRef) bool { return f.climbable[ref] }
+
+// Door implements terrain.Facts.
+func (f Facts) Door(ref simworld.BlockRef) terrain.Door {
+	switch {
+	case f.operable[ref]:
+		return terrain.DoorOperable
+	case f.locked[ref]:
+		return terrain.DoorLocked
+	default:
+		return terrain.DoorNone
 	}
 }
 
@@ -78,6 +103,20 @@ var (
 	}
 	waterBlocks = []string{"water", "flowing_water"}
 	lavaBlocks  = []string{"lava", "flowing_lava"}
+	// Doors are a list for the reason the hazards are: nothing published says
+	// which doors a hand can work. What is measured out of the jar is whether a
+	// block is climbable, not whether it needs redstone.
+	//
+	// The iron door is named rather than left out. A door nothing describes
+	// reads as a wall, and a bot that treats one as a wall and one as an
+	// opening is right about both; a bot that treats an iron door as an opening
+	// stands at it forever.
+	operableDoors = []string{
+		"wooden_door", "oak_door", "spruce_door", "birch_door", "jungle_door",
+		"acacia_door", "cherry_door", "dark_oak_door", "pale_oak_door",
+		"mangrove_door", "bamboo_door", "crimson_door", "warped_door",
+	}
+	lockedDoors = []string{"iron_door"}
 )
 
 // NewFacts resolves the lists to every state each block has.
@@ -99,11 +138,45 @@ var (
 // produce. Two resolvers would be two chances to disagree.
 func NewFacts(set *data.Set, blocks predict.Blocks) Facts {
 	return Facts{
-		burn:    refsOf(set, blocks, burnBlocks),
-		contact: refsOf(set, blocks, contactBlocks),
-		water:   refsOf(set, blocks, waterBlocks),
-		lava:    refsOf(set, blocks, lavaBlocks),
+		burn:      refsOf(set, blocks, burnBlocks),
+		contact:   refsOf(set, blocks, contactBlocks),
+		water:     refsOf(set, blocks, waterBlocks),
+		lava:      refsOf(set, blocks, lavaBlocks),
+		climbable: climbableRefs(set, blocks),
+		operable:  refsOf(set, blocks, operableDoors),
+		locked:    refsOf(set, blocks, lockedDoors),
 	}
+}
+
+// climbableRefs resolves every state the measurement calls climbable.
+//
+// It walks the whole registry rather than a list of names, which is the whole
+// point of the property being measured: this example does not have to know that
+// 26.1.2 added scaffolding and the cave vines, and it does not have to be
+// updated when a version adds another. A version nobody has measured publishes
+// no registry at all, and the set comes back empty — which is a bot that will
+// not climb, rather than one that climbs the wrong things.
+func climbableRefs(set *data.Set, blocks predict.Blocks) map[simworld.BlockRef]bool {
+	refs := make(map[simworld.BlockRef]bool)
+
+	movement := set.BlockMovement()
+	if movement == nil {
+		return refs
+	}
+
+	for _, block := range set.Blocks().All() {
+		for _, state := range statesOf(block) {
+			climbable, known := movement.ClimbableByState(data.BlockStateID(state))
+			if !known || !climbable {
+				continue
+			}
+			if ref, ok := blocks.Ref(state); ok {
+				refs[ref] = true
+			}
+		}
+	}
+
+	return refs
 }
 
 // refsOf resolves what it can and quietly drops what it cannot.

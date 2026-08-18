@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+
+	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
 )
 
 // This file is the whole seam between the decision core and the library. The
@@ -15,7 +17,7 @@ import (
 
 // Self is the local player's observed state.
 type Self struct {
-	Position Vec3
+	Position simgeom.Vec3
 	Health   float64
 	OnGround bool
 	// OnFire reports that the player is burning, read from the burning bit of
@@ -27,7 +29,7 @@ type Self struct {
 // Entity is a tracked entity the bot may fight.
 type Entity struct {
 	ID       int32
-	Position Vec3
+	Position simgeom.Vec3
 	Health   float64
 	Alive    bool
 	// Kind is what this client can say about the entity: a name for a log
@@ -48,7 +50,7 @@ type World interface {
 	// vanilla server sends the level's shared spawn on join and re-sends the
 	// same packet when the player's respawn point moves, so a bot that slept
 	// would find its circle recentred. This one never sleeps.
-	Spawn() (Vec3, bool)
+	Spawn() (simgeom.Vec3, bool)
 	// Route plans a way between two positions and reports the positions to
 	// walk through. The second result is false when nothing was reachable at
 	// all, which the caller answers by skipping the waypoint rather than by
@@ -59,7 +61,7 @@ type World interface {
 	// asks for a way and never learns what terrain is; that is what lets the
 	// decision tests script three points and run the whole state machine
 	// without a chunk in sight.
-	Route(from, to Vec3) (Route, bool)
+	Route(from, to simgeom.Vec3) (Route, bool)
 	// Walkable reports whether the body can still walk a straight line between
 	// two positions.
 	//
@@ -68,7 +70,7 @@ type World interface {
 	// already committed to a way through. This is how the core asks whether
 	// the next stretch is still the stretch it planned across, and it is a
 	// cheaper question than planning again.
-	Walkable(from, to Vec3) bool
+	Walkable(from, to simgeom.Vec3) bool
 	// Hurting reports whether the body at a position is standing in something
 	// that damages it.
 	//
@@ -76,13 +78,13 @@ type World interface {
 	// and an unstreamed chunk as well as for lava, and a bot that read "not
 	// walkable" as "I am burning" would panic every time it reached the edge
 	// of the world the server has sent it.
-	Hurting(at Vec3) bool
+	Hurting(at simgeom.Vec3) bool
 	// Water finds the nearest water the body could stand in within a radius of
 	// cells, for a bot that is on fire and would rather not be.
-	Water(from Vec3, within int) (Vec3, bool)
+	Water(from simgeom.Vec3, within int) (simgeom.Vec3, bool)
 	// Safe finds the nearest cell within a radius that does not hurt to stand
 	// in, for a bot that is standing in something that does.
-	Safe(from Vec3, within int) (Vec3, bool)
+	Safe(from simgeom.Vec3, within int) (simgeom.Vec3, bool)
 	// Entity reports one tracked entity by ID.
 	Entity(id int32) (Entity, bool)
 }
@@ -107,7 +109,7 @@ type Actuator interface {
 	// server sends a position to place or to correct, never to acknowledge,
 	// so the snapshot cannot answer "where am I now" for a bot that is
 	// walking. The caller carries that between ticks.
-	Step(ctx context.Context, from, target Vec3, jump bool) (Vec3, error)
+	Step(ctx context.Context, from, target simgeom.Vec3, jump bool) (simgeom.Vec3, error)
 	// Attack hits an entity.
 	Attack(ctx context.Context, id int32) error
 	// Locomotion declares whether the body is walking or standing, so that a
@@ -121,7 +123,7 @@ type Actuator interface {
 	// On the Actuator because it is something the bot does to the world, and
 	// separate from Step because it is a debugging aid: a run with it off must
 	// send nothing at all.
-	Mark(ctx context.Context, at Vec3) error
+	Mark(ctx context.Context, at simgeom.Vec3) error
 	// Kill asks the server to kill the bot, which is how it leaves a trap
 	// nothing else gets it out of.
 	Kill(ctx context.Context) error

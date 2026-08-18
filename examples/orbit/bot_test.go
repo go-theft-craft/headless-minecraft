@@ -3,6 +3,8 @@ package main
 import (
 	"testing"
 	"time"
+
+	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
 )
 
 // A tick source that advances a fake clock, so ten minutes of standing still
@@ -18,7 +20,7 @@ func (c *clock) advance(d time.Duration) time.Time {
 }
 
 // join drives a fresh bot to Orbiting and returns it with its world.
-func join(t *testing.T, w World, start Vec3) (*Bot, *clock) {
+func join(t *testing.T, w World, start simgeom.Vec3) (*Bot, *clock) {
 	t.Helper()
 
 	c := newClock()
@@ -113,7 +115,7 @@ func TestAWaypointNothingCanRouteToIsSkipped(t *testing.T) {
 
 	// Wall the circle at waypoint 1 and one block either side of it radially.
 	for _, offset := range []float64{0, -1, 1} {
-		p := circle.At(1, offset).Floor()
+		p := floorOf(circle.At(1, offset))
 		w.wall(p.X, p.Z, 3)
 	}
 
@@ -203,9 +205,9 @@ func TestATrappedBotResumesWhenTheWallChanges(t *testing.T) {
 	// when the answer comes back different.
 	for waypoint := range 8 {
 		for offset := -4; offset <= 4; offset++ {
-			p := circle.At(waypoint, float64(offset)).Floor()
-			for y := 64; y < 68; y++ {
-				delete(w.solid, BlockPos{X: p.X, Y: y, Z: p.Z})
+			p := floorOf(circle.At(waypoint, float64(offset)))
+			for y := int32(64); y < 68; y++ {
+				delete(w.solid, simgeom.BlockPos{X: p.X, Y: y, Z: p.Z})
 			}
 		}
 	}
@@ -249,7 +251,7 @@ func TestATrappedBotGivesUpAfterItsBudget(t *testing.T) {
 }
 
 // trapped returns a bot standing in a sealed band.
-func trapped(t *testing.T) (*Bot, *clock, *scripted, Vec3) {
+func trapped(t *testing.T) (*Bot, *clock, *scripted, simgeom.Vec3) {
 	t.Helper()
 
 	w := newScripted()
@@ -290,7 +292,7 @@ func TestDeathSendsOneRespawnAndReturnsToTheCircle(t *testing.T) {
 	}
 
 	// Respawn far from the circle, which is what a bed does.
-	far := Vec3{X: 200, Y: 64, Z: 200}
+	far := simgeom.Vec3{X: 200, Y: 64, Z: 200}
 	bot.Advance(Tick{Now: c.advance(50 * time.Millisecond), Ready: true, Self: Self{Position: far}, Respawned: true}, w)
 	if bot.State() != Returning {
 		t.Fatalf("the bot is %v after respawning, want returning", bot.State())
@@ -426,7 +428,7 @@ func TestLavaPouredInFrontOfACommittedRouteIsNoticed(t *testing.T) {
 	// The pour: wall the ground a stride ahead, and bump the revision, which is
 	// how the world reports that a block changed.
 	blocked := position.Toward(bot.Route().Steps[0], 1)
-	p := blocked.Floor()
+	p := floorOf(blocked)
 	w.wall(p.X, p.Z, 3)
 
 	action = bot.Advance(Tick{
@@ -476,7 +478,7 @@ type counting struct {
 	walkable int
 }
 
-func (c *counting) Walkable(from, to Vec3) bool {
+func (c *counting) Walkable(from, to simgeom.Vec3) bool {
 	c.walkable++
 
 	return c.scripted.Walkable(from, to)
@@ -498,7 +500,7 @@ func TestStandingInLavaOutranksEverything(t *testing.T) {
 	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
 
 	// The ground the bot is standing on turns to lava.
-	w.harmful[position.Floor()] = true
+	w.harmful[floorOf(position)] = true
 
 	action := bot.Advance(Tick{
 		Now: c.advance(50 * time.Millisecond), Ready: true,
@@ -524,7 +526,7 @@ func TestEscapingEndsWhenTheGroundIsSafeAgain(t *testing.T) {
 	bot, c := join(t, w, position)
 	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
 
-	w.harmful[position.Floor()] = true
+	w.harmful[floorOf(position)] = true
 	bot.Advance(Tick{
 		Now: c.advance(50 * time.Millisecond), Ready: true,
 		Self: Self{Position: position}, Revision: 2,
@@ -534,7 +536,7 @@ func TestEscapingEndsWhenTheGroundIsSafeAgain(t *testing.T) {
 	}
 
 	// One step later it is standing somewhere that does not hurt.
-	safe := position.Add(Vec3{X: 3})
+	safe := position.Add(simgeom.Vec3{X: 3})
 	bot.Advance(Tick{
 		Now: c.advance(50 * time.Millisecond), Ready: true,
 		Self: Self{Position: safe}, Revision: 3,
@@ -551,8 +553,8 @@ func TestUnstreamedGroundIsNotMistakenForLava(t *testing.T) {
 	t.Parallel()
 
 	w := newScripted()
-	w.loaded = func(BlockPos) bool { return false }
-	position := Vec3{Y: 64}
+	w.loaded = func(simgeom.BlockPos) bool { return false }
+	position := simgeom.Vec3{Y: 64}
 
 	bot := NewBot(DefaultBounds())
 	c := newClock()
@@ -576,7 +578,7 @@ func TestBurningWalksToWaterWorthReaching(t *testing.T) {
 	circle := NewCircle(w.spawn, 25, 32)
 	position := circle.At(0, 0)
 	// Three blocks away: under a second of walking, against fifteen of fire.
-	w.water[position.Add(Vec3{X: 3}).Floor()] = true
+	w.water[floorOf(position.Add(simgeom.Vec3{X: 3}))] = true
 
 	bot, c := join(t, w, position)
 	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
@@ -602,7 +604,7 @@ func TestBurningIgnoresWaterItCannotReachInTime(t *testing.T) {
 	w := newScripted()
 	circle := NewCircle(w.spawn, 25, 32)
 	position := circle.At(0, 0)
-	w.water[position.Add(Vec3{X: 10}).Floor()] = true
+	w.water[floorOf(position.Add(simgeom.Vec3{X: 10}))] = true
 
 	bot, c := join(t, w, position)
 	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
@@ -633,13 +635,13 @@ func TestBurningInLavaGetsOutBeforeLookingForWater(t *testing.T) {
 	w := newScripted()
 	circle := NewCircle(w.spawn, 25, 32)
 	position := circle.At(0, 0)
-	w.water[position.Add(Vec3{X: 3}).Floor()] = true
+	w.water[floorOf(position.Add(simgeom.Vec3{X: 3}))] = true
 
 	bot, c := join(t, w, position)
 	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
 
 	// The ground turns to lava under a bot that is already burning.
-	w.harmful[position.Floor()] = true
+	w.harmful[floorOf(position)] = true
 	bot.Advance(Tick{
 		Now: c.advance(50 * time.Millisecond), Ready: true,
 		Self: Self{Position: position, OnFire: true},
@@ -657,7 +659,7 @@ func TestDousingStopsWhenTheFireIsOut(t *testing.T) {
 	w := newScripted()
 	circle := NewCircle(w.spawn, 25, 32)
 	position := circle.At(0, 0)
-	w.water[position.Add(Vec3{X: 3}).Floor()] = true
+	w.water[floorOf(position.Add(simgeom.Vec3{X: 3}))] = true
 
 	bot, c := join(t, w, position)
 	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
@@ -698,9 +700,9 @@ func TestEscapingHeadsForTheNearestEdge(t *testing.T) {
 
 	// A pool three cells wide reaching away on +X, with the bot at its -X end.
 	// The near edge is one step back the way it came.
-	foot := position.Floor()
-	for dx := range 4 {
-		w.harmful[BlockPos{X: foot.X + dx, Y: foot.Y, Z: foot.Z}] = true
+	foot := floorOf(position)
+	for dx := range int32(4) {
+		w.harmful[simgeom.BlockPos{X: foot.X + dx, Y: foot.Y, Z: foot.Z}] = true
 	}
 
 	action := bot.Advance(Tick{
@@ -742,10 +744,10 @@ func TestABotAlreadyInLavaIsAllowedToMove(t *testing.T) {
 	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
 
 	// A pool wide enough that no single step leaves it.
-	foot := position.Floor()
-	for dx := -2; dx <= 2; dx++ {
-		for dz := -2; dz <= 2; dz++ {
-			w.harmful[BlockPos{X: foot.X + dx, Y: foot.Y, Z: foot.Z + dz}] = true
+	foot := floorOf(position)
+	for dx := int32(-2); dx <= 2; dx++ {
+		for dz := int32(-2); dz <= 2; dz++ {
+			w.harmful[simgeom.BlockPos{X: foot.X + dx, Y: foot.Y, Z: foot.Z + dz}] = true
 		}
 	}
 
@@ -775,7 +777,7 @@ func TestBeingHitStartsAFight(t *testing.T) {
 	position := circle.At(0, 0)
 	// Within reach, so the first tick is a swing rather than a walk.
 	w.entities[42] = Entity{
-		ID: 42, Position: position.Add(Vec3{X: 2}), Health: 20, Alive: true,
+		ID: 42, Position: position.Add(simgeom.Vec3{X: 2}), Health: 20, Alive: true,
 		Kind: Kind{Name: "Zombie", Pursues: true}, Named: true,
 	}
 
@@ -807,7 +809,7 @@ func TestSwingsArePaced(t *testing.T) {
 	circle := NewCircle(w.spawn, 25, 32)
 	position := circle.At(0, 0)
 	w.entities[42] = Entity{
-		ID: 42, Position: position.Add(Vec3{X: 2}), Health: 20, Alive: true,
+		ID: 42, Position: position.Add(simgeom.Vec3{X: 2}), Health: 20, Alive: true,
 		Kind: Kind{Name: "Zombie", Pursues: true}, Named: true,
 	}
 
@@ -842,7 +844,7 @@ func TestAFightEndsWhenTheThreatDies(t *testing.T) {
 	circle := NewCircle(w.spawn, 25, 32)
 	position := circle.At(0, 0)
 	w.entities[42] = Entity{
-		ID: 42, Position: position.Add(Vec3{X: 2}), Health: 20, Alive: true,
+		ID: 42, Position: position.Add(simgeom.Vec3{X: 2}), Health: 20, Alive: true,
 		Kind: Kind{Name: "Zombie", Pursues: true}, Named: true,
 	}
 
@@ -873,7 +875,7 @@ func TestAnUnnamedAttackerIsStillFought(t *testing.T) {
 	circle := NewCircle(w.spawn, 25, 32)
 	position := circle.At(0, 0)
 	w.entities[42] = Entity{
-		ID: 42, Position: position.Add(Vec3{X: 2}), Health: 20, Alive: true,
+		ID: 42, Position: position.Add(simgeom.Vec3{X: 2}), Health: 20, Alive: true,
 		Kind: Kind{Pursues: false}, Named: false,
 	}
 
@@ -934,7 +936,7 @@ func TestAskingToDieReachesTheServer(t *testing.T) {
 
 	actuator := &recording{}
 	_, _, done, err := apply(
-		t.Context(), quiet(), actuator, NewBot(DefaultBounds()), Vec3{},
+		t.Context(), quiet(), actuator, NewBot(DefaultBounds()), simgeom.Vec3{},
 		Action{Kind: AskToDie}, false,
 	)
 	if err != nil || done {

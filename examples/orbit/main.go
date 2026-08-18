@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
+
 	"github.com/go-theft-craft/headless-minecraft/auth"
 	"github.com/go-theft-craft/headless-minecraft/client"
 	"github.com/go-theft-craft/headless-minecraft/event"
@@ -223,7 +225,7 @@ func drive(
 		// reset whenever the server disagrees. That is dead reckoning, and it
 		// is the crude half of client-side prediction; the other half is a
 		// body that knows about gravity and collision, which is M8's.
-		predicted Vec3
+		predicted simgeom.Vec3
 		placed    bool
 	)
 	for {
@@ -370,10 +372,10 @@ func apply(
 	logger *slog.Logger,
 	actuator Actuator,
 	core *Bot,
-	from Vec3,
+	from simgeom.Vec3,
 	action Action,
 	trail bool,
-) (Vec3, int, bool, error) {
+) (simgeom.Vec3, int, bool, error) {
 	var err error
 
 	// Where the bot is after this action. Only a step moves it, and a step

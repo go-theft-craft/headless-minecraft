@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"testing"
 
+	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
+
 	"github.com/go-theft-craft/headless-minecraft/event"
 	"github.com/go-theft-craft/headless-minecraft/version"
 )
@@ -20,7 +22,7 @@ func TestApplyDispatchesEveryActionKind(t *testing.T) {
 
 	actuator := &recording{}
 	core := NewBot(DefaultBounds())
-	target := Vec3{X: 1, Y: 64, Z: 2}
+	target := simgeom.Vec3{X: 1, Y: 64, Z: 2}
 
 	for _, action := range []Action{
 		{Kind: Stand},
@@ -28,7 +30,7 @@ func TestApplyDispatchesEveryActionKind(t *testing.T) {
 		{Kind: Strike, Entity: 42},
 		{Kind: SendRespawn},
 	} {
-		_, code, done, err := apply(t.Context(), quiet(), actuator, core, Vec3{}, action, false)
+		_, code, done, err := apply(t.Context(), quiet(), actuator, core, simgeom.Vec3{}, action, false)
 		if err != nil || done || code != 0 {
 			t.Fatalf("%v produced code=%d done=%v err=%v, want a clean continue", action.Kind, code, done, err)
 		}
@@ -48,7 +50,7 @@ func TestApplyDispatchesEveryActionKind(t *testing.T) {
 func TestApplyEndsTheLoopOnExit(t *testing.T) {
 	t.Parallel()
 
-	_, code, done, err := apply(t.Context(), quiet(), &recording{}, NewBot(DefaultBounds()), Vec3{}, Action{
+	_, code, done, err := apply(t.Context(), quiet(), &recording{}, NewBot(DefaultBounds()), simgeom.Vec3{}, Action{
 		Kind:   Exit,
 		Reason: "sealed in",
 		Code:   1,
@@ -63,9 +65,11 @@ func TestApplyEndsTheLoopOnExit(t *testing.T) {
 // error paths are reached without a connection.
 type failing struct{ err error }
 
-func (f failing) Step(_ context.Context, from, _ Vec3, _ bool) (Vec3, error) { return from, f.err }
-func (f failing) Attack(context.Context, int32) error                        { return f.err }
-func (f failing) Respawn(context.Context) error                              { return f.err }
+func (f failing) Step(_ context.Context, from, _ simgeom.Vec3, _ bool) (simgeom.Vec3, error) {
+	return from, f.err
+}
+func (f failing) Attack(context.Context, int32) error { return f.err }
+func (f failing) Respawn(context.Context) error       { return f.err }
 
 // Locomotion succeeds even here. It is narration rather than an action, and
 // these cases are about what happens when an action a milestone owes is asked
@@ -75,7 +79,7 @@ func (failing) Locomotion(context.Context, bool) error { return nil }
 
 // Mark succeeds for the same reason Locomotion does: it is not the action
 // under test, and failing it would move the failure a line earlier.
-func (failing) Mark(context.Context, Vec3) error { return nil }
+func (failing) Mark(context.Context, simgeom.Vec3) error { return nil }
 
 // Kill succeeds too, for the same reason.
 func (failing) Kill(context.Context) error { return nil }
@@ -91,7 +95,7 @@ func TestAPendingPortStopsTheRunWithoutCrashing(t *testing.T) {
 		quiet(),
 		failing{err: ErrNotYet},
 		NewBot(DefaultBounds()),
-		Vec3{},
+		simgeom.Vec3{},
 		Action{Kind: StepTo},
 		false,
 	)
@@ -117,7 +121,7 @@ func TestARealActuatorErrorIsNotSwallowed(t *testing.T) {
 		quiet(),
 		failing{err: sentinel},
 		NewBot(DefaultBounds()),
-		Vec3{},
+		simgeom.Vec3{},
 		Action{Kind: Strike},
 		false,
 	)
@@ -214,12 +218,14 @@ func TestFoldCarriesTheEdgeTriggeredFacts(t *testing.T) {
 // mute is an actuator whose locomotion fails and whose movement does not.
 type mute struct{ err error }
 
-func (mute) Step(_ context.Context, from, _ Vec3, _ bool) (Vec3, error) { return from, nil }
-func (mute) Attack(context.Context, int32) error                        { return nil }
-func (mute) Respawn(context.Context) error                              { return nil }
-func (m mute) Locomotion(context.Context, bool) error                   { return m.err }
-func (mute) Mark(context.Context, Vec3) error                           { return nil }
-func (mute) Kill(context.Context) error                                 { return nil }
+func (mute) Step(_ context.Context, from, _ simgeom.Vec3, _ bool) (simgeom.Vec3, error) {
+	return from, nil
+}
+func (mute) Attack(context.Context, int32) error      { return nil }
+func (mute) Respawn(context.Context) error            { return nil }
+func (m mute) Locomotion(context.Context, bool) error { return m.err }
+func (mute) Mark(context.Context, simgeom.Vec3) error { return nil }
+func (mute) Kill(context.Context) error               { return nil }
 
 // TestAProtocolThatCannotNarrateStillWalks pins that the decoration is
 // optional and the movement is not.
@@ -234,7 +240,7 @@ func TestAProtocolThatCannotNarrateStillWalks(t *testing.T) {
 	_, code, done, err := apply(
 		t.Context(), quiet(),
 		mute{err: version.UnsupportedAction("java/1.8.9", version.ActionInput{})},
-		NewBot(DefaultBounds()), Vec3{}, Action{Kind: StepTo}, false,
+		NewBot(DefaultBounds()), simgeom.Vec3{}, Action{Kind: StepTo}, false,
 	)
 	if err != nil || done || code != 0 {
 		t.Fatalf("apply returned (%d, %v, %v), want the run to carry on", code, done, err)
@@ -249,7 +255,7 @@ func TestLocomotionFailingForAnyOtherReasonStopsTheRun(t *testing.T) {
 	_, code, done, err := apply(
 		t.Context(), quiet(),
 		mute{err: errors.New("connection reset")},
-		NewBot(DefaultBounds()), Vec3{}, Action{Kind: StepTo}, false,
+		NewBot(DefaultBounds()), simgeom.Vec3{}, Action{Kind: StepTo}, false,
 	)
 	if err == nil || !done || code != 70 {
 		t.Fatalf("apply returned (%d, %v, %v), want a stopped run", code, done, err)

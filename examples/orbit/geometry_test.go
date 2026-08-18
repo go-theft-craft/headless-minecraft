@@ -3,6 +3,8 @@ package main
 import (
 	"math"
 	"testing"
+
+	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
 )
 
 func TestThirtyTwoWaypointsStayWithinAnEighthOfABlock(t *testing.T) {
@@ -10,7 +12,7 @@ func TestThirtyTwoWaypointsStayWithinAnEighthOfABlock(t *testing.T) {
 
 	// The waypoint count is a consequence, not a preference. This is the
 	// calculation that produced it.
-	c := NewCircle(Vec3{}, 25, 32)
+	c := NewCircle(simgeom.Vec3{}, 25, 32)
 
 	if got := c.Deviation(); got > 0.125 {
 		t.Errorf("32 waypoints deviate by %.4f blocks, want at most 0.125", got)
@@ -18,7 +20,7 @@ func TestThirtyTwoWaypointsStayWithinAnEighthOfABlock(t *testing.T) {
 
 	// And the number below it does not clear the same bar, which is why 16 was
 	// not chosen.
-	if got := NewCircle(Vec3{}, 25, 16).Deviation(); got <= 0.125 {
+	if got := NewCircle(simgeom.Vec3{}, 25, 16).Deviation(); got <= 0.125 {
 		t.Errorf("16 waypoints deviate by %.4f blocks; the choice of 32 is unjustified", got)
 	}
 }
@@ -26,7 +28,7 @@ func TestThirtyTwoWaypointsStayWithinAnEighthOfABlock(t *testing.T) {
 func TestWaypointsSitOnTheCircle(t *testing.T) {
 	t.Parallel()
 
-	c := NewCircle(Vec3{X: 100, Y: 64, Z: -50}, 25, 32)
+	c := NewCircle(simgeom.Vec3{X: 100, Y: 64, Z: -50}, 25, 32)
 
 	for i := range c.Waypoints {
 		p := c.At(i, 0)
@@ -42,7 +44,7 @@ func TestWaypointsSitOnTheCircle(t *testing.T) {
 func TestOffsetMovesTheWaypointRadially(t *testing.T) {
 	t.Parallel()
 
-	c := NewCircle(Vec3{}, 25, 32)
+	c := NewCircle(simgeom.Vec3{}, 25, 32)
 
 	for _, offset := range []float64{-4, -1, 1, 4} {
 		got := c.At(7, offset).HorizontalDistance(c.Centre)
@@ -55,7 +57,7 @@ func TestOffsetMovesTheWaypointRadially(t *testing.T) {
 func TestWaypointIndexWraps(t *testing.T) {
 	t.Parallel()
 
-	c := NewCircle(Vec3{}, 25, 32)
+	c := NewCircle(simgeom.Vec3{}, 25, 32)
 
 	// The orbit increments the index forever and never takes a modulus, so
 	// wrapping has to happen here or the bot walks off the end of the circle
@@ -71,7 +73,7 @@ func TestWaypointIndexWraps(t *testing.T) {
 func TestNearestReturnsTheWaypointAtThatAngle(t *testing.T) {
 	t.Parallel()
 
-	c := NewCircle(Vec3{X: 10, Y: 64, Z: 10}, 25, 32)
+	c := NewCircle(simgeom.Vec3{X: 10, Y: 64, Z: 10}, 25, 32)
 
 	for i := range c.Waypoints {
 		// A position just outside the circle at a waypoint's angle must resolve
@@ -93,10 +95,10 @@ func TestFloorHandlesNegativeCoordinates(t *testing.T) {
 
 	// Truncation would fold -0.5 onto block 0 alongside +0.5, which puts the
 	// bot one block off on exactly half the circle.
-	if got := (Vec3{X: -0.5, Y: 64.9, Z: -0.5}).Floor(); got != (BlockPos{X: -1, Y: 64, Z: -1}) {
+	if got := floorOf(simgeom.Vec3{X: -0.5, Y: 64.9, Z: -0.5}); got != (simgeom.BlockPos{X: -1, Y: 64, Z: -1}) {
 		t.Errorf("floored to %+v, want {-1 64 -1}", got)
 	}
-	if got := (Vec3{X: 0.5, Y: 64, Z: 0.5}).Floor(); got != (BlockPos{X: 0, Y: 64, Z: 0}) {
+	if got := floorOf(simgeom.Vec3{X: 0.5, Y: 64, Z: 0.5}); got != (simgeom.BlockPos{X: 0, Y: 64, Z: 0}) {
 		t.Errorf("floored to %+v, want {0 64 0}", got)
 	}
 }
@@ -106,8 +108,8 @@ func TestAStepStopsOnTheTargetRatherThanOvershooting(t *testing.T) {
 
 	// Arrival has to be a stable condition. A step that overshoots leaves the
 	// bot oscillating either side of a waypoint it never counts as reached.
-	from := Vec3{X: 0, Y: 64, Z: 0}
-	target := Vec3{X: 0.05, Y: 64, Z: 0}
+	from := simgeom.Vec3{X: 0, Y: 64, Z: 0}
+	target := simgeom.Vec3{X: 0.05, Y: 64, Z: 0}
 
 	if got := from.Toward(target, 0.2); got != target {
 		t.Errorf("stepped to %+v, want to stop on %+v", got, target)
@@ -117,8 +119,8 @@ func TestAStepStopsOnTheTargetRatherThanOvershooting(t *testing.T) {
 func TestAStepIsBoundedByTheLimit(t *testing.T) {
 	t.Parallel()
 
-	from := Vec3{X: 0, Y: 64, Z: 0}
-	got := from.Toward(Vec3{X: 100, Y: 64, Z: 0}, 0.2)
+	from := simgeom.Vec3{X: 0, Y: 64, Z: 0}
+	got := from.Toward(simgeom.Vec3{X: 100, Y: 64, Z: 0}, 0.2)
 
 	if math.Abs(got.X-0.2) > 1e-9 {
 		t.Errorf("stepped to x=%v, want 0.2", got.X)
@@ -131,9 +133,9 @@ func TestAStepNeverChoosesAHeight(t *testing.T) {
 	// This program has no physics, so a step that changed Y would be claiming
 	// to fall or fly rather than to walk — and a server reads the second one as
 	// cheating.
-	from := Vec3{X: 0, Y: 64, Z: 0}
+	from := simgeom.Vec3{X: 0, Y: 64, Z: 0}
 
-	if got := from.Toward(Vec3{X: 10, Y: 4, Z: 10}, 0.2); got.Y != 64 {
+	if got := from.Toward(simgeom.Vec3{X: 10, Y: 4, Z: 10}, 0.2); got.Y != 64 {
 		t.Errorf("step moved to y=%v, want to hold 64", got.Y)
 	}
 }
@@ -141,7 +143,7 @@ func TestAStepNeverChoosesAHeight(t *testing.T) {
 func TestAStepFromTheTargetDoesNotDivideByZero(t *testing.T) {
 	t.Parallel()
 
-	from := Vec3{X: 5, Y: 64, Z: 5}
+	from := simgeom.Vec3{X: 5, Y: 64, Z: 5}
 
 	if got := from.Toward(from, 0.2); got != from {
 		t.Errorf("stepping onto itself produced %+v, want %+v", got, from)
@@ -155,17 +157,17 @@ func TestYawUsesMinecraftsOwnZeroAndDirection(t *testing.T) {
 	// neither the mathematical convention nor a compass bearing. Getting it
 	// wrong points the bot ninety degrees off its own path, which no test of
 	// position would catch.
-	from := Vec3{}
+	from := simgeom.Vec3{}
 	for _, c := range []struct {
 		name   string
-		target Vec3
+		target simgeom.Vec3
 		want   float32
 	}{
-		{"south is zero", Vec3{Z: 1}, 0},
-		{"west is ninety", Vec3{X: -1}, 90},
-		{"north is one eighty", Vec3{Z: -1}, 180},
+		{"south is zero", simgeom.Vec3{Z: 1}, 0},
+		{"west is ninety", simgeom.Vec3{X: -1}, 90},
+		{"north is one eighty", simgeom.Vec3{Z: -1}, 180},
 		// -180 and 180 name the same heading, and the wire accepts either.
-		{"east is minus ninety", Vec3{X: 1}, -90},
+		{"east is minus ninety", simgeom.Vec3{X: 1}, -90},
 	} {
 		got := from.Yaw(c.target)
 		// Compare as angles: yaw wraps, so -180 and 180 are equal and a plain

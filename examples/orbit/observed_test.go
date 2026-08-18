@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
+
 	"github.com/go-theft-craft/headless-minecraft/event"
 	"github.com/go-theft-craft/headless-minecraft/world"
 )
@@ -26,7 +28,7 @@ func TestSpawnIsTheBlockCentreAndNotItsCorner(t *testing.T) {
 	if !known {
 		t.Fatal("the adapter did not see a spawn the world had recorded")
 	}
-	if want := (Vec3{X: 100.5, Y: 64, Z: -19.5}); centre != want {
+	if want := (simgeom.Vec3{X: 100.5, Y: 64, Z: -19.5}); centre != want {
 		t.Errorf("centre is %+v, want %+v", centre, want)
 	}
 }
@@ -58,7 +60,7 @@ func TestAnEntityIsAliveUntilTheServerSaysOtherwise(t *testing.T) {
 	if !target.Alive {
 		t.Error("a freshly spawned entity read as dead")
 	}
-	if want := (Vec3{X: 10, Y: 64, Z: 10}); target.Position != want {
+	if want := (simgeom.Vec3{X: 10, Y: 64, Z: 10}); target.Position != want {
 		t.Errorf("position is %+v, want %+v", target.Position, want)
 	}
 
@@ -77,7 +79,7 @@ func TestAnEntityIsAliveUntilTheServerSaysOtherwise(t *testing.T) {
 func TestAnUnstreamedWorldRoutesNowhere(t *testing.T) {
 	t.Parallel()
 
-	if _, found := silent().Route(Vec3{Y: 64}, Vec3{X: 8, Y: 64}); found {
+	if _, found := silent().Route(simgeom.Vec3{Y: 64}, simgeom.Vec3{X: 8, Y: 64}); found {
 		t.Error("routed across a world that has streamed nothing")
 	}
 }

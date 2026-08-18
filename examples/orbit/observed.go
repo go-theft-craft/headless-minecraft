@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 
+	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
+
 	"github.com/go-theft-craft/headless-minecraft/world"
 )
 
@@ -35,27 +37,27 @@ func NewObserved(
 }
 
 // Route plans a way between two positions over this snapshot.
-func (o Observed) Route(from, to Vec3) (Route, bool) {
+func (o Observed) Route(from, to simgeom.Vec3) (Route, bool) {
 	return o.navigator.Plan(o.ctx, o.snapshot.Chunks, from, to)
 }
 
 // Hurting reports whether the bot is standing in something that damages it.
-func (o Observed) Hurting(at Vec3) bool {
+func (o Observed) Hurting(at simgeom.Vec3) bool {
 	return o.navigator.Hurting(o.snapshot.Chunks, at)
 }
 
 // Safe finds the nearest cell that does not hurt, over this snapshot.
-func (o Observed) Safe(from Vec3, within int) (Vec3, bool) {
+func (o Observed) Safe(from simgeom.Vec3, within int) (simgeom.Vec3, bool) {
 	return o.navigator.Safe(o.snapshot.Chunks, from, within)
 }
 
 // Water finds the nearest water within a radius over this snapshot.
-func (o Observed) Water(from Vec3, within int) (Vec3, bool) {
+func (o Observed) Water(from simgeom.Vec3, within int) (simgeom.Vec3, bool) {
 	return o.navigator.Water(o.snapshot.Chunks, from, within)
 }
 
 // Walkable reports whether a straight line is still clear over this snapshot.
-func (o Observed) Walkable(from, to Vec3) bool {
+func (o Observed) Walkable(from, to simgeom.Vec3) bool {
 	return o.navigator.Walkable(o.snapshot.Chunks, from, to)
 }
 
@@ -68,15 +70,15 @@ func (o Observed) Walkable(from, to Vec3) bool {
 // the first. The bot never sleeps, so its circle never moves; a bot that did
 // would find its orbit recentred on its bed, which is the honest behaviour of
 // the only spawn the protocol reports.
-func (o Observed) Spawn() (Vec3, bool) {
+func (o Observed) Spawn() (simgeom.Vec3, bool) {
 	environment := o.snapshot.Environment
 	if !environment.SpawnKnown {
-		return Vec3{}, false
+		return simgeom.Vec3{}, false
 	}
 
 	// The centre of the block, not its corner. A circle drawn through block
 	// corners is half a block off the one an operator standing at spawn sees.
-	return Vec3{
+	return simgeom.Vec3{
 		X: float64(environment.Spawn.X) + 0.5,
 		Y: float64(environment.Spawn.Y),
 		Z: float64(environment.Spawn.Z) + 0.5,
@@ -101,7 +103,7 @@ func (o Observed) Entity(id int32) (Entity, bool) {
 
 	return Entity{
 		ID:       tracked.EntityID,
-		Position: Vec3{X: tracked.X, Y: tracked.Y, Z: tracked.Z},
+		Position: simgeom.Vec3{X: tracked.X, Y: tracked.Y, Z: tracked.Z},
 		Alive:    !tracked.Dead,
 		Kind:     kind,
 		Named:    named,
@@ -120,7 +122,7 @@ func observeSelf(snapshot world.Snapshot) (Self, bool) {
 	}
 
 	return Self{
-		Position: Vec3{X: player.X, Y: player.Y, Z: player.Z},
+		Position: simgeom.Vec3{X: player.X, Y: player.Y, Z: player.Z},
 		Health:   float64(player.Health),
 		OnFire:   onFire(snapshot, player.EntityID),
 	}, true

@@ -1,76 +1,36 @@
 package main
 
-import "math"
+import (
+	"math"
 
-// Vec3 is a world position in blocks.
-type Vec3 struct{ X, Y, Z float64 }
+	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
+)
 
-// BlockPos is the integer block a position falls inside.
-type BlockPos struct{ X, Y, Z int }
-
-// Floor converts a position to the block containing it. It floors rather than
-// truncates: truncation folds -0.5 and 0.5 onto the same block, which puts the
-// bot one block off on the negative side of spawn and nowhere else, so the bug
-// only shows on half the circle.
-func (v Vec3) Floor() BlockPos {
-	return BlockPos{
-		X: int(math.Floor(v.X)),
-		Y: int(math.Floor(v.Y)),
-		Z: int(math.Floor(v.Z)),
-	}
-}
-
-// Add returns v offset by d.
-func (v Vec3) Add(d Vec3) Vec3 { return Vec3{v.X + d.X, v.Y + d.Y, v.Z + d.Z} }
-
-// HorizontalDistance reports the distance to o ignoring height. Every bound in
-// this program is horizontal: a mob one block below the bot is in reach, and a
-// mob thirty blocks below it on a cliff is not somewhere the bot should chase.
-func (v Vec3) HorizontalDistance(o Vec3) float64 {
-	return math.Hypot(v.X-o.X, v.Z-o.Z)
-}
-
-// Toward returns the position reached by moving at most limit blocks from v
-// toward o, horizontally. The height is v's: this program has no physics, so it
-// never chooses a Y, and a step that changed one would be claiming to fall or
-// fly rather than to walk.
+// The vector arithmetic this example used to define now lives in
+// minecraft-simulation/geom, and this file imports it.
 //
-// It stops exactly on o rather than overshooting, which is what makes arrival a
-// stable condition instead of a point the bot oscillates around.
-func (v Vec3) Toward(o Vec3, limit float64) Vec3 {
-	distance := v.HorizontalDistance(o)
-	if distance <= limit || distance == 0 {
-		return Vec3{X: o.X, Y: v.Y, Z: o.Z}
-	}
-
-	scale := limit / distance
-
-	return Vec3{
-		X: v.X + (o.X-v.X)*scale,
-		Y: v.Y,
-		Z: v.Z + (o.Z-v.Z)*scale,
-	}
-}
-
-// Yaw returns the heading from v to o in degrees, as the wire carries it.
+// It was never isolation, only a copy: the example already depended on that
+// module, so a second Vec3 beside it was the same failure the navigation design
+// records about the 334 lines of bypass.go that answered "can I stand here"
+// inside an example because nothing in the stack exposed the fact. Add, Floor,
+// HorizontalDistance, Toward, Yaw, and Away are all in geom now, with the doc
+// comments they were written with — the reasoning in them was paid for by a
+// live run and is not the kind of thing to retype.
 //
-// Minecraft measures yaw from south, which is +Z, and increases it toward west,
-// which is -X. That is neither the mathematical convention nor a compass
-// bearing, so the arguments to Atan2 are the way they are on purpose.
-func (v Vec3) Yaw(o Vec3) float32 {
-	return float32(math.Atan2(-(o.X-v.X), o.Z-v.Z) * 180 / math.Pi)
-}
+// What stays here is what is true about this bot rather than about the game: a
+// waypoint ring, which waypoint to resume at, and how far the walked polygon
+// falls inside the circle it approximates.
 
 // Circle is the orbit: a centre, a radius, and the waypoints the bot walks
 // between.
 type Circle struct {
-	Centre    Vec3
+	Centre    simgeom.Vec3
 	Radius    float64
 	Waypoints int
 }
 
 // NewCircle returns the orbit for a spawn position.
-func NewCircle(centre Vec3, radius float64, waypoints int) Circle {
+func NewCircle(centre simgeom.Vec3, radius float64, waypoints int) Circle {
 	return Circle{Centre: centre, Radius: radius, Waypoints: waypoints}
 }
 
@@ -80,11 +40,11 @@ func NewCircle(centre Vec3, radius float64, waypoints int) Circle {
 // the planner routes around obstacles, and it stays because the circle is the
 // invariant and the radius is the free variable, so going around an obstacle is
 // a choice of delta rather than a search through a graph.
-func (c Circle) At(i int, delta float64) Vec3 {
+func (c Circle) At(i int, delta float64) simgeom.Vec3 {
 	angle := c.angle(i)
 	radius := c.Radius + delta
 
-	return Vec3{
+	return simgeom.Vec3{
 		X: c.Centre.X + radius*math.Cos(angle),
 		Y: c.Centre.Y,
 		Z: c.Centre.Z + radius*math.Sin(angle),
@@ -107,7 +67,7 @@ func (c Circle) angle(i int) float64 {
 // distance and the one it should resume at are the same, but where a position
 // near the centre makes every waypoint almost equidistant and the distance
 // comparison decided by floating-point noise. The angle is stable there.
-func (c Circle) Nearest(p Vec3) int {
+func (c Circle) Nearest(p simgeom.Vec3) int {
 	angle := math.Atan2(p.Z-c.Centre.Z, p.X-c.Centre.X)
 	if angle < 0 {
 		angle += 2 * math.Pi
@@ -126,42 +86,38 @@ func (c Circle) Deviation() float64 {
 	return c.Radius * (1 - math.Cos(math.Pi/float64(c.Waypoints)))
 }
 
-// RotatedAbout turns a point around a centre by an angle in degrees.
+// rotatedAbout turns a point around a centre by an angle in degrees.
 //
-// It is horizontal only, like everything else here: the bot walks a flat world
-// and turning a position through the vertical would aim it at the sky.
-func (v Vec3) RotatedAbout(centre Vec3, degrees float64) Vec3 {
+// It is horizontal only, like everything else this bot does: it walks a flat
+// world, and turning a position through the vertical would aim it at the sky.
+//
+// It is a function rather than a method now that the vector belongs to another
+// package, and it stays here rather than moving with the others because it is
+// how this bot picks an escape heading — a fact about this program and not
+// about the game.
+func rotatedAbout(v, centre simgeom.Vec3, degrees float64) simgeom.Vec3 {
 	radians := degrees * math.Pi / 180
 	sin, cos := math.Sin(radians), math.Cos(radians)
 	dx, dz := v.X-centre.X, v.Z-centre.Z
 
-	return Vec3{
+	return simgeom.Vec3{
 		X: centre.X + dx*cos - dz*sin,
 		Y: v.Y,
 		Z: centre.Z + dx*sin + dz*cos,
 	}
 }
 
-// Away returns a point distance blocks from here, directly away from threat.
+// floorOf is geom.BlockPosOf under the name this example used for it.
 //
-// It aims at a point rather than returning a direction because that is what
-// the actuator takes, and it aims the full safe distance rather than one step:
-// the step is clamped on the way out, and a target that moved one step at a
-// time would need recomputing against a threat that has also moved.
-func Away(here, threat Vec3, distance float64) Vec3 {
-	dx, dz := here.X-threat.X, here.Z-threat.Z
-
-	length := math.Hypot(dx, dz)
-	if length == 0 {
-		// Standing exactly on it, which a mob that has walked into the bot
-		// manages. Any direction beats returning here and standing still while
-		// something hits the bot, so this picks one.
-		dx, dz, length = 1, 0, 1
-	}
-
-	return Vec3{
-		X: here.X + dx/length*distance,
-		Y: here.Y,
-		Z: here.Z + dz/length*distance,
-	}
-}
+// It exists so the call sites read the way they did — a position floored to the
+// cell it is in — while the arithmetic is the shared one. geom's own Floor
+// rounds toward negative infinity for the reason this bot needed it to:
+// truncation folds -0.5 and 0.5 onto the same block, which puts the bot one
+// block off on the negative side of spawn and nowhere else, so the bug only
+// shows on half the circle.
+//
+// It replaced two functions. The example used to floor to its own BlockPos and
+// then convert that into the simulation's, which is the shape a duplicated type
+// forces on everything that touches both — and the conversion is exactly where a
+// width or a rounding rule goes quietly wrong.
+func floorOf(v simgeom.Vec3) simgeom.BlockPos { return simgeom.BlockPosOf(v) }

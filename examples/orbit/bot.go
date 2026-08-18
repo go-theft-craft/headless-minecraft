@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"time"
+
+	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
 )
 
 // State is where the bot is in its own state machine.
@@ -104,7 +106,7 @@ const (
 // Action is one decision.
 type Action struct {
 	Kind   ActionKind
-	Target Vec3
+	Target simgeom.Vec3
 	Jump   bool
 	Entity int32
 	// Reason explains an Exit, and is logged for every other kind at debug.
@@ -148,7 +150,7 @@ type Bot struct {
 	// struckAt is when the bot last swung, which paces the next swing.
 	struckAt time.Time
 	// dousingAt is the water being walked to.
-	dousingAt Vec3
+	dousingAt simgeom.Vec3
 	// litAt is when the bot was first seen burning, and lit whether it was.
 	// The wire carries the burning bit and not the fire's remaining ticks, so
 	// how long is left is worked out from when it started.
@@ -157,7 +159,7 @@ type Bot struct {
 	// escapeTo is the goal the current flight is running to. It is kept so
 	// that a flight follows one chosen way out instead of choosing a new one
 	// every tick as the threat moves.
-	escapeTo Vec3
+	escapeTo simgeom.Vec3
 	// fledAt is when the current flight started.
 	fledAt time.Time
 
@@ -367,7 +369,7 @@ func (b *Bot) orbit(t Tick, w World) Action {
 // caller answers differently: the orbit skips the waypoint, the return waits,
 // and the flight runs at the threat's opposite anyway because standing still
 // while something hits it is worse.
-func (b *Bot) follow(t Tick, w World, goal Vec3, key int) (Action, bool) {
+func (b *Bot) follow(t Tick, w World, goal simgeom.Vec3, key int) (Action, bool) {
 	if len(b.route.Steps) == 0 || b.routedFor != key {
 		route, found := w.Route(t.Self.Position, goal)
 		if !found {
@@ -434,7 +436,7 @@ func (b *Bot) follow(t Tick, w World, goal Vec3, key int) (Action, bool) {
 // Dropping the route with it: a step refused here is a route that has stopped
 // describing the world, and walking the rest of it would be walking the same
 // prediction again.
-func (b *Bot) guardedStep(t Tick, w World, target Vec3) Action {
+func (b *Bot) guardedStep(t Tick, w World, target simgeom.Vec3) Action {
 	// A bot already standing in something may step anywhere. The guard exists
 	// to keep a body out of harm, and a body in harm has nothing left to
 	// protect: every way out of a lava pool starts with a step whose landing
@@ -509,15 +511,15 @@ func (b *Bot) unreachable(t Tick) Action {
 // would never need this calculation. Reading the inventory means decoding the
 // version's own slot format and using it means an action nothing in this
 // library sends yet.
-func (b *Bot) worthDousing(t Tick, w World) (Vec3, bool) {
+func (b *Bot) worthDousing(t Tick, w World) (simgeom.Vec3, bool) {
 	left := b.bounds.FireDuration - t.Now.Sub(b.litAt)
 	if left <= 0 {
-		return Vec3{}, false
+		return simgeom.Vec3{}, false
 	}
 
 	water, found := w.Water(t.Self.Position, b.bounds.WaterSearch)
 	if !found {
-		return Vec3{}, false
+		return simgeom.Vec3{}, false
 	}
 
 	// How long the walk takes, at the speed the bot claims to walk.
@@ -525,11 +527,11 @@ func (b *Bot) worthDousing(t Tick, w World) (Vec3, bool) {
 		t.Self.Position.HorizontalDistance(water) / b.bounds.WalkSpeed * float64(time.Second),
 	)
 	if travel >= left {
-		return Vec3{}, false
+		return simgeom.Vec3{}, false
 	}
 
 	if water.HorizontalDistance(b.circle.Centre) > b.circle.Radius+b.bounds.FleeMargin {
-		return Vec3{}, false
+		return simgeom.Vec3{}, false
 	}
 
 	return water, true
@@ -600,9 +602,10 @@ func (b *Bot) escape(t Tick, w World) Action {
 	// The test is on the place the step lands rather than on the direction,
 	// because a body 0.6 wide leaving a pool cares where its box ends up.
 	for _, heading := range escapeHeadings {
-		aim := t.Self.Position.
-			Add(Vec3{X: b.bounds.SafeDistance}).
-			RotatedAbout(t.Self.Position, heading)
+		aim := rotatedAbout(
+			t.Self.Position.Add(simgeom.Vec3{X: b.bounds.SafeDistance}),
+			t.Self.Position, heading,
+		)
 
 		if !w.Hurting(t.Self.Position.Toward(aim, b.bounds.Step())) {
 			b.route = Route{}
@@ -869,7 +872,7 @@ func threatName(threat Entity) string {
 // stayed inside this program. It stopped being harmless once the bot began
 // declaring what it is doing on the wire, because then the claim is a
 // statement to the server about a jump that never happens.
-func (b *Bot) step(target Vec3) Action {
+func (b *Bot) step(target simgeom.Vec3) Action {
 	return Action{Kind: StepTo, Target: target, Jump: false}
 }
 

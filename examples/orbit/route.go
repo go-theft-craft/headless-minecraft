@@ -48,7 +48,7 @@ var (
 type Route struct {
 	// Steps are the positions to walk through, in order, each at the centre of
 	// the cell the planner routed into.
-	Steps []Vec3
+	Steps []simgeom.Vec3
 	// Complete reports that the steps reach the goal. An incomplete route is
 	// still worth walking -- the planner returns one on purpose, because a bot
 	// that covers most of the ground and searches again beats one that refuses
@@ -75,11 +75,11 @@ type Navigator struct {
 // The context bounds the search rather than the run: A* over a streamed world
 // is the one thing in this tick that can take unbounded time, and the budget
 // below bounds it by nodes as well.
-func (n Navigator) Plan(ctx context.Context, chunks world.ChunksView, from, to Vec3) (Route, bool) {
+func (n Navigator) Plan(ctx context.Context, chunks world.ChunksView, from, to simgeom.Vec3) (Route, bool) {
 	view := predict.NewTerrain(chunks, n.blocks, n.profile)
 
 	path, err := navigation.Find(
-		ctx, view, n.facts, n.capability, cellOf(from), cellOf(to), n.budget,
+		ctx, view, n.facts, n.capability, floorOf(from), floorOf(to), n.budget,
 	)
 	if err != nil || len(path.Edges) == 0 {
 		return Route{}, false
@@ -107,12 +107,12 @@ func (n Navigator) Plan(ctx context.Context, chunks world.ChunksView, from, to V
 	// a body through the gap between two blocks -- and that guarantee only
 	// holds between cell centres. A bot standing off-centre and heading for
 	// the next centre moves diagonally whatever the planner said.
-	steps := make([]Vec3, 0, len(path.Edges)+2)
+	steps := make([]simgeom.Vec3, 0, len(path.Edges)+2)
 	steps = append(steps, from, centreOf(from))
 
 	for _, edge := range path.Edges {
 		feet := terrain.FeetOf(edge.To)
-		steps = append(steps, Vec3{X: feet.X, Y: feet.Y, Z: feet.Z})
+		steps = append(steps, simgeom.Vec3{X: feet.X, Y: feet.Y, Z: feet.Z})
 	}
 
 	// Then pull the string taut. The search walks a grid four directions at a
@@ -144,12 +144,12 @@ func (n Navigator) Plan(ctx context.Context, chunks world.ChunksView, from, to V
 // height are never merged through -- a rise or a drop is a place the bot has
 // to arrive at before the next move makes sense, and this example has no body
 // that could jump the difference anyway.
-func (n Navigator) taut(query terrain.Query, steps []Vec3) []Vec3 {
+func (n Navigator) taut(query terrain.Query, steps []simgeom.Vec3) []simgeom.Vec3 {
 	if len(steps) < 3 {
 		return steps
 	}
 
-	taut := make([]Vec3, 0, len(steps))
+	taut := make([]simgeom.Vec3, 0, len(steps))
 	taut = append(taut, steps[0])
 
 	for i := 0; i < len(steps)-1; {
@@ -176,7 +176,7 @@ func (n Navigator) taut(query terrain.Query, steps []Vec3) []Vec3 {
 // does properly and it is not this example's to write; sampling every fifth of
 // a block is finer than the body is wide, so nothing one block across fits
 // between two samples unnoticed.
-func (n Navigator) clearLine(query terrain.Query, from, to Vec3) bool {
+func (n Navigator) clearLine(query terrain.Query, from, to simgeom.Vec3) bool {
 	distance := from.HorizontalDistance(to)
 
 	for travelled := 0.0; travelled <= distance; travelled += lineProbe {
@@ -196,7 +196,7 @@ func (n Navigator) clearLine(query terrain.Query, from, to Vec3) bool {
 // hazard and refuses water to a body that cannot swim; a shortcut is only
 // honest if it asks the same questions, or the smoothing walks the bot through
 // exactly what the search routed around.
-func (n Navigator) standable(query terrain.Query, at Vec3) bool {
+func (n Navigator) standable(query terrain.Query, at simgeom.Vec3) bool {
 	feet := simgeom.Vec3{X: at.X, Y: at.Y, Z: at.Z}
 
 	fit, err := query.Fits(feet)
@@ -246,9 +246,9 @@ func (n Navigator) standable(query terrain.Query, at Vec3) bool {
 // The head layer matters as much as the feet. Fire fills a cell and a body two
 // blocks tall stands in two of them, so a check that looked only underfoot
 // would walk the bot upright through a fire burning at chest height.
-func (n Navigator) bodyCells(at Vec3) []simgeom.BlockPos {
+func (n Navigator) bodyCells(at simgeom.Vec3) []simgeom.BlockPos {
 	half := n.capability.Body.HalfWidth
-	feet := at.Floor()
+	feet := floorOf(at)
 
 	// One or two per axis, depending on whether the box straddles a boundary.
 	xs := axisCells(at.X, half)
@@ -263,7 +263,7 @@ func (n Navigator) bodyCells(at Vec3) []simgeom.BlockPos {
 		for _, x := range xs {
 			for _, z := range zs {
 				cells = append(cells, simgeom.BlockPos{
-					X: int32(x), Y: int32(feet.Y + layer), Z: int32(z),
+					X: int32(x), Y: feet.Y + int32(layer), Z: int32(z),
 				})
 			}
 		}
@@ -289,10 +289,10 @@ const lineProbe = 0.2
 
 // centreOf is the middle of the cell a position stands in, at the position's
 // own height.
-func centreOf(p Vec3) Vec3 {
-	block := p.Floor()
+func centreOf(p simgeom.Vec3) simgeom.Vec3 {
+	block := floorOf(p)
 
-	return Vec3{X: float64(block.X) + 0.5, Y: p.Y, Z: float64(block.Z) + 0.5}
+	return simgeom.Vec3{X: float64(block.X) + 0.5, Y: p.Y, Z: float64(block.Z) + 0.5}
 }
 
 // Walkable reports whether the body can still walk the straight line between
@@ -302,7 +302,7 @@ func centreOf(p Vec3) Vec3 {
 // way along a route can ask whether the ground it is about to cross is still
 // the ground it planned across. Lava poured in front of a walking bot changes
 // nothing about the route it already holds.
-func (n Navigator) Walkable(chunks world.ChunksView, from, to Vec3) bool {
+func (n Navigator) Walkable(chunks world.ChunksView, from, to simgeom.Vec3) bool {
 	view := predict.NewTerrain(chunks, n.blocks, n.profile)
 
 	return n.clearLine(terrain.Query{
@@ -320,7 +320,7 @@ func (n Navigator) Walkable(chunks world.ChunksView, from, to Vec3) bool {
 // reasons: a wall, a hole, an unstreamed chunk. Unknown ground is not ground
 // that hurts, and a bot that treated the two alike would decide it was on fire
 // every time it walked to the edge of what the server has sent it.
-func (n Navigator) Hurting(chunks world.ChunksView, at Vec3) bool {
+func (n Navigator) Hurting(chunks world.ChunksView, at simgeom.Vec3) bool {
 	view := predict.NewTerrain(chunks, n.blocks, n.profile)
 	query := terrain.Query{View: view, Facts: n.facts, Body: n.capability.Body}
 
@@ -348,10 +348,10 @@ func (n Navigator) Hurting(chunks world.ChunksView, at Vec3) bool {
 // Unknown ground does not count as safe. It might be, and a bot fleeing lava
 // into a chunk nobody has described has swapped a known problem for one it
 // cannot see.
-func (n Navigator) Safe(chunks world.ChunksView, from Vec3, within int) (Vec3, bool) {
+func (n Navigator) Safe(chunks world.ChunksView, from simgeom.Vec3, within int) (simgeom.Vec3, bool) {
 	view := predict.NewTerrain(chunks, n.blocks, n.profile)
 	query := terrain.Query{View: view, Facts: n.facts, Body: n.capability.Body}
-	centre := cellOf(from)
+	centre := floorOf(from)
 
 	for radius := range within + 1 {
 		var nearest simgeom.BlockPos
@@ -369,11 +369,11 @@ func (n Navigator) Safe(chunks world.ChunksView, from Vec3, within int) (Vec3, b
 		if found {
 			feet := terrain.FeetOf(nearest)
 
-			return Vec3{X: feet.X, Y: feet.Y, Z: feet.Z}, true
+			return simgeom.Vec3{X: feet.X, Y: feet.Y, Z: feet.Z}, true
 		}
 	}
 
-	return Vec3{}, false
+	return simgeom.Vec3{}, false
 }
 
 // restful reports whether a cell is somewhere the body can stand without being
@@ -412,10 +412,10 @@ func (n Navigator) restful(query terrain.Query, cell simgeom.BlockPos) bool {
 // It searches the layer the bot stands on and the one below. Water a body can
 // step into is water at its feet; water further down is a hole to fall into,
 // which this bot has no business with -- it cannot fall.
-func (n Navigator) Water(chunks world.ChunksView, from Vec3, within int) (Vec3, bool) {
+func (n Navigator) Water(chunks world.ChunksView, from simgeom.Vec3, within int) (simgeom.Vec3, bool) {
 	view := predict.NewTerrain(chunks, n.blocks, n.profile)
 	query := terrain.Query{View: view, Facts: n.facts, Body: n.capability.Body}
-	centre := cellOf(from)
+	centre := floorOf(from)
 
 	for radius := range within + 1 {
 		var nearest simgeom.BlockPos
@@ -434,11 +434,11 @@ func (n Navigator) Water(chunks world.ChunksView, from Vec3, within int) (Vec3, 
 		if found {
 			feet := terrain.FeetOf(nearest)
 
-			return Vec3{X: feet.X, Y: feet.Y, Z: feet.Z}, true
+			return simgeom.Vec3{X: feet.X, Y: feet.Y, Z: feet.Z}, true
 		}
 	}
 
-	return Vec3{}, false
+	return simgeom.Vec3{}, false
 }
 
 // ring returns the cells whose Chebyshev distance from a centre is exactly the
@@ -477,19 +477,17 @@ func squared(a, b simgeom.BlockPos) int32 {
 	return dx*dx + dz*dz
 }
 
-func abs(n int) int {
+// abs is generic over the two integer widths this example counts cells with.
+//
+// Block coordinates are int32, because that is what geom.BlockPos carries and
+// what the wire does; a search radius is an ordinary int. Writing it twice, or
+// converting at every call, would be more noise than a type parameter.
+func abs[T ~int | ~int32](n T) T {
 	if n < 0 {
 		return -n
 	}
 
 	return n
-}
-
-// cellOf is the block a position stands in, in the simulation's terms.
-func cellOf(p Vec3) simgeom.BlockPos {
-	block := p.Floor()
-
-	return simgeom.BlockPos{X: int32(block.X), Y: int32(block.Y), Z: int32(block.Z)}
 }
 
 // NewNavigator builds the planner for a version.

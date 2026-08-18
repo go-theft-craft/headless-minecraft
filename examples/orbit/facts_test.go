@@ -113,7 +113,7 @@ func TestATautRouteWillNotCutThroughFire(t *testing.T) {
 		Body:  terrain.Body{HalfWidth: 0.3, Height: 1.8},
 	}
 
-	staircase := []Vec3{
+	staircase := []simgeom.Vec3{
 		{X: 0.5, Y: 64, Z: 0.5},
 		{X: 1.5, Y: 64, Z: 0.5},
 		{X: 2.5, Y: 64, Z: 1.5},
@@ -121,7 +121,7 @@ func TestATautRouteWillNotCutThroughFire(t *testing.T) {
 	}
 
 	for _, point := range navigator.taut(query, staircase) {
-		if cell := cellOf(point); view.harmful[cell] {
+		if cell := floorOf(point); view.harmful[cell] {
 			t.Errorf("the taut route stands in fire at %+v", cell)
 		}
 	}
@@ -156,13 +156,13 @@ func TestATautRouteWillNotSkimALavaCorner(t *testing.T) {
 	query := terrain.Query{View: view, Facts: navigator.facts, Body: navigator.capability.Body}
 
 	// Standing dead centre of the cell next door is fine: the box stays inside.
-	if !navigator.standable(query, Vec3{X: 0.5, Y: 64, Z: 1.5}) {
+	if !navigator.standable(query, simgeom.Vec3{X: 0.5, Y: 64, Z: 1.5}) {
 		t.Error("refused a cell whose body does not reach the lava")
 	}
 
 	// Leaning toward the corner is not. The centre cell is still clear.
-	corner := Vec3{X: 0.95, Y: 64, Z: 1.05}
-	if cell := cellOf(corner); view.harmful[cell] {
+	corner := simgeom.Vec3{X: 0.95, Y: 64, Z: 1.05}
+	if cell := floorOf(corner); view.harmful[cell] {
 		t.Fatalf("the test position is inside the lava cell %+v; it must not be", cell)
 	}
 	if navigator.standable(query, corner) {
@@ -170,7 +170,7 @@ func TestATautRouteWillNotSkimALavaCorner(t *testing.T) {
 	}
 
 	// And the shortcut across the corner is refused outright.
-	if navigator.clearLine(query, Vec3{X: 0.5, Y: 64, Z: 0.5}, Vec3{X: 1.5, Y: 64, Z: 1.5}) {
+	if navigator.clearLine(query, simgeom.Vec3{X: 0.5, Y: 64, Z: 0.5}, simgeom.Vec3{X: 1.5, Y: 64, Z: 1.5}) {
 		t.Error("a diagonal skimming the lava corner reported itself clear")
 	}
 }
@@ -188,7 +188,7 @@ func TestFireAtHeadHeightIsNotWalkedThrough(t *testing.T) {
 	}
 	query := terrain.Query{View: view, Facts: navigator.facts, Body: navigator.capability.Body}
 
-	if navigator.standable(query, Vec3{X: 3.5, Y: 64, Z: 3.5}) {
+	if navigator.standable(query, simgeom.Vec3{X: 3.5, Y: 64, Z: 3.5}) {
 		t.Error("stood upright in a fire burning at head height")
 	}
 }

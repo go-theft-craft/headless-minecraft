@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
+
 	"github.com/go-theft-craft/headless-minecraft/version"
 )
 
@@ -49,8 +51,18 @@ type Sender struct {
 	// refusal is asked for once rather than twenty times a second.
 	mute bool
 	// marked is every floor cell the trail has already painted.
-	marked map[BlockPos]bool
+	marked map[simgeom.BlockPos]bool
 }
+
+// eyeOffset raises a feet position to where a standing player looks from.
+//
+// It is a constant here and it should not be one anywhere that matters. Eye
+// height is a per-version, per-posture number — 1.62 standing in 1.8.9, and
+// something the profile supplies in 26.1.2 where a crouched body is shorter —
+// and geom.AABB.Reaches takes an eye position rather than a body and an offset
+// for exactly that reason. This example knows one posture and one height, so it
+// writes the number it knows and says where the real one comes from.
+var eyeOffset = simgeom.Vec3{Y: 1.62}
 
 // NewSender returns the actuator for a client, walking at the bounds' speed.
 //
@@ -61,7 +73,7 @@ func NewSender(client sender, bounds Bounds) *Sender {
 	return &Sender{
 		client: client,
 		step:   bounds.Step(),
-		marked: map[BlockPos]bool{},
+		marked: map[simgeom.BlockPos]bool{},
 	}
 }
 
@@ -119,15 +131,28 @@ func (s *Sender) Locomotion(ctx context.Context, walking bool) error {
 // claim to be in the air that a server reads as flying. When a movement kernel
 // exists this is where it attaches; until then, saying so here is better than a
 // bot that quietly rises off the ground.
-func (s *Sender) Step(ctx context.Context, from, target Vec3, _ bool) (Vec3, error) {
+func (s *Sender) Step(ctx context.Context, from, target simgeom.Vec3, _ bool) (simgeom.Vec3, error) {
 	next := from.Toward(target, s.step)
+
+	// The look is computed from the eye rather than the feet, because that is
+	// where a client looks from and because a pitch measured from the feet aims
+	// at a target's ankles. Both angles come from one call: a caller that needs
+	// one needs the other, and assembling an aim from two calls is two chances
+	// to be given different endpoints.
+	//
+	// It sent a literal zero pitch until this existed, which meant the bot
+	// could not look at anything above or below its own eyes. Walking a flat
+	// circle it still looks level, so nothing about this run changes — which is
+	// the point: what changes is that a caller aiming at a block underfoot now
+	// has an angle to send.
+	yaw, pitch := from.Add(eyeOffset).Look(target)
 
 	// MoveLook rather than Move: a bot that walks a circle without turning
 	// faces one direction the whole way round, which is visible to anyone
 	// watching and wrong about where it is going.
 	err := s.client.Do(ctx, version.ActionMoveLook{
 		X: next.X, Y: next.Y, Z: next.Z,
-		Yaw: from.Yaw(target), Pitch: 0,
+		Yaw: yaw, Pitch: pitch,
 		// The example has no ground check. It walks a flat world and claims
 		// the only thing that is true there; the moment that stops being true,
 		// the server corrects it and the breaker says so.
@@ -185,8 +210,8 @@ func (s *Sender) Kill(ctx context.Context) error {
 // Each cell is painted once. A route is replanned every waypoint and the legs
 // overlap, so without this the same command goes out every few ticks for the
 // length of the run.
-func (s *Sender) Mark(ctx context.Context, at Vec3) error {
-	floor := at.Floor()
+func (s *Sender) Mark(ctx context.Context, at simgeom.Vec3) error {
+	floor := floorOf(at)
 	floor.Y--
 
 	if s.marked[floor] {

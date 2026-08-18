@@ -48,7 +48,7 @@ func TestATautRouteCrossesOpenGroundInOneStep(t *testing.T) {
 	t.Parallel()
 
 	var navigator Navigator
-	staircase := []Vec3{
+	staircase := []simgeom.Vec3{
 		{X: 0.5, Y: 64, Z: 0.5},
 		{X: 1.5, Y: 64, Z: 0.5},
 		{X: 1.5, Y: 64, Z: 1.5},
@@ -83,7 +83,7 @@ func TestATautRouteKeepsTheCornerItHasToWalkRound(t *testing.T) {
 	}
 
 	var navigator Navigator
-	corner := []Vec3{
+	corner := []simgeom.Vec3{
 		{X: 0.5, Y: 64, Z: 0.5},
 		{X: 1.5, Y: 64, Z: 0.5},
 		{X: 1.5, Y: 64, Z: 1.5},
@@ -108,7 +108,7 @@ func TestARiseIsNeverSmoothedThrough(t *testing.T) {
 	t.Parallel()
 
 	var navigator Navigator
-	rise := []Vec3{
+	rise := []simgeom.Vec3{
 		{X: 0.5, Y: 64, Z: 0.5},
 		{X: 1.5, Y: 64, Z: 0.5},
 		{X: 2.5, Y: 65, Z: 0.5},

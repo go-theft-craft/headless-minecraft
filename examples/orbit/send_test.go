@@ -6,6 +6,8 @@ import (
 	"math"
 	"testing"
 
+	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
+
 	"github.com/go-theft-craft/headless-minecraft/version"
 )
 
@@ -33,8 +35,8 @@ func TestOneStepReportsOneBoundedMove(t *testing.T) {
 
 	next, err := NewSender(client, bounds).Step(
 		t.Context(),
-		Vec3{X: 0, Y: 4, Z: 0},
-		Vec3{X: 100, Y: 4, Z: 0},
+		simgeom.Vec3{X: 0, Y: 4, Z: 0},
+		simgeom.Vec3{X: 100, Y: 4, Z: 0},
 		true,
 	)
 	if err != nil {
@@ -75,8 +77,8 @@ func TestAStepTurnsTowardWhereItIsGoing(t *testing.T) {
 
 	if _, err := NewSender(client, DefaultBounds()).Step(
 		t.Context(),
-		Vec3{X: 0, Y: 4, Z: 0},
-		Vec3{X: -100, Y: 4, Z: 0},
+		simgeom.Vec3{X: 0, Y: 4, Z: 0},
+		simgeom.Vec3{X: -100, Y: 4, Z: 0},
 		true,
 	); err != nil {
 		t.Fatalf("step returned %v", err)
@@ -97,8 +99,8 @@ func TestAFailedSendIsReported(t *testing.T) {
 	sentinel := errors.New("connection reset")
 	client := &captured{err: sentinel}
 
-	from := Vec3{X: 7, Y: 4, Z: 9}
-	next, err := NewSender(client, DefaultBounds()).Step(t.Context(), from, Vec3{X: 100}, true)
+	from := simgeom.Vec3{X: 7, Y: 4, Z: 9}
+	next, err := NewSender(client, DefaultBounds()).Step(t.Context(), from, simgeom.Vec3{X: 100}, true)
 	if !errors.Is(err, sentinel) {
 		t.Errorf("step returned %v, want it to carry %v", err, sentinel)
 	}
@@ -117,7 +119,7 @@ func TestTheJumpFlagIsNotActedOn(t *testing.T) {
 	// honouring it would mean picking a height with no physics behind it — a
 	// claim to be in the air that a server reads as flying. Both values must
 	// therefore produce the same update.
-	from, target := Vec3{X: 0, Y: 4, Z: 0}, Vec3{X: 10, Y: 4, Z: 0}
+	from, target := simgeom.Vec3{X: 0, Y: 4, Z: 0}, simgeom.Vec3{X: 10, Y: 4, Z: 0}
 
 	jumped, walked := &captured{}, &captured{}
 	if _, err := NewSender(jumped, DefaultBounds()).Step(t.Context(), from, target, true); err != nil {
@@ -163,9 +165,9 @@ func TestWalkingAccumulatesAcrossSteps(t *testing.T) {
 	// Feeding each step's result into the next is what makes walking add up.
 	client := &captured{}
 	sender := NewSender(client, DefaultBounds())
-	target := Vec3{X: 100, Y: 4, Z: 0}
+	target := simgeom.Vec3{X: 100, Y: 4, Z: 0}
 
-	at := Vec3{X: 0, Y: 4, Z: 0}
+	at := simgeom.Vec3{X: 0, Y: 4, Z: 0}
 	for range 10 {
 		next, err := sender.Step(t.Context(), at, target, true)
 		if err != nil {
@@ -272,7 +274,7 @@ func TestTheTrailPaintsTheFloorAndNotThePath(t *testing.T) {
 	client := &spy{}
 	sender := NewSender(client, DefaultBounds())
 
-	if err := sender.Mark(t.Context(), Vec3{X: 10.5, Y: 64, Z: -3.5}); err != nil {
+	if err := sender.Mark(t.Context(), simgeom.Vec3{X: 10.5, Y: 64, Z: -3.5}); err != nil {
 		t.Fatalf("Mark: %v", err)
 	}
 	if len(client.actions) != 1 {
@@ -285,7 +287,7 @@ func TestTheTrailPaintsTheFloorAndNotThePath(t *testing.T) {
 	}
 	// Floored, not truncated: z=-3.5 is in cell -4. Truncation would fold
 	// -3.5 and 3.5 onto cells of opposite sign and paint the trail one block
-	// out on the negative half of the circle, which is the bug Vec3.Floor
+	// out on the negative half of the circle, which is the bug simgeom.Vec3.Floor
 	// exists to avoid.
 	if command.Command != "setblock 10 63 -4 stone" {
 		t.Errorf("ran %q, want the floor at y=63 under the step", command.Command)
@@ -303,7 +305,7 @@ func TestTheTrailPaintsEachCellOnce(t *testing.T) {
 	client := &spy{}
 	sender := NewSender(client, DefaultBounds())
 
-	for _, at := range []Vec3{
+	for _, at := range []simgeom.Vec3{
 		{X: 10.1, Y: 64, Z: -3.9},
 		{X: 10.5, Y: 64, Z: -3.5},
 		{X: 10.9, Y: 64, Z: -3.1},
@@ -316,5 +318,66 @@ func TestTheTrailPaintsEachCellOnce(t *testing.T) {
 
 	if len(client.actions) != 2 {
 		t.Errorf("painted %d cells, want 2", len(client.actions))
+	}
+}
+
+// TestAStepSendsAComputedPitch is the acceptance criterion for the aiming work.
+//
+// Before it, Step sent a literal zero, so the bot could not look at anything
+// above or below its own eyes and every aimed primitive was blocked behind that.
+// What this asserts is both halves of the change: the angle is computed now, and
+// walking a flat circle still looks level — the observable behaviour of this bot
+// is unchanged, which is what makes the change safe to have made.
+func TestAStepSendsAComputedPitch(t *testing.T) {
+	t.Parallel()
+
+	bounds := DefaultBounds()
+
+	for _, test := range []struct {
+		name   string
+		from   simgeom.Vec3
+		target simgeom.Vec3
+		want   float32
+	}{
+		{
+			// The circle is flat and the eye is level with nothing in
+			// particular, so the pitch stays where it has always been.
+			name:   "a flat walk still looks level",
+			from:   simgeom.Vec3{X: 0, Y: 64, Z: 0},
+			target: simgeom.Vec3{X: 0, Y: 65.62, Z: 100},
+			want:   0,
+		},
+		{
+			// A target at the bot's own feet is below its eyes, and the pitch
+			// says so. Positive is down, which is the game's convention and not
+			// the intuitive one.
+			name:   "a target underfoot looks down",
+			from:   simgeom.Vec3{X: 0, Y: 64, Z: 0},
+			target: simgeom.Vec3{X: 0, Y: 64, Z: 1.62},
+			want:   45,
+		},
+		{
+			name:   "a target overhead looks up",
+			from:   simgeom.Vec3{X: 0, Y: 64, Z: 0},
+			target: simgeom.Vec3{X: 0, Y: 64 + 1.62 + 1.62, Z: 1.62},
+			want:   -45,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := &captured{}
+			if _, err := NewSender(client, bounds).Step(t.Context(), test.from, test.target, true); err != nil {
+				t.Fatalf("Step: %v", err)
+			}
+
+			move, ok := client.actions[0].(version.ActionMoveLook)
+			if !ok {
+				t.Fatalf("sent %T, want version.ActionMoveLook", client.actions[0])
+			}
+			if math.Abs(float64(move.Pitch-test.want)) > 1e-3 {
+				t.Errorf("Pitch = %v, want %v", move.Pitch, test.want)
+			}
+		})
 	}
 }
