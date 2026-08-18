@@ -1,0 +1,15 @@
+# gitleaks configuration.
+#
+# The default rules, plus one exclusion. `task secrets` scans the working tree
+# rather than the index, so it sees paths git never will: `.local/` holds the
+# run directories of the pinned vanilla servers the live lanes start, and a
+# 26.1.2 server writes a `management-server-secret` into its own
+# `server.properties` on first boot. That secret belongs to a throwaway local
+# server, is regenerated whenever the directory is, and is git-ignored — so a
+# finding there is noise that hides a real one.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Local server run directories, which are git-ignored"
+paths = ['''^\.local/''']
