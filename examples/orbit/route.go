@@ -281,6 +281,24 @@ func centreOf(p Vec3) Vec3 {
 	return Vec3{X: float64(block.X) + 0.5, Y: p.Y, Z: float64(block.Z) + 0.5}
 }
 
+// Walkable reports whether the body can still walk the straight line between
+// two positions over this snapshot.
+//
+// It is the same test a shortcut is judged by, offered on its own so a bot part
+// way along a route can ask whether the ground it is about to cross is still
+// the ground it planned across. Lava poured in front of a walking bot changes
+// nothing about the route it already holds.
+func (n Navigator) Walkable(chunks world.ChunksView, from, to Vec3) bool {
+	view := predict.NewTerrain(chunks, n.blocks, n.profile)
+
+	return n.clearLine(terrain.Query{
+		View:  view,
+		Facts: n.facts,
+		Body:  n.capability.Body,
+		Limit: n.capability.CandidateLimit,
+	}, from, to)
+}
+
 // cellOf is the block a position stands in, in the simulation's terms.
 func cellOf(p Vec3) simgeom.BlockPos {
 	block := p.Floor()

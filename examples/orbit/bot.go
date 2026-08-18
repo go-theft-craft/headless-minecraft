@@ -122,6 +122,9 @@ type Bot struct {
 	route     Route
 	leg       int
 	routedFor int
+	// checkedAt is the world revision the stretch ahead was last examined at,
+	// so a route is re-examined when the world changes and not every tick.
+	checkedAt uint64
 
 	// target is the entity being fought.
 	target int32
@@ -323,6 +326,30 @@ func (b *Bot) follow(t Tick, w World, goal Vec3, key int) (Action, bool) {
 		b.progressAt = t.Now
 	}
 
+	// Look at the ground just ahead whenever the world has changed under the
+	// route. A route is planned once and walked over many ticks, and somebody
+	// pouring lava in front of a bot already committed to a way through does
+	// not change the route -- the bot walks into what it planned across, which
+	// is how this one kept finding lava that had not been there when it set
+	// off.
+	//
+	// Only the next stretch, not the whole route. The bot covers a fifth of a
+	// block a tick and this runs on every tick the world changed, so anything
+	// beyond a couple of blocks is being re-examined long before it is walked,
+	// and the cost of asking is paid twenty times a second.
+	if b.leg < len(b.route.Steps) && t.Revision != b.checkedAt {
+		b.checkedAt = t.Revision
+
+		ahead := t.Self.Position.Toward(b.route.Steps[b.leg], lookahead)
+		if !w.Walkable(t.Self.Position, ahead) {
+			// Plan again from here rather than walk on. The next tick finds no
+			// route and asks for one, over a world that now has the lava in it.
+			b.route = Route{}
+
+			return Action{Kind: Stand, Reason: "the way ahead changed"}, true
+		}
+	}
+
 	if b.leg >= len(b.route.Steps) {
 		// Walked out. An incomplete route ends short of the goal on purpose,
 		// and the next tick plans the rest from where that left the bot, which
@@ -350,6 +377,12 @@ func (b *Bot) follow(t Tick, w World, goal Vec3, key int) (Action, bool) {
 // arc and retries; this takes the straightest heading that routes, because an
 // example whose behaviour changes run to run is an example nobody can debug.
 var fleeTurns = []float64{0, 30, -30, 60, -60, 90, -90}
+
+// lookahead is how far along the current leg the bot re-examines when the
+// world changes, in blocks. Two is ten ticks of walking: far enough that
+// something appearing in the way is seen before it is reached, and short
+// enough that the check stays a fixed cost rather than growing with the route.
+const lookahead = 2.0
 
 // fleeRoute is the route key for a flight. Waypoint indices only ever grow
 // from zero, so a negative one cannot collide with them.

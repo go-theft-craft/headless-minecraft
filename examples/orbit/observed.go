@@ -39,6 +39,11 @@ func (o Observed) Route(from, to Vec3) (Route, bool) {
 	return o.navigator.Plan(o.ctx, o.snapshot.Chunks, from, to)
 }
 
+// Walkable reports whether a straight line is still clear over this snapshot.
+func (o Observed) Walkable(from, to Vec3) bool {
+	return o.navigator.Walkable(o.snapshot.Chunks, from, to)
+}
+
 // Spawn reports the compass target the server sent.
 //
 // The design called this "the world spawn" and said it is not the respawn

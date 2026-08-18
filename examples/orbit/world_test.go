@@ -52,6 +52,17 @@ func (s *scripted) Route(from, to Vec3) (Route, bool) {
 	return Route{Steps: append(steps, to), Complete: true}, true
 }
 
+// Walkable is the same straight line Route walks, asked on its own.
+func (s *scripted) Walkable(from, to Vec3) bool {
+	for d := 1.0; d < from.HorizontalDistance(to); d++ {
+		if s.blocked(from.Toward(to, d)) {
+			return false
+		}
+	}
+
+	return !s.blocked(to)
+}
+
 // blocked reports whether a body standing here would not fit. The cell the bot
 // is already in is never asked about: these fictions put the bot inside walls
 // to reach Trapped, and a body that cannot leave a block it is already in is a

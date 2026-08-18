@@ -56,6 +56,15 @@ type World interface {
 	// decision tests script three points and run the whole state machine
 	// without a chunk in sight.
 	Route(from, to Vec3) (Route, bool)
+	// Walkable reports whether the body can still walk a straight line between
+	// two positions.
+	//
+	// A route is planned once and walked over many ticks, and the world does
+	// not hold still for it: somebody pours lava in front of a bot that is
+	// already committed to a way through. This is how the core asks whether
+	// the next stretch is still the stretch it planned across, and it is a
+	// cheaper question than planning again.
+	Walkable(from, to Vec3) bool
 	// Entity reports one tracked entity by ID.
 	Entity(id int32) (Entity, bool)
 }

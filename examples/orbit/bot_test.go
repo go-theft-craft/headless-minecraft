@@ -19,7 +19,7 @@ func (c *clock) advance(d time.Duration) time.Time {
 }
 
 // join drives a fresh bot to Orbiting and returns it with its world.
-func join(t *testing.T, w *scripted, start Vec3) (*Bot, *clock) {
+func join(t *testing.T, w World, start Vec3) (*Bot, *clock) {
 	t.Helper()
 
 	c := newClock()
@@ -672,4 +672,91 @@ func TestNowhereToRunKeepsTheBotOnItsCircle(t *testing.T) {
 	if bot.State() == Fleeing {
 		t.Error("the bot started a flight it has nowhere to run to")
 	}
+}
+
+// TestLavaPouredInFrontOfACommittedRouteIsNoticed reproduces the report.
+//
+// A route is planned once and walked over many ticks. Somebody pours lava
+// across it while the bot is part way along, and nothing about the route the
+// bot is holding changes -- so it walks into ground that was clear when it set
+// off. It has to look again when the world says it changed.
+func TestLavaPouredInFrontOfACommittedRouteIsNoticed(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+
+	// Walking, with a route in hand.
+	action := bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position}, Revision: 1,
+	}, w)
+	if action.Kind != StepTo {
+		t.Fatalf("produced %v before the pour, want a step", action.Kind)
+	}
+	if len(bot.Route().Steps) == 0 {
+		t.Fatal("walking without a route")
+	}
+
+	// The pour: wall the ground a stride ahead, and bump the revision, which is
+	// how the world reports that a block changed.
+	blocked := position.Toward(bot.Route().Steps[0], 1)
+	p := blocked.Floor()
+	w.wall(p.X, p.Z, 3)
+
+	action = bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position}, Revision: 2,
+	}, w)
+
+	if action.Kind == StepTo && action.Target == blocked {
+		t.Error("walked into the block that appeared in front of it")
+	}
+	if len(bot.Route().Steps) != 0 {
+		t.Error("kept a route across ground that changed under it")
+	}
+}
+
+// TestAnUnchangedWorldIsNotReExamined pins the cost.
+//
+// The check runs on a revision that changed, not on a timer. Re-examining the
+// ground every tick regardless would pay for the world holding still, which is
+// what it does almost all of the time.
+func TestAnUnchangedWorldIsNotReExamined(t *testing.T) {
+	t.Parallel()
+
+	w := &counting{scripted: newScripted()}
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+
+	w.walkable = 0
+	for range 10 {
+		bot.Advance(Tick{
+			Now: c.advance(50 * time.Millisecond), Ready: true,
+			Self: Self{Position: position}, Revision: 7,
+		}, w)
+	}
+
+	if w.walkable > 1 {
+		t.Errorf("asked %d times about a world that never changed, want at most 1", w.walkable)
+	}
+}
+
+// counting is a scripted world that records how often it was asked.
+type counting struct {
+	*scripted
+	walkable int
+}
+
+func (c *counting) Walkable(from, to Vec3) bool {
+	c.walkable++
+
+	return c.scripted.Walkable(from, to)
 }
