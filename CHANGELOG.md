@@ -133,3 +133,11 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
   version `go.mod` pins — which is how this repository ran a release behind
   without a red check anywhere. `test:fast` keeps the workspace, because editing
   two modules together is what it is for.
+- `internal/adapter/v26_1`: a malformed chunk column no longer takes the process
+  down. A protocol 775 paletted container states how many bits an entry it
+  packs; the decoder divided 64 by that number to get entries per long, and then
+  divided by the result, so a width past 64 divided by zero and panicked. The
+  bytes come from whatever the session is connected to, which made it a crash a
+  server could ask for rather than a decode failure. A width nobody could have
+  meant is now a column this client cannot read, which leaves its bytes in the
+  store undecoded exactly as every other unreadable column does.

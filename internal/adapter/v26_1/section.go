@@ -42,6 +42,13 @@ const (
 	// palette, whose entries are the registry's own IDs.
 	maxBlockPaletteBits775 = 8
 	maxBiomePaletteBits775 = 3
+	// maxPackedBits775 is the widest bit width read at all. Vanilla's widest
+	// is fifteen, the width of the global block palette. The limit is not
+	// there to be strict: entries per long is 64 divided by the width, which
+	// is zero for a width past 64, and the length of the long array is
+	// divided by it. A column arrives from the network, so a width nobody
+	// could have meant has to be a decode failure rather than a panic.
+	maxPackedBits775 = 32
 	// sectionsPerColumnLimit bounds a column before the section count is
 	// known, so a malformed blob cannot be read as millions of sections. No
 	// vanilla dimension is close: the overworld is 24.
@@ -123,6 +130,9 @@ func decodeSection775(raw []byte) ([]uint32, error) {
 
 	bits, err := r.byteValue()
 	if err != nil {
+		return nil, world.ErrSectionNotDecodable
+	}
+	if int(bits) > maxPackedBits775 {
 		return nil, world.ErrSectionNotDecodable
 	}
 
@@ -279,6 +289,9 @@ func (r *columnReader) container(entries, maxPaletteBits int) ([]byte, error) {
 	bits, err := r.byteValue()
 	if err != nil {
 		return nil, err
+	}
+	if int(bits) > maxPackedBits775 {
+		return nil, fmt.Errorf("%w: %d bits an entry", ErrColumnNotDecodable, bits)
 	}
 	if _, err := readPalette(r, int(bits), maxPaletteBits); err != nil {
 		return nil, err

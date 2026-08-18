@@ -263,6 +263,28 @@ func TestAnUndecodableSectionReportsItself(t *testing.T) {
 	}
 }
 
+// TestAnImpossibleBitWidthIsRefusedRatherThanPanicking pins the bound on the
+// bit width.
+//
+// Entries per long is 64 divided by the width, and the length of the long
+// array is divided by that, so a width past 64 divided by zero and took the
+// process down. The bytes come from whatever the session is connected to,
+// which makes a panic here a crash a server can ask for; a width nobody could
+// have meant is a column this client cannot read, which is a thing this
+// package already knows how to say.
+func TestAnImpossibleBitWidthIsRefusedRatherThanPanicking(t *testing.T) {
+	t.Parallel()
+
+	if _, err := decodeSection775([]byte{0xFF, 0x00}); err != world.ErrSectionNotDecodable {
+		t.Errorf("decode: got %v, want ErrSectionNotDecodable", err)
+	}
+
+	// A section's two counts, then the same width in its block container.
+	if _, err := splitColumn775([]byte{0x00, 0x00, 0x00, 0x00, 0xFF, 0x00}, 0); err == nil {
+		t.Error("split: a column declaring an impossible bit width was accepted")
+	}
+}
+
 // The tests below drive the chain the column's origin actually travels: the
 // dimension type registry in configuration, the player's dimension with the
 // login, and only then a chunk.
