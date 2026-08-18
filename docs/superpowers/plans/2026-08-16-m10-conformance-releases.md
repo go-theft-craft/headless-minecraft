@@ -6,6 +6,20 @@
 > [the M10 reconciliation](2026-08-18-m10-conformance-and-releases.md), which
 > checks each of the nine M10 checklist items against the working trees and
 > executes only what its prerequisites allow. Do not execute this plan.
+>
+> Which of its tasks went where: its Task 1's five per-repository manifests
+> are replaced by `minecraft-reference`, the released module whose whole job
+> is downloading, verifying, and recording those artifacts — the vanilla lane
+> now reads that workspace's own records; its Task 2's matrix is replaced by
+> the four measured rows in the master plan's M10 section; its Task 4's
+> community-server case conversion is removed with the reason recorded there
+> — the jar-derived lanes already have the property the conversion was for.
+> Its Tasks 5 through 7 stand: 5 is partly executed by the reconciliation's
+> Task 5 (`minecraft-protocol`'s API baseline; `minecraft-simulation` takes
+> the tooling at its next release), and 6 and 7 wait on the human-gated items
+> the master plan names. This document stays as the record of what was
+> believed before anything was measured; the difference between the two plans
+> is the finding.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or execute this plan inline one task at a time. Keep every checkbox current.
 

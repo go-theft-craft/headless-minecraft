@@ -39,7 +39,7 @@ here.
 | M7 | Immutable observed world state, wire-ordered reducers | `headless-minecraft` | Complete |
 | M8 | Deterministic 1.8.9 and 26.1.2 movement kernel, replay, consumer integration | `minecraft-simulation` | Complete (M8.1–M8.8) |
 | M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **Complete except one human-gated corpus**: M9.1–M9.2 and M9.4–M9.8 closed; M9.3's correction, teleport, and disconnect scenarios — its stated gate — done, with its 26.1.2 player-trace corpus blocked on a person with a paid account. The weaker gates are named under "What M9 found" below |
-| M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **In progress**: reconciled 2026-08-18, task 1 of six done |
+| M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **All six reconciled tasks done, 2026-08-18.** What still stands between here and any `v1.0.0` is listed under "What M10 cannot claim": the online-mode lane (a person with credentials), M9.3's human capture, and the release sequence itself |
 | P4 | Put every consumer on the released `minecraft-protocol` and keep them there | `minecraft-protocol` | Complete |
 | M11 | Turn `server` into a framework | `server` | Complete (M11.1–M11.7) |
 | — | Navigation and behaviour pillar | `minecraft-simulation`, `headless-minecraft` | **Complete in code, pending releases**: all four plans implemented and gated 2026-08-18; three tags and two `go.mod` bumps are what remain |
@@ -386,20 +386,41 @@ measurably impossible. Its six tasks, none executed:
   owned outright, and three things it blocked are now unblocked: the matrix row
   for the owned Go server at 775, M11.7's brigadier rendering reaching a client,
   and the headless end-to-end lane covering more than protocol 47.
-- [ ] **Task 2 — settle the advertised version string.** Already reconciled in
-  code (`"1.8.9"` in the data, `"1.8.8"` advertised and pinned by a test, and
-  Node 1.66.2 agrees); the decision itself is unwritten.
-- [ ] **Task 3 — give `server` a release gate.** It is public and has no
-  `.github/`, no `verify`, `release:check`, `fmt:check`, `secrets`, or `vuln`
-  task, no `CHANGELOG.md`, and no tags — while both compatibility matrices are
-  driven against it.
-- [ ] **Task 4 — stop the vanilla lane reaching into a sibling repository.**
-  The 26.1.2 jar is read from `minecraft-simulation`'s gitignored workspace by
-  relative path.
-- [ ] **Task 5 — freeze the public surface** with `apidiff` before M9.4–M9.8
-  move it. No `apidiff`, no `api/` directory, and no `MIGRATION.md` in any of
-  the six repositories.
-- [ ] **Task 6 — restate M10 as what the reconciliation found.**
+- [x] **Task 2 — settle the advertised version string.** Done 2026-08-18:
+  `minecraft-protocol/docs/version-names.md` records the rule — `1.8.9` names
+  the dataset, `1.8.8` is what a client is told, and for 775 the split moves
+  up a level to family versus build — and
+  `TestProtocol47HasTwoNamesAndTheContractSaysWhichIsWhich` pins both names so
+  a disagreement fails naming the contract rather than a literal. No byte
+  changed, which was the point.
+- [x] **Task 3 — give `server` a release gate.** Done 2026-08-18: `fmt:check`,
+  `secrets`, `vuln`, `verify`, and `release:check` with the same names the
+  other five repositories use, CI running `verify`, and a `CHANGELOG.md`
+  opening with M11. The gate found two things on the way in, both fixed:
+  `task test` passed `-mod vendor` against a gitignored, untracked `vendor/`,
+  so every fresh clone failed with "inconsistent vendoring"; and `task deps`
+  ran `go env -w GOSUMDB=off`, which silently opted every later `go get` on
+  the machine out of `sum.golang.org`. `release:check VERSION=v0.1.0` runs
+  green; no tag was made.
+- [x] **Task 4 — stop the vanilla lane reaching into a sibling repository.**
+  Done 2026-08-18: both versions resolve through one workspace helper —
+  `MCREFERENCE_WORKSPACE`, then this repository's own `reference/work`, which
+  `task server:vanilla` now prepares for either pinned version — and every
+  lane run logs the digest of the server artifact it ran against, read from
+  the workspace's own records. `docs/vanilla-lane.md` is the record; the full
+  lane ran green through the resolver on both jars.
+- [x] **Task 5 — freeze the public surface.** Done 2026-08-18 in
+  `minecraft-protocol`: `task api:check` compares the sixteen exported
+  packages — the generated ones included — against a committed export-data
+  baseline through `apidiff`, `verify` runs it, and `task api:accept` rewrites
+  it on purpose. One recorded deviation: the tooling lives in the nested
+  `apicompat` module rather than `internal/`, because the protocol module's
+  `go.mod` is empty and stays that way for its consumers.
+  `minecraft-simulation` takes the same tooling at its own next release.
+- [x] **Task 6 — restate M10 as what the reconciliation found.** This section
+  is that restatement, current as of the evening of 2026-08-18 — the morning
+  reconciliation predated M9.4 through M9.8 executing, and the matrix below
+  reflects both.
 
 Closed, 2026-08-18: **P4's uptake half**
 ([plan](../minecraft-protocol/docs/superpowers/plans/2026-08-18-p4-shared-consumers.md),
@@ -412,21 +433,69 @@ with `GOWORK=off`, so reverting the pin fails locally the way it would in CI; an
 `minecraft-protocol`'s `RELEASING.md` names the five consumer modules a release
 is not finished without.
 
-Still owned by M10 and outside that plan:
+**The compatibility matrix, row by row, as measured on 2026-08-18:**
+
+- **Node at 47** — a required gate: `server`'s `interop/node/runner.mjs`
+  drives `minecraft-protocol@1.66.2` at `1.8.8`, both directions.
+- **Node at 775** — codec-level only, and permanently so at this pin: 44
+  fixtures run through the pinned `minecraft-data` `26.1` ProtoDef schema,
+  and a 775 *client* lane is unavailable because 1.66.2's supported versions
+  end at `1.21.11` (checked 2026-08-18). 775's session behaviour rests on
+  the live client and server lanes alone.
+- **Vanilla 1.8.9 and 26.1.2 servers** — the vanilla lane, every M9 stage:
+  status, login, movement, digging, placement, attack, containers, and
+  crafting, each a two-version gate with absences declared and reasoned, and
+  every run naming the digest of the jar it ran against. The per-stage
+  records and the weaker lanes are collected under "What M9 found" above.
+- **Paper** — opt-in and manual (`livecheck`, gated on `MCPROTO_LIVE_ADDR`).
+- **Vanilla clients** — one record,
+  `minecraft-protocol/docs/verification/2026-08-16-vanilla-client-check.md`,
+  plus M9.3's 1.8.9 oracle captures; nothing at 775 without a person and an
+  account.
+- **The owned Go server** — unblocked at both versions by Task 1's 775
+  acceptor, and unwritten: no lane drives the headless client against
+  `server`'s examples yet. It is the one matrix row that is pure scheduling.
+
+**Removed from the checklist, with the reason:** the community-server case
+conversion. Every scenario in hand was written from behaviour observed
+against a real jar, which is the independently-maintained property the
+conversion and its licence review were for. The work would buy a property
+the lanes already have.
+
+Still owned by M10:
 
 - [ ] **Run at least one online-mode lane**, which is what finally picks up
-  M6.4.
-- [ ] **Compatibility matrices** beyond the Node-at-47 gate: Paper is opt-in and
-  manual, Node at 775 is codec-level only (1.66.2's supported versions end at
-  1.21.11), and the owned Go server has no lane at either version.
-- [ ] **Community-server cases** as black-box scenarios — not started, and the
-  reconciliation argues the existing jar-derived lanes already buy the property
-  the conversion was for. Decide explicitly rather than leaving it pending.
-- [ ] **Publish stable `v1.0.0` releases** only after every release gate passes.
+  M6.4. It needs a real Microsoft account and a real online-mode server — a
+  manual act by a person with credentials, not a task an agent executes.
+- [ ] **Drive the headless client against the owned Go server** at both
+  versions — the matrix row Task 1 unblocked and nothing has written.
+- [ ] **`minecraft-simulation` takes the API baseline tooling** at its next
+  release, copying `minecraft-protocol`'s `apicompat`.
+- [ ] **Publish stable `v1.0.0` releases** only after every release gate
+  passes — and after the two human-gated items above, because a `v1.0.0`
+  that ships Microsoft authentication without ever executing it ships an
+  unexercised code path.
 - [ ] **Measure play-state limits on 775.** M4 measured login only and recorded
   that no milestone may claim the 2 MiB frame and 8 MiB body defaults fit play
   until play is measured. M9.1b gave the first numbers from a real 26.1.2
   server; the roadmap still says play is not measured.
+
+**What M10 cannot claim**, in this plan's own findings style:
+
+- **A pinned artifact ages.** Every lane proves this code against one build.
+  The pin makes the result reproducible, not current. Re-pin deliberately and
+  treat a re-pin failure as a finding.
+- **A fixture proves the plumbing, not the protocol.** Lanes driven against
+  this project's own server share this project's understanding of the
+  protocol, and a mutual misunderstanding passes all of them. Only the Node
+  lanes, the real clients, and the captured traces can find one — and at 775
+  the Node lane reaches codecs and not sessions.
+- **Every automated check in this project has run against offline mode.**
+  M6.4 is still postponed and M10's online-mode lane is still what picks it
+  up.
+- **`v1.0.0` is permanent.** The module mirror serves immutable snapshots and
+  the checksum database records them in an append-only log. Rewriting history
+  removes content from GitHub only.
 
 ### `minecraft-simulation`
 

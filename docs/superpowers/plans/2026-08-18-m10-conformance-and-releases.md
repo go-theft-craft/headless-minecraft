@@ -1,5 +1,21 @@
 # M10 Conformance and Releases Implementation Plan
 
+> **Status: all six tasks complete, 2026-08-18.** Task 1 landed in
+> `minecraft-protocol` `b644bb4` with its deviation recorded below; Tasks 2
+> through 6 landed the same day, after M9.4 through M9.8 executed — so the
+> restatement in Task 6 reflects a fuller matrix than the morning's
+> reconciliation table above, which predates them. Deviations from this
+> plan's text, each recorded where it landed: Task 5's tooling lives in
+> `minecraft-protocol`'s nested `apicompat` module rather than `internal/`,
+> keeping the protocol module's go.mod empty for its consumers; Task 4's
+> build record reads the workspace's `manifest.lock.json` where the server
+> side was locked and Mojang's own cached version metadata otherwise; and
+> Task 3 additionally dropped `.golangci.yml`'s vendor download mode and
+> bumped `server`'s pinned go-task, both of which the old gate's assumptions
+> had been hiding. What M10 still waits on is unchanged in kind and named in
+> the master plan: the online-mode lane, the owned-server matrix row, and
+> the tags.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Do the part of M10 that M9 does not block, and stop before the tag. Close the one code gap M10 owns outright, settle the one decision it has been carrying since M3, give the one repository with no release gate the gate every other one has, stop the two-version vanilla lane depending on a sibling repository's ignored directory, and freeze the public surface while it is still cheap to change.
@@ -391,7 +407,7 @@ git commit -m "feat(login): accept a protocol 775 login"
 - Produces: no new exported symbol. This task changes no byte, which is the
   point — M3 already changed none, and what was missing was the record.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestProtocol47HasTwoNamesAndTheContractSaysWhichIsWhich(t *testing.T) {
@@ -416,7 +432,7 @@ func TestProtocol47HasTwoNamesAndTheContractSaysWhichIsWhich(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `devbox run -- go test ./generated/java/v1_8`
 Expected: FAIL until the assertion is added. `TestVersionAndRegistration` in
@@ -427,7 +443,7 @@ than a literal.
 The dataset is addressed as `java/1.8.9` and reports `MinecraftVersion: "1.8.8"`,
 which is the whole shape of the confusion in one call.
 
-- [ ] **Step 3: Write the record**
+- [x] **Step 3: Write the record**
 
 `docs/version-names.md` says the rule in three paragraphs: which name goes in a
 status response and a login, which name goes in a dataset path and a
@@ -441,19 +457,19 @@ comment can now point here instead of arguing the case locally, and
 `interop/node/runner.mjs` drives Node at `1.8.8` because that is the name the
 independent implementation lists.
 
-- [ ] **Step 4: Point the generated comment at the record**
+- [x] **Step 4: Point the generated comment at the record**
 
 Through the template, not by hand. Regenerate and check:
 
 Run: `devbox run -- task generate && devbox run -- task generate:check`
 Expected: PASS.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `devbox run -- task verify`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/version-names.md generated internal/codegen README.md
@@ -479,7 +495,7 @@ git commit -m "docs: settle which name protocol 47 advertises and which names it
 `minecraft-simulation`, and `minecraft-reference` all have the same five tasks
 with the same names. A sixth variant is a sixth thing to remember.
 
-- [ ] **Step 1: Prove the current gate is broken from a clean clone**
+- [x] **Step 1: Prove the current gate is broken from a clean clone**
 
 ```bash
 git -C "$(mktemp -d)" clone --depth 1 https://github.com/go-theft-craft/server.git fresh
@@ -490,7 +506,7 @@ Expected: it fails. `vendor/` is gitignored and no file under it is tracked, and
 `task test` passes `-mod vendor`. Record the exact error in the commit message;
 it is the reason this task exists rather than an opinion about tooling.
 
-- [ ] **Step 2: Decide the vendor question and write the decision down**
+- [x] **Step 2: Decide the vendor question and write the decision down**
 
 Two options, and the task takes the second:
 
@@ -503,7 +519,7 @@ Take the second: remove `-mod vendor` from `test` and `test:race`, remove
 `go mod vendor` from `deps`, and leave `vendor/` ignored so an existing
 developer's directory is harmless. Put the reason in a comment above `deps`.
 
-- [ ] **Step 3: Stop `deps` disabling checksum verification globally**
+- [x] **Step 3: Stop `deps` disabling checksum verification globally**
 
 `go env -w GOSUMDB=off` writes to the user's Go environment file. It is not
 scoped to this repository, this shell, or this task, and it silently opts every
@@ -517,14 +533,14 @@ that every other task depends on and that rewrites `go.mod` means any task can
 change the module graph, which is precisely what `release:check`'s clean-tree
 assertion is there to catch.
 
-- [ ] **Step 4: Split `fmt` from `fmt:check`**
+- [x] **Step 4: Split `fmt` from `fmt:check`**
 
 `lint` depends on `fmt`, and `fmt` writes files. So linting mutates the tree,
 which a clean-tree release check would fail and a reviewer would never see.
 Add `fmt:check` — the same formatters with `-l` and no `-w`, failing on any
 output — and point `lint` at it.
 
-- [ ] **Step 5: Add `vuln`, `secrets`, `verify`, and `release:check`**
+- [x] **Step 5: Add `vuln`, `secrets`, `verify`, and `release:check`**
 
 Copy the four from `minecraft-protocol/Taskfile.yml`, adjusting only paths.
 `release:check` keeps all four of its assertions, and the `replace`-directive
@@ -532,27 +548,27 @@ one earns its place here more than anywhere: `server` requires both
 `minecraft-protocol` and `minecraft-simulation`, so it is the repository a
 release-order mistake lands in.
 
-- [ ] **Step 6: Add the CI workflow**
+- [x] **Step 6: Add the CI workflow**
 
 Copy `minecraft-protocol/.github/workflows/ci.yml`, which runs `verify` under
 Devbox with the pinned toolchain. Include `test:examples`, because
 `examples/` is a nested module and M11 made it this repository's test surface.
 
-- [ ] **Step 7: Add `CHANGELOG.md`**
+- [x] **Step 7: Add `CHANGELOG.md`**
 
 The same header the other repositories use, an `## Unreleased` section, and
 under it the entries M11's seven sub-milestones earned — the framework shape,
 the seams, the version-neutral world model, the audit trail, the examples. This
 is the first release note `server` will have, and M11 is what it is about.
 
-- [ ] **Step 8: Run the gate**
+- [x] **Step 8: Run the gate**
 
 Run: `devbox run -- task verify` and
 `devbox run -- task release:check VERSION=v0.1.0`
 Expected: PASS. `release:check` is being run to prove it works, not to release;
 no tag is created here or anywhere in this plan.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add Taskfile.yml .github CHANGELOG.md .gitignore
@@ -583,7 +599,7 @@ manifest; it is that `client/vanilla_e2e_test.go` hardcodes
 so the lane passes on a machine where a different repository happens to have
 been prepared and skips everywhere else, and nothing records which build ran.
 
-- [ ] **Step 0: Do not disturb the staged P4 work**
+- [x] **Step 0: Do not disturb the staged P4 work**
 
 `git status --porcelain` in this repository shows staged `go.mod`, `go.sum`,
 `examples/go.mod`, and `examples/go.sum`, and an untracked
@@ -591,7 +607,7 @@ been prepared and skips everywhere else, and nothing records which build ran.
 Either finish and commit it as P4's Task 1 says, or stash it, before starting
 here. Do not `git add -A`, and do not commit it under this task's message.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestTheLaneNamesTheBuildItRan(t *testing.T) {
@@ -610,12 +626,12 @@ func TestTheLaneNamesTheBuildItRan(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `devbox run -- go test ./client -run TestTheLaneNamesTheBuild -tags vanilla`
 Expected: FAIL, `undefined: vanillaWorkspace`.
 
-- [ ] **Step 3: Replace both hardcoded paths**
+- [x] **Step 3: Replace both hardcoded paths**
 
 One helper, used by both lanes, resolving in this order: an explicit
 `MCREFERENCE_WORKSPACE`, then this repository's own prepared workspace, then
@@ -627,19 +643,19 @@ Keep the skip. The lane is behind the `vanilla` build tag and out of `verify`
 deliberately, and a lane that fails when no jar is prepared would make `verify`
 depend on a download.
 
-- [ ] **Step 4: Teach `task server:vanilla` the second version**
+- [x] **Step 4: Teach `task server:vanilla` the second version**
 
 It already takes `VERSION` and defaults to `1.8.9`. Make `26.1.2` a documented
 value and have it prepare into this repository's workspace, so
 `task server:vanilla VERSION=26.1.2` is the whole answer to the skip message.
 
-- [ ] **Step 5: Write `docs/vanilla-lane.md`**
+- [x] **Step 5: Write `docs/vanilla-lane.md`**
 
 What the lane covers — six scenarios per version, named — what it does not, how
 to prepare each version, and where the digest of the jar that ran is recorded.
 Note the property M10 was after and this delivers: the result names its build.
 
-- [ ] **Step 6: Run both lanes**
+- [x] **Step 6: Run both lanes**
 
 Run: `devbox run -- task server:vanilla VERSION=1.8.9` then
 `devbox run -- task server:vanilla VERSION=26.1.2`, then
@@ -647,7 +663,7 @@ Run: `devbox run -- task server:vanilla VERSION=1.8.9` then
 Expected: PASS on both versions, and each logs the digest of the jar it ran
 against.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add client Taskfile.yml docs/vanilla-lane.md
@@ -675,7 +691,7 @@ release comes, and this task's `internal/apicheck` is written to be copied.
 `server`, `relay`, and `headless-minecraft` are consumed by nothing in this
 project today, and freezing an API nobody imports buys a maintenance cost.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestThePublicSurfaceHasNotChangedIncompatibly(t *testing.T) {
@@ -696,12 +712,12 @@ func TestThePublicSurfaceHasNotChangedIncompatibly(t *testing.T) {
 func TestAnAddedMethodIsNewsAndNotAFailure() { /* compatible changes report separately */ }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `devbox run -- go test ./internal/apicheck`
 Expected: FAIL, no baseline.
 
-- [ ] **Step 3: Generate the baseline and implement the check**
+- [x] **Step 3: Generate the baseline and implement the check**
 
 Write `api/api.txt` from the current exported surface of every non-`internal`
 package. `generated/java/v1_8` and `generated/java/v26_1` belong in it: they are
@@ -710,12 +726,12 @@ field type is exactly the change this is for.
 
 Report incompatible and compatible changes separately.
 
-- [ ] **Step 4: Run the check**
+- [x] **Step 4: Run the check**
 
 Run: `devbox run -- task api:check`
 Expected: PASS.
 
-- [ ] **Step 5: Wire it into `verify`**
+- [x] **Step 5: Wire it into `verify`**
 
 `api:check` runs in `verify`, so an incompatible change fails in the branch that
 made it rather than at a release.
@@ -723,7 +739,7 @@ made it rather than at a release.
 Run: `devbox run -- task verify`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add api internal/apicheck Taskfile.yml go.mod go.sum
@@ -742,7 +758,7 @@ git commit -m "test(api): freeze the public surface with a compatibility baselin
 - Produces: an M10 checklist a reader can act on, where every remaining item
   either has a prerequisite named or is unblocked.
 
-- [ ] **Step 1: Rewrite the M10 checklist**
+- [x] **Step 1: Rewrite the M10 checklist**
 
 Mark done, with its evidence: the version-string decision (Task 2), the
 `login.Acceptor` row (Task 1), the local-reference-artifacts row (already
@@ -762,7 +778,7 @@ Leave the online-mode row, the API-and-migration row, and the release row open,
 each with what it waits on: a real account and a real server, `minecraft-simulation`
 taking Task 5's tooling, and M9.4 through M9.8.
 
-- [ ] **Step 2: Record what M10 cannot claim**
+- [x] **Step 2: Record what M10 cannot claim**
 
 Add to the M10 section, in the master plan's own findings style:
 
@@ -786,7 +802,7 @@ has never executed.
 checksum database records them in an append-only log. Rewriting history removes
 content from GitHub only.
 
-- [ ] **Step 3: Reconcile `minecraft-protocol`'s P5**
+- [x] **Step 3: Reconcile `minecraft-protocol`'s P5**
 
 P5 says "Publish `v1.0.0` after public APIs have compatibility tests", "Document
 support windows for built-in protocol versions", and "Require migration notes for
@@ -795,7 +811,7 @@ every later breaking change". Task 5 satisfies the first. Task 2's
 tag waits on M9 like M10's does, so a reader of either roadmap reaches the same
 answer.
 
-- [ ] **Step 4: Supersede the 2026-08-16 plan**
+- [x] **Step 4: Supersede the 2026-08-16 plan**
 
 Add a header to it pointing here, saying which of its tasks were replaced and
 why: Task 1's five manifests by `minecraft-reference`, Task 2's matrix by the
@@ -805,7 +821,7 @@ and 7 stand — Task 5 partly executed here, 6 and 7 waiting on M9.
 Do not delete it. It is the record of what was believed before anything was
 measured, and the difference between the two documents is the finding.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 # in headless-minecraft
