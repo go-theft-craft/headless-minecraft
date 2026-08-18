@@ -1585,10 +1585,19 @@ because each one changes what a stage costs:
   do it. And the velocities a real server sends do not decode — values repeat to
   sixteen digits across unrelated entities, and a velocity packet disagrees with
   the sync packet that follows it for the same entity, whose own `float64` delta
-  is plausible. The suspect is `minecraft-protocol`'s `lpVec3` codec, whose
-  encoder and decoder agree with each other so every round-trip test passes.
-  Positions are unaffected. **M9.2 must not rest on a 775 sample's `Velocity`
-  until that codec is checked against vanilla's own encoder.** Recorded in
+  is plausible.
+
+  Chased down and fixed the same day. `net/minecraft/network/LpVec3` writes the
+  packed vector's upper thirty-two bits with Netty's `writeInt`, which is big
+  endian; `minecraft-protocol`'s `wire/java` wrote and read all forty-eight bits
+  little endian. Wrong in both directions, so every round-trip test in that
+  package passed while no vector from a real server decoded. With the fix, the
+  two summoned arrows report exactly the motion they were given, a dropped item
+  reports vanilla's `y = 0.2` toss, and a jumping slime reports a jump. The test
+  that catches it reads velocity fields captured from the pinned server, because
+  every other test there writes and reads with the same code. `relay` pins
+  released versions, so it picks the fix up at the next `minecraft-protocol`
+  release. Recorded in
   `../relay/docs/verification/2026-08-17-capture-oracle.md`, evidence in
   `../oracle-evidence/2026-08-18-relay-775/`.
 
