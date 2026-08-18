@@ -427,6 +427,16 @@ func (b *Bot) follow(t Tick, w World, goal Vec3, key int) (Action, bool) {
 // describing the world, and walking the rest of it would be walking the same
 // prediction again.
 func (b *Bot) guardedStep(t Tick, w World, target Vec3) Action {
+	// A bot already standing in something may step anywhere. The guard exists
+	// to keep a body out of harm, and a body in harm has nothing left to
+	// protect: every way out of a lava pool starts with a step whose landing
+	// is still lava, so refusing those is refusing to leave. This is the
+	// mistake that killed the bot in the trace -- it stood in a spreading pool
+	// for a second and a half at a time, declining to move, and burned.
+	if w.Hurting(t.Self.Position) {
+		return b.step(target)
+	}
+
 	next := t.Self.Position.Toward(target, b.bounds.Step())
 	if w.Hurting(next) {
 		b.route = Route{}
@@ -588,10 +598,31 @@ func (b *Bot) escape(t Tick, w World) Action {
 		return b.disengage(t, "still in it, but out of time to be careful")
 	}
 
-	// The nearest ground that does not hurt, which is the whole answer: the way
-	// out of a pool is toward its closest edge, and which edge that is depends
-	// on where in the pool the bot is standing. Picking a fixed direction walks
-	// half of them deeper in, which is what the first version of this did.
+	// One step, eight directions, and go. This runs before any search because
+	// searching is what killed the bot the last time: a packet trace of a bot
+	// burning to death shows it walking smoothly, lava arriving in its cell,
+	// and then a second and a half in which it sent nothing at all -- twice,
+	// which is three seconds of standing in lava. Whatever it was doing in
+	// those gaps, asking eight cheap questions and stepping is better.
+	//
+	// The test is on the place the step lands rather than on the direction,
+	// because a body 0.6 wide leaving a pool cares where its box ends up.
+	for _, heading := range escapeHeadings {
+		aim := t.Self.Position.
+			Add(Vec3{X: b.bounds.SafeDistance}).
+			RotatedAbout(t.Self.Position, heading)
+
+		if !w.Hurting(t.Self.Position.Toward(aim, b.bounds.Step())) {
+			b.route = Route{}
+
+			return b.step(aim)
+		}
+	}
+
+	// Nothing one step away is clear, so the bot is in deep enough that the
+	// way out is worth searching for. The nearest ground that does not hurt:
+	// which edge of a pool is closest depends on where in it the bot is, and
+	// picking a fixed direction walks half the cases further in.
 	out, found := w.Safe(t.Self.Position, b.bounds.WaterSearch)
 	if !found {
 		// Nothing safe within reach. Keep the way out already being walked if
@@ -619,6 +650,11 @@ func (b *Bot) escape(t Tick, w World) Action {
 
 	return b.step(b.escapeTo)
 }
+
+// escapeHeadings are the directions tried for the one step out, straight ahead
+// first and then round. Eight is finer than the planner's four and cheap enough
+// to exhaust inside a tick, which is the whole point of trying them at all.
+var escapeHeadings = []float64{0, 45, -45, 90, -90, 135, -135, 180}
 
 // escapeRoute is the route key for getting out of something that hurts.
 const escapeRoute = -2

@@ -993,8 +993,50 @@ func TestEscapingHeadsForTheNearestEdge(t *testing.T) {
 	if action.Kind != StepTo {
 		t.Fatalf("produced %v, want a step out", action.Kind)
 	}
-	// Away from the pool, not along it.
-	if action.Target.X > position.X {
-		t.Errorf("stepped to %+v, which is further into the pool", action.Target)
+	// The step lands somewhere that does not hurt. The aim can be anywhere --
+	// the bot re-decides next tick and the planner takes over the moment it is
+	// clear -- but the place the body actually arrives this tick is the claim
+	// that has to hold.
+	landing := position.Toward(action.Target, DefaultBounds().Step())
+	if w.Hurting(landing) {
+		t.Errorf("stepped to %+v, which is still in the pool", landing)
+	}
+}
+
+// TestABotAlreadyInLavaIsAllowedToMove pins the exception to the step guard.
+//
+// The guard refuses a step whose landing hurts, which is right for a bot on
+// safe ground and fatal for one already in a pool: every way out starts with a
+// step still inside it. A packet trace of a bot burning to death shows exactly
+// this -- lava arrives in its cell, and it then sends nothing for a second and
+// a half at a time while it declines to move.
+func TestABotAlreadyInLavaIsAllowedToMove(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+
+	// A pool wide enough that no single step leaves it.
+	foot := position.Floor()
+	for dx := -2; dx <= 2; dx++ {
+		for dz := -2; dz <= 2; dz++ {
+			w.harmful[BlockPos{X: foot.X + dx, Y: foot.Y, Z: foot.Z + dz}] = true
+		}
+	}
+
+	action := bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position}, Revision: 2,
+	}, w)
+
+	if bot.State() != Escaping {
+		t.Fatalf("the bot is %v, want escaping", bot.State())
+	}
+	if action.Kind != StepTo {
+		t.Fatalf("produced %v while standing in a pool, want a step: standing is what kills it", action.Kind)
 	}
 }

@@ -245,6 +245,7 @@ func drive(
 
 		case now := <-ticker.C:
 			pending.Now = now
+			started := time.Now()
 
 			// One snapshot for this whole tick. Taking a second one for the
 			// player would let the terrain move between the bot's feet and the
@@ -274,6 +275,21 @@ func drive(
 				return code, err
 			}
 			predicted = moved
+
+			// Say so when a tick takes longer than a tick. The loop sends
+			// nothing while it is thinking, so a slow tick and a bot standing
+			// still are the same thing on the wire -- which is exactly the
+			// ambiguity that made a bot burning to death hard to read. A
+			// searching bot that misses ten updates has stopped moving as far
+			// as the server is concerned.
+			if over := time.Since(started); over > bounds.Tick {
+				logger.Warn(
+					"tick overran",
+					slog.Duration("took", over),
+					slog.Duration("budget", bounds.Tick),
+					slog.String("state", core.State().String()),
+				)
+			}
 		}
 	}
 }
