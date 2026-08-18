@@ -399,25 +399,54 @@ func packetID(t *testing.T, value any) int32 {
 
 // TestProtocol47RefusesTheLocomotionItCannotName pins a deliberate gap.
 //
-// 47 has no input packet at all, and its entity_action declares actionId as a
-// bare varint with no names attached to the values. Encoding sprint for it
-// would mean hardcoding numbers this repository has not measured, and a wrong
-// one is a different action performed confidently — a client that thinks it is
-// sprinting and is in fact leaving a bed. Refusing says so; guessing would not.
+// 47 has no input packet at all: there is no packet that reports which keys are
+// held, and approximating one with movement would report a different thing.
+//
+// Sprint used to be refused here too, on the ground that 47's entity_action
+// declares actionId as a bare varint with no names attached and this repository
+// had not measured the numbers. It has now — C0BPacketEntityAction.Action in
+// the deobfuscated 1.8.9 jar, written as an ordinal — so sprint encodes on both
+// versions and only the input packet is missing. See TestSprintEncodesOnBoth.
 func TestProtocol47RefusesTheLocomotionItCannotName(t *testing.T) {
 	t.Parallel()
 
-	for name, action := range map[string]version.Action{
-		"input":  ActionInput{Forward: true},
-		"sprint": ActionSprint{Sprinting: true},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+	_, err := java.Java1_8().Adapter.EncodeAction(ActionInput{Forward: true})
+	if !errors.Is(err, version.ErrUnsupportedAction) {
+		t.Fatalf("EncodeAction returned %v, want ErrUnsupportedAction", err)
+	}
+}
 
-			_, err := java.Java1_8().Adapter.EncodeAction(action)
-			if !errors.Is(err, version.ErrUnsupportedAction) {
-				t.Fatalf("EncodeAction returned %v, want ErrUnsupportedAction", err)
-			}
-		})
+// TestSprintEncodesOnBothVersionsAsAnEntityAction pins the change.
+//
+// Sprinting is a declared state on both protocols and both declare it on the
+// same packet — one numbering the action and one naming it. A caller says
+// "start sprinting" once.
+func TestSprintEncodesOnBothVersionsAsAnEntityAction(t *testing.T) {
+	t.Parallel()
+
+	on47, err := java.Java1_8().Adapter.EncodeAction(ActionSprint{Sprinting: true})
+	if err != nil {
+		t.Fatalf("EncodeAction on 47: %v", err)
+	}
+	body47, ok := on47.Value.(*gen1_8.PlayServerboundEntityAction)
+	if !ok {
+		t.Fatalf("47 encoded %T, want an entity action", on47.Value)
+	}
+	// START_SNEAKING, STOP_SNEAKING, STOP_SLEEPING, START_SPRINTING: the
+	// fourth member, so three.
+	if body47.ActionID != 3 {
+		t.Errorf("47 sprint action = %d, want 3", body47.ActionID)
+	}
+
+	on775, err := java.Current().Adapter.EncodeAction(ActionSprint{Sprinting: true})
+	if err != nil {
+		t.Fatalf("EncodeAction on 775: %v", err)
+	}
+	body775, ok := on775.Value.(*gen26_1.PlayServerboundEntityAction)
+	if !ok {
+		t.Fatalf("775 encoded %T, want an entity action", on775.Value)
+	}
+	if body775.ActionID != "start_sprinting" {
+		t.Errorf("775 sprint action = %q, want start_sprinting", body775.ActionID)
 	}
 }

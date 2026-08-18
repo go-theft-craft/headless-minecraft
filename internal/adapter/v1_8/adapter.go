@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync/atomic"
 
 	protocol "github.com/go-theft-craft/minecraft-protocol"
 	gen "github.com/go-theft-craft/minecraft-protocol/generated/java/v1_8"
@@ -28,6 +29,10 @@ const ProtocolID = "java/1.8.9"
 type adapter struct {
 	collector *event.Collector
 	outbox    *version.Outbox
+	// transactions numbers window clicks. This protocol confirms a click by
+	// echoing its number back, so whoever allocates one has to be whoever
+	// waits for the echo, and that is this adapter rather than the caller.
+	transactions *atomic.Int32
 }
 
 // New returns an adapter that appends to the given collector and queues its
@@ -37,7 +42,7 @@ type adapter struct {
 // publish and never write: a batch's events reach subscribers together, and
 // its answers reach the server together.
 func New(collector *event.Collector, outbox *version.Outbox) version.Adapter {
-	return adapter{collector: collector, outbox: outbox}
+	return adapter{collector: collector, outbox: outbox, transactions: new(atomic.Int32)}
 }
 
 func (adapter) ProtocolID() string { return ProtocolID }
@@ -211,3 +216,21 @@ func dimensionName(id int8) string {
 		return "minecraft:overworld"
 	}
 }
+
+// nextTransaction allocates the number that identifies one window click.
+//
+// It never returns zero and never returns a negative: the field is a signed
+// short on the wire, and a server that has seen 32767 clicks in one session is
+// better served by wrapping back to one than by a number it reads as older
+// than everything before it.
+func (a adapter) nextTransaction() int16 {
+	if a.transactions == nil {
+		return 1
+	}
+
+	return int16(a.transactions.Add(1)%maxTransaction47 + 1)
+}
+
+// maxTransaction47 is how many distinct click numbers this protocol's signed
+// short holds above zero.
+const maxTransaction47 = 32767

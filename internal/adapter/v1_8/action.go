@@ -14,7 +14,7 @@ import (
 // none is approximated by another. The protocol has no field for a horizontal
 // collision, so that part of an intent is dropped here rather than being folded
 // into a flag it does not have.
-func (adapter) EncodeAction(action version.Action) (protocol.Packet, error) {
+func (a adapter) EncodeAction(action version.Action) (protocol.Packet, error) {
 	switch value := action.(type) {
 	case version.ActionMove:
 		return play47("position", &gen.PlayServerboundPosition{
@@ -50,6 +50,11 @@ func (adapter) EncodeAction(action version.Action) (protocol.Packet, error) {
 		}), nil
 
 	default:
+		packet, handled, err := a.encodeInteraction(action)
+		if handled {
+			return packet, err
+		}
+
 		return protocol.Packet{}, version.UnsupportedAction(ProtocolID, action)
 	}
 }

@@ -14,7 +14,7 @@ import (
 // tick's horizontal motion was blocked. That extra claim is why the intents
 // carry a collision flag at all: dropping it would make this protocol send less
 // than the game does.
-func (adapter) EncodeAction(action version.Action) (protocol.Packet, error) {
+func (a adapter) EncodeAction(action version.Action) (protocol.Packet, error) {
 	switch value := action.(type) {
 	case version.ActionMove:
 		return play775("position", &gen.PlayServerboundPosition{
@@ -51,16 +51,6 @@ func (adapter) EncodeAction(action version.Action) (protocol.Packet, error) {
 			},
 		}), nil
 
-	case version.ActionSprint:
-		// EntityID is the player's own, and the server reads it from the
-		// connection rather than from here: a real client fills it in and a
-		// server that disagreed would have no way to act on the difference.
-		// Zero is what this sends, because the adapter is not told the entity
-		// ID and inventing a wrong one would be worse than sending none.
-		return play775("entity_action", &gen.PlayServerboundEntityAction{
-			ActionID: sprintCommand775(value.Sprinting),
-		}), nil
-
 	case version.ActionCommand:
 		return play775("chat_command", &gen.PlayServerboundChatCommand{
 			Command: value.Command,
@@ -74,27 +64,17 @@ func (adapter) EncodeAction(action version.Action) (protocol.Packet, error) {
 		}), nil
 
 	default:
+		packet, handled, err := a.encodeInteraction(action)
+		if handled {
+			return packet, err
+		}
+
 		return protocol.Packet{}, version.UnsupportedAction(ProtocolID, action)
 	}
 }
 
 // respawnCommand775 is the client-command action that asks to respawn.
 const respawnCommand775 = "perform_respawn"
-
-// sprintCommand775 names the entity action that starts or stops sprinting.
-//
-// 775 names these where 47 numbers them, and the names are the protocol's own.
-// That difference is why this action is encoded here and refused there: 47's
-// schema declares actionId as a bare varint with no names attached, so a 47
-// implementation would have to hardcode numbers this repository has not
-// measured, and a wrong one is a different action performed confidently.
-func sprintCommand775(sprinting bool) string {
-	if sprinting {
-		return "start_sprinting"
-	}
-
-	return "stop_sprinting"
-}
 
 // flags775 builds the movement flags this protocol carries.
 func flags775(onGround, horizontalCollision bool) gen.MovementFlags {
