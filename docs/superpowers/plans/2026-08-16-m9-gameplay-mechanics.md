@@ -1,5 +1,14 @@
 # M9 Gameplay Mechanics Implementation Plan
 
+> **Status: M9.1 complete but for its live check, 2026-08-18.** Every automated
+> gate is green against a stub upstream; the recording sink, trace extraction,
+> replay gate, and `mcrelay trace` / `mcrelay verify` shipped in `relay`. What
+> remains is the manual check — one real 1.8.9 client through the proxy to a
+> pinned offline vanilla server — whose procedure is in
+> `../relay/docs/verification/2026-08-17-capture-oracle.md`. M9.2 through M9.8
+> have their own stage plans; the unticked commit steps below are bookkeeping,
+> not work.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or execute this plan inline one task at a time. Keep every checkbox current.
 
 **Goal:** Verify every gameplay mechanic — items, movement, digging, building, attack, containers, crafting — against captured vanilla behaviour, starting with the capture tool that makes the verification possible.

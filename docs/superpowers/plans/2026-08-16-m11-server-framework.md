@@ -1,5 +1,11 @@
 # M11 Server Framework Implementation Plan
 
+> **Status: complete, 2026-08-18.** Shipped in `server` as M11.1 through M11.7,
+> each under its own plan in that repository. `server` is a framework:
+> composable seams, a version-neutral world model, storage, world generation,
+> provenance, observability, and commands. The checkboxes below were never
+> ticked and are not evidence; do not re-run this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or execute this plan inline one task at a time. Keep every checkbox current.
 
 **Goal:** Turn `server` from an application into a framework: composable pieces with working defaults, wired by the application, without breaking the harness role that M6.1, M9, and M10 depend on.

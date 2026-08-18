@@ -1,5 +1,10 @@
 # Shared Protocol Extraction Implementation Plan
 
+> **Status: complete, 2026-08-18.** Shipped as M0 in `minecraft-protocol` and
+> M3 and M6.1 in `server`, which now owns no wire code at all: `pkg/protocol`
+> and `pkg/gamedata` are gone. The checkboxes below were never ticked and are
+> not evidence; do not re-run this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > [!NOTE]

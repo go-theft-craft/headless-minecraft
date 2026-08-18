@@ -1,5 +1,9 @@
 # Immutable game-data contracts implementation plan
 
+> **Status: complete, 2026-08-18.** Shipped in `minecraft-protocol` as part of
+> M0, alongside the generated Java 1.8 data. The checkboxes below were never
+> ticked and are not evidence; do not re-run this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or execute this plan inline one task at a time. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add the immutable typed game-data model, raw-dataset access, and version registry that the Java 1.8 generator and later protocol versions will use.

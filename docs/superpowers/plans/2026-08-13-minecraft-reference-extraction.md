@@ -1,5 +1,10 @@
 # Minecraft Reference Extraction Implementation Plan
 
+> **Status: complete, 2026-08-18.** Shipped as the `minecraft-reference`
+> repository, released at `v1.0.1`, with `mcreference dump`, a family catalog
+> covering 1.0 through 26.2, and a weekly maintenance workflow. The checkboxes
+> below were never ticked and are not evidence; do not re-run this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or execute this plan inline one task at a time. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a repeatable local workflow that downloads, verifies, maps, decompiles, and indexes the official Java Edition 1.8.9 and 26.1.2 client and server artifacts, then map the complete simulation behavior planned for `minecraft-simulation`.

@@ -1,5 +1,14 @@
 # Constructed Components, World State, and Operations Implementation Plan
 
+> **Status: tasks 1 through 6 complete; task 7 open, 2026-08-18.** Tasks 1
+> through 6 shipped as M7 (eight observed domains, wire-ordered reducers on
+> both protocols) and the outbound action path, `Client.Do`, which has since
+> gained `ActionRespawn` and the interaction primitives. **Task 7 is the one
+> piece still open**: `movement.Strategy` is not exported, so nothing proves a
+> strategy defined outside the library works, and `examples/orbit` is the first
+> caller to need it. The checkboxes below were never ticked; read the task
+> list, not the boxes.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or execute this plan inline one task at a time. Keep every checkbox current.
 
 **Goal:** Build immutable observed state and a construction-time graph of replaceable gameplay components for movement, containers, inventory, crafting, digging, building, and interaction, including modded bodies, abilities, menus, multi-block tools, and strict recovery safeguards.

@@ -1,5 +1,14 @@
 # Headless Client and Authentication Implementation Plan
 
+> **Status: complete apart from M6.4, 2026-08-18.** The lifecycle, the offline
+> provider, and the login exchange shipped as M6.3; the client connects,
+> reaches play, publishes session events, and closes once. The Microsoft
+> device-code half did not ship and is postponed, not blocked: it has its own
+> plan at
+> [2026-08-15-microsoft-authentication.md](2026-08-15-microsoft-authentication.md).
+> The checkboxes below were never ticked and are not evidence of what remains;
+> `MASTER_PLAN.md` is.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Create the native Go headless client, support offline and Microsoft-authenticated Java protocol 775 sessions, and expose a scoped lifecycle with typed and raw events.

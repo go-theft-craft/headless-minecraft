@@ -1,5 +1,10 @@
 # Minecraft Simulation Foundation Implementation Plan
 
+> **Status: complete, 2026-08-18.** Shipped as the `minecraft-simulation`
+> repository across M8.1 through M8.8, under that repository's own stage plans,
+> which supersede this one wherever they disagree. The checkboxes below were
+> never ticked and are not evidence; do not re-run this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or execute this plan inline one task at a time. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement one deterministic movement slice for Java Edition 1.8.9 and 26.1.2 through the same server and client kernel.

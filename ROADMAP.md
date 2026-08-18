@@ -50,9 +50,15 @@ flowchart LR
   refused.
 - Apply packet reducers in wire order before publishing events. **Done.**
 
-Two limits carry forward. Protocol 775 chunk sections are stored and not
-decoded, which needs one captured 26.1 chunk as a fixture. No chat component is
-rendered anywhere, which is deliberate and permanent.
+One limit carries forward: no chat component is rendered anywhere, which is
+deliberate and permanent.
+
+The other one is closed. Protocol 775 chunk sections decode through
+`decodeSection775`, against a chunk column captured from a real 26.1.2 server
+(`internal/adapter/v26_1/testdata/chunk-26.1-0-0.bin`). Sections in both
+protocols are still *stored* undecoded and decode on demand, which is a design
+choice rather than a gap: a server streams hundreds of chunks a consumer never
+reads a block from.
 
 ## P3: constructed components
 

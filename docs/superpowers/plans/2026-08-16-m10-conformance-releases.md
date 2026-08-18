@@ -1,5 +1,12 @@
 # M10 Conformance and Releases Implementation Plan
 
+> **Status: superseded, 2026-08-18.** This plan was written before M9 measured
+> anything and proposed a conformance framework as if none of it existed. Half
+> of it does exist, unevenly and under other names. It is replaced by
+> [the M10 reconciliation](2026-08-18-m10-conformance-and-releases.md), which
+> checks each of the nine M10 checklist items against the working trees and
+> executes only what its prerequisites allow. Do not execute this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or execute this plan inline one task at a time. Keep every checkbox current.
 
 **Goal:** Prove every runtime repository against real implementations, fix its public API with compatibility tests, and publish `v1.0.0` releases that a consumer can depend on.

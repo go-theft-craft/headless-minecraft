@@ -1,5 +1,15 @@
 # Navigation: terrain and search Implementation Plan
 
+> **Status: complete, 2026-08-18.** Shipped in `minecraft-simulation/navigation`:
+> `terrain`, the frontier and search, `Capability`, `Posture`, `Path`, and the
+> four read-only edge kinds `EdgeWalk`, `EdgeStep`, `EdgeFall`, and `EdgeSwim`.
+> The checkboxes below were never ticked and are not evidence. What this plan
+> deferred is open elsewhere: `JumpGap` and the missing postures in
+> [navigation edge completion](2026-08-18-navigation-edge-completion.md), the
+> mutating edges in [mutating edges and pillar](2026-08-18-mutating-edges-pillar.md),
+> and the `examples/orbit` rewrite in
+> [aiming and reach geometry](2026-08-18-aiming-and-reach-geometry.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build `terrain` and `navigation` in `minecraft-simulation`, so any body — a client bot or a server mob — can ask whether it fits somewhere and get a deterministic route there over walk, step, fall, and swim edges.

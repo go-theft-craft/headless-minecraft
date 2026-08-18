@@ -1,5 +1,12 @@
 # Current Protocol and Stream Toolkit Implementation Plan
 
+> **Status: complete, 2026-08-18.** This umbrella shipped in `minecraft-protocol`
+> as M1 (managed stream and compression) and M2 (encryption and login
+> lifecycle), under those repositories' own plans. The checkboxes below were
+> never ticked and are not evidence of anything; do not re-run this plan. What
+> the work found is in
+> [the archived master plan](../../archive/2026-08-18-master-plan.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Generate the PrismarineJS Java 26.1 data family, protocol 775, validate it against a server running the current 26.1.2 game build, and provide safe optional stream, routing, capture, login, and CLI helpers.
