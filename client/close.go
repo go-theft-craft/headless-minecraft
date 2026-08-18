@@ -69,7 +69,7 @@ func (c *Client) publishDisconnect(err error, stream *protocol.Stream) {
 	c.events.publish(event.One(event.Disconnected{
 		Source: event.DisconnectByTransport,
 		Reason: reason,
-		State:  string(currentState(context.Background(), stream)),
+		State:  string(c.currentState(context.Background(), stream)),
 	}, unrevised))
 }
 

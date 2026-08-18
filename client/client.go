@@ -69,8 +69,14 @@ type Client struct {
 	// session, so that a connection ending after the server said why does not
 	// report the ending twice.
 	reportedEnd bool
-	loopError   error
-	stop        func()
+	// lastState is the protocol state the stream last transitioned into. A
+	// terminated stream answers nothing about itself, so a disconnect read
+	// from one names no state at all — and the state a session ended in is
+	// most of what a subscriber wants from a connection that died. This is
+	// what it was, remembered while the stream could still say.
+	lastState string
+	loopError error
+	stop      func()
 	// loop closes when the read loop stops; done closes when Close finishes.
 	// They are separate because a session can end without anyone calling
 	// Close, and Close must still be able to run afterwards.

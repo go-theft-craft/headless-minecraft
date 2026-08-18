@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	gen "github.com/go-theft-craft/minecraft-protocol/generated/java/v1_8"
+
 	"github.com/go-theft-craft/headless-minecraft/auth"
 	"github.com/go-theft-craft/headless-minecraft/client"
 	"github.com/go-theft-craft/headless-minecraft/client/internal/fixture"
@@ -329,6 +331,14 @@ func TestAServerThatHangsUpSilentlyStillReportsTheDisconnect(t *testing.T) {
 		}
 		if d.Reason == "" {
 			t.Error("the disconnect carries no reason at all")
+		}
+		// A killed server leaves a terminated stream behind, and a terminated
+		// stream answers nothing about itself. The state the session ended in
+		// is still known — the client watched every transition into it — and
+		// reporting "unknown" here threw away the one fact a transport loss
+		// can still carry.
+		if d.State != string(gen.StatePlay) {
+			t.Errorf("the disconnect names state %q, want play — the state the session was in", d.State)
 		}
 	}
 	if !found {

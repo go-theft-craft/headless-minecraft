@@ -67,6 +67,12 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
   Taking `v0.6.0` fixes it, and a new test decodes the bytes a real 26.1.2 server
   sent rather than building the packet as a value, because a value-built test
   cannot see a byte order at all.
+- `client`: a disconnect names the state the session ended in. The state was
+  read back off the stream at the moment the ending was reported, and a
+  terminated stream answers nothing about itself — so every transport loss, the
+  killed-server case included, published `"unknown"` for a state the client had
+  watched the session enter. It now reports the last transition it observed, and
+  keeps `"unknown"` for a session that never reached a state at all.
 - Taskfile: every lane `verify` runs resolves modules with the workspace off. A
   `go.work` is gitignored, so it is present on a developer machine and absent in
   CI, and the gate was building the neighbouring working tree while CI built the

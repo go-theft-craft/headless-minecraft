@@ -2,7 +2,12 @@ version: "3"
 
 vars:
   MODULE:
-    sh: go list -m
+    # GOWORK=off, because a go.work makes `go list -m` print every module in
+    # the workspace and this wants one. With two, the gci prefix section below
+    # is a two-line string that matches nothing, both modules land in one
+    # group, and `task fmt` then writes what `task fmt:check` rejects — a local
+    # gate disagreeing with CI, which is the failure P4 names.
+    sh: GOWORK=off go list -m
 
 tasks:
   deps:

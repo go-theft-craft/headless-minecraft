@@ -210,7 +210,7 @@ func (c *Client) awaitReady(
 	case <-deadline.C:
 		return fmt.Errorf(
 			"%w after %v in state %q",
-			ErrConnectTimeout, c.connectTimeout, currentState(ctx, stream),
+			ErrConnectTimeout, c.connectTimeout, c.currentState(ctx, stream),
 		)
 	}
 }
@@ -218,13 +218,37 @@ func (c *Client) awaitReady(
 // currentState reports the protocol state a stream reached, so a timeout says
 // where it stopped rather than only that it did. "Stuck in configuration" and
 // "never placed in play" are different faults with different fixes.
-func currentState(ctx context.Context, stream *protocol.Stream) protocol.State {
-	snapshot, err := stream.Snapshot(ctx)
-	if err != nil {
-		return "unknown"
+//
+// A stream that has terminated answers nothing, which is exactly the case a
+// disconnect asks in: the transport is gone by the time the ending is
+// reported. So the client's own record of the last transition it watched go by
+// stands in, and "unknown" is left for a session that never reached a state at
+// all.
+func (c *Client) currentState(ctx context.Context, stream *protocol.Stream) protocol.State {
+	if snapshot, err := stream.Snapshot(ctx); err == nil {
+		return snapshot.State
+	}
+	if remembered := c.notedState(); remembered != "" {
+		return protocol.State(remembered)
 	}
 
-	return snapshot.State
+	return "unknown"
+}
+
+// noteState records a transition the stream reported.
+func (c *Client) noteState(state string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.lastState = state
+}
+
+// notedState reports the last transition the stream reported.
+func (c *Client) notedState() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.lastState
 }
 
 func splitAddress(address string) (string, uint16, error) {
@@ -265,6 +289,7 @@ func (w *stateWatcher) Observe(_ context.Context, o protocol.Observation) error 
 	if o.Before.State == o.After.State {
 		return nil
 	}
+	w.client.noteState(string(o.After.State))
 	w.client.events.publish(event.One(event.StateChanged{
 		From: string(o.Before.State),
 		To:   string(o.After.State),
