@@ -40,6 +40,7 @@ here.
 | M8 | Deterministic 1.8.9 and 26.1.2 movement kernel, replay, consumer integration | `minecraft-simulation` | Complete (M8.1–M8.8) |
 | M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **In progress**: M9.1 complete, live check run 2026-08-17; M9.1b and M9.2 complete; M9.3 and M9.4 part-done; M9.5–M9.8 not started |
 | M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **In progress**: reconciled 2026-08-18, six tasks drafted and none executed |
+| P4 | Put every consumer on the released `minecraft-protocol` and keep them there | `minecraft-protocol` | **In progress**: task 1 of four done |
 | M11 | Turn `server` into a framework | `server` | Complete (M11.1–M11.7) |
 | — | Navigation and behaviour pillar | `minecraft-simulation`, `headless-minecraft` | **In progress**: terrain, search, heuristic, memo and interaction primitives landed; four plans open |
 
@@ -178,6 +179,18 @@ measurably impossible. Its six tasks, none executed:
   move it. No `apidiff`, no `api/` directory, and no `MIGRATION.md` in any of
   the six repositories.
 - [ ] **Task 6 — restate M10 as what the reconciliation found.**
+
+Also open in `minecraft-protocol`, and not part of M10:
+
+- [ ] **Close P4's uptake half**
+  ([plan](../minecraft-protocol/docs/superpowers/plans/2026-08-18-p4-shared-consumers.md),
+  4 tasks, task 1 done). The three migrations P4 named are done or superseded,
+  but a consumer can sit a release behind while a Go workspace makes it look
+  current — which is how one shipped against a defect this repository had
+  already fixed. Task 1 landed: `headless-minecraft` takes `v0.6.0` in both
+  modules and pins the corrected velocity to bytes. Open: make the local gate
+  resolve what CI resolves, name the consumers in the release flow, and restate
+  P4 in the roadmap.
 
 Still owned by M10 and outside that plan:
 
