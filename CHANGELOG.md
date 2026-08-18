@@ -55,3 +55,21 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
 - `client`, `event`: two guards against a session that works and observes nothing. `New` now refuses a world installed against an adapter that supplies no reducers, which is the M7 defect that shipped: the seam is satisfied by interface assertion, so an adapter whose `Reducers` is a package-level function compiles, passes its own tests, and installs a world that counts batches and sees nothing. And a placed session that has loaded no chunk after `WithObservationGrace` (ten seconds by default) publishes `session.observation_missing` and logs a warning, rather than answering "not loaded" for every block in silence. The report does not end the connection: no protocol obliges a server to send terrain.
 - `internal/adapter/v1_8`: the join-time world. A vanilla 1.8.9 server sends every column a joining player can see as `map_chunk_bulk` and never as a single-column `map_chunk`, and only the latter was reduced — so a session against vanilla loaded no terrain, answered "not loaded" for every block, and reported nothing wrong. Bulk columns now reach the same sections the single-column packet does. `SkyLightSent` sets the stride, and a blob shorter than its metadata claims stops rather than misaligning the columns after it.
 - `internal/adapter/v1_8`: health reaching zero is a death. A vanilla 1.8.9 server was observed killing a player and sending neither the entity status nor the combat event this adapter had been reading: hurt statuses, an enter-combat and an end-combat, health stepping to zero, and nothing naming a death. The vanilla client of that era has no death packet to wait for either — it shows its death screen when health reaches zero — so reading the same signal follows the protocol as implemented. `player.died` still fires once per death when a server sends both.
+
+### Fixed
+
+- `internal/adapter/v26_1`: an entity's velocity is the velocity the server sent.
+  This client pinned `minecraft-protocol v0.5.0`, whose quantised-vector reader
+  took the upper thirty-two bits little endian where vanilla writes them big
+  endian, so every spawn and velocity packet on protocol 775 reached the observed
+  world as a plausible number unrelated to the entity's motion — an arrow
+  summoned with `Motion:[0.1d,0.0d,0.0d]` was recorded moving on all three axes.
+  Taking `v0.6.0` fixes it, and a new test decodes the bytes a real 26.1.2 server
+  sent rather than building the packet as a value, because a value-built test
+  cannot see a byte order at all.
+- Taskfile: every lane `verify` runs resolves modules with the workspace off. A
+  `go.work` is gitignored, so it is present on a developer machine and absent in
+  CI, and the gate was building the neighbouring working tree while CI built the
+  version `go.mod` pins — which is how this repository ran a release behind
+  without a red check anywhere. `test:fast` keeps the workspace, because editing
+  two modules together is what it is for.

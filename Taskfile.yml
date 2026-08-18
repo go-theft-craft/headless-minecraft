@@ -7,12 +7,18 @@ vars:
 tasks:
   deps:
     desc: Download and normalize Go dependencies
+    # Every lane verify runs resolves modules with the workspace off, so a local
+    # pass and a CI pass mean the same thing. go.work is gitignored — it is on
+    # this machine and never on the runner — so with it in play the gate builds
+    # ../minecraft-protocol's working tree while CI builds the tag in go.mod, and
+    # a pin left a release behind passes here and ships. test:fast keeps the
+    # workspace; it is the edit loop, which is what the workspace is for.
     sources:
       - go.mod
       - go.sum
     cmds:
-      - go mod download
-      - go mod tidy
+      - env GOWORK=off go mod download
+      - env GOWORK=off go mod tidy
 
   fmt:
     desc: Format Go source
@@ -58,7 +64,7 @@ tasks:
     desc: Run unit tests with the race detector
     deps: [deps]
     cmds:
-      - go test -race -covermode=atomic -coverprofile=coverage.out ./...
+      - env GOWORK=off go test -race -covermode=atomic -coverprofile=coverage.out ./...
 
   test:fast:
     desc: Run unit tests without the race detector, for the edit loop
@@ -75,7 +81,7 @@ tasks:
     desc: Run the end-to-end client tests against the in-process fixture server
     deps: [deps]
     cmds:
-      - go test -race -run 'TestEndToEnd' ./client/...
+      - env GOWORK=off go test -race -run 'TestEndToEnd' ./client/...
 
   test:vanilla:
     desc: Run the vanilla conformance lane; needs a prepared 1.8.9 server jar
@@ -96,10 +102,10 @@ tasks:
     # one thing an example used as an integration surface must not do.
     dir: examples
     cmds:
-      - go mod tidy
-      - golangci-lint run ./...
-      - go test -race ./...
-      - go vet ./...
+      - env GOWORK=off go mod tidy
+      - env GOWORK=off golangci-lint run ./...
+      - env GOWORK=off go test -race ./...
+      - env GOWORK=off go vet ./...
 
   server:vanilla:
     desc: Run a pinned vanilla server for live checks, fetching the jar if absent
@@ -264,13 +270,13 @@ tasks:
     desc: Check dependencies for known vulnerabilities
     deps: [deps]
     cmds:
-      - govulncheck ./...
+      - env GOWORK=off govulncheck ./...
 
   build:
     desc: Build every package
     deps: [deps]
     cmds:
-      - go build ./...
+      - env GOWORK=off go build ./...
 
   verify:
     desc: Run all local and CI checks
