@@ -122,6 +122,24 @@ below are what is left of them.
 - [ ] **M9.8 — crafting**
   ([plan](docs/superpowers/plans/2026-08-17-m9-8-crafting.md)). Only the
   reconcile task is done; tasks 1–5 are open.
+- [ ] **`Connect` reports a placed session as one that never was.** `awaitReady`
+  selects between the readiness signal and the loop ending, both of which are
+  ready at once when a server places the player and kicks or hangs up straight
+  after — and a select picks between ready cases at random, so a session that
+  reached play is reported as "connection ended before the player was placed"
+  about half the times that happens. It is the same class as the stream defect
+  closed below, one layer up, and the fix is the same shape: drain the readiness
+  signal before reporting the ending. The message also renders a nil loop error
+  as `%!w(<nil>)`. Measured under a 24-way CPU load: three failures in eight
+  hundred sessions before the `v0.7.0` uptake and one in eight hundred after, so
+  the release neither caused it nor cures it.
+- [ ] **The hangup fixture closes while the client is still writing.**
+  `TestAServerThatHangsUpSilentlyStillReportsTheDisconnect` fails at `Connect`
+  with `write position_look: managed stream is closed` about twice in four
+  hundred runs under the same load, and at the same rate before these changes.
+  The fixture waits for one packet from the client and then closes, and the
+  client has more than one to send.
+
 Closed, 2026-08-18: **a kicked session reporting the state it ended in as
 `unknown`.** Both halves of it, and neither was where the first reading put it.
 
