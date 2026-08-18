@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or execute this plan inline one task at a time. Keep every checkbox current.
 
-**Goal:** Match vanilla on reach validation, damage, knockback, death, and respawn on both Java Edition 1.8.9 and 26.1.2 — including the attack cooldown, which exists on 26.1.2 and does not exist on 1.8.9 — and add the respawn primitive that `examples/orbit` is blocked on.
+**Goal:** Match vanilla on reach validation, damage, knockback, death, and respawn on both Java Edition 1.8.9 and 26.1.2 — including the attack cooldown, which exists on 26.1.2 and does not exist on 1.8.9 — and prove the respawn path end to end. (Reconciled: the respawn *primitive* landed with M8.8's follow-on; what is missing is the scenario that proves it against a real server, and the reach and cooldown rules `examples/orbit` needs before it can fight rather than flee.)
 
 **Architecture:** This stage is where the two versions diverge most, and the divergence is not a detail: 1.8.9 has no attack cooldown, and 26.1.2's damage depends on one. A gate written as a shared expectation would either fail on 1.8.9 forever or be loosened until it proves nothing. The two-version harness from M9.1b handles this properly — a lane may declare a mechanic **absent for a version with a recorded reason**, which is distinguishable from a lane nobody ran. Everything else here is shared: reach is a distance, knockback is an impulse, and death is health reaching zero.
 
@@ -10,32 +10,88 @@
 
 ## Before executing this plan: reconcile it
 
-Depends on M9.3. Symbols specified but not built:
+**Reconciled 2026-08-18, by Task 0.** The table is what is built today, not what
+was specified. Where this plan said something false, the task now says the true
+thing, and the difference is under "What reconciliation changed".
 
-| Symbol | Specified in |
-| --- | --- |
-| `sim.Command`, `sim.CommandOutcome`, `sim.DomainEvent`, `sim.Phase`, `sim.TickState` | M8.3 plan, Tasks 6, 9 |
-| `entity.State`, `entity.Family`, `entity.View` | M8.3 plan, Task 3 |
-| `movement.Locomotion`, `movement.LocomotionView` | M8.4 plan, Task 1 |
-| `client.Do`, `client.Action` | M8.8 plan, Task 1 |
-| `conform.Scenario`, `conform.Lane`, `conform.Absent` | M9.1b plan, Task 5 |
-| `conformance.Compare` | M9.3 plan, Task 2 |
+| Symbol | Where it is | State |
+| --- | --- | --- |
+| `sim.Command`, `sim.CommandOutcome`, `sim.DomainEvent`, `sim.Phase`, `sim.TickState` | `minecraft-simulation/sim` | built, names unchanged |
+| `entity.State`, `entity.Family`, `entity.View` | `minecraft-simulation/entity` | built, names unchanged |
+| `movement.Locomotion`, `movement.LocomotionView` | `minecraft-simulation/movement` | built, names unchanged |
+| `client.Do` | `headless-minecraft/client` | built as `Do(ctx, version.Action) error` |
+| `version.ActionRespawn` | `headless-minecraft/version/action.go` | **built, and `client.ActionRespawn` is an alias of it.** See below |
+| `conform.Scenario`, `conform.Lane`, `conform.Run`, `conform.Absent` | `relay/examples/minecraft/conform` | built (M9.1b). Absence is declared by setting `Lane.AbsentReason`; `Absent` is the resulting `Status`, not a constructor |
+| `event.Damage{TypeID, Typed, CauseID, Attributed, DirectID, Direct, X, Y, Z, Positioned}` | `headless-minecraft/event/damage.go` | built, field for field as this plan named it |
+| `event.NamePlayerDamaged`, `NamePlayerDied`, `NamePlayerRespawned`, `NameEntityDamaged`, `NameEntityDied`, `NamePlayerCooldownChanged` | `headless-minecraft/event/taxonomy.go` | built |
+| `world.Player.Damaged`, `.Died`, `.Respawn`, `.Cooldown` | `headless-minecraft/world/player.go` | built |
+| `generated/java/*/attributes.go`, `enchantments.go`, `effects.go` | `minecraft-protocol` | built for both versions |
+| `conformance.Compare` | — | **never built and not planned.** M9.3's proposal for it became `mctest` |
+| `client.ActionAttack` | — | **not this plan's, and not that name.** See below |
+| `combat.Attack`, `combat.Reach`, `combat.Damage`, `combat.Knockback`, `combat.Cooldown`, `combat.Phase` | — | this plan, Tasks 1 to 4 |
 
-Symbols that exist today and were read before writing this plan:
-`event.Damage` with `TypeID`/`Typed`, `CauseID`/`Attributed`, `DirectID`/
-`Direct`, and position fields; `event.NamePlayerDamaged`, `NamePlayerDied`,
-`NamePlayerRespawned`, `NameEntityDamaged`, `NameEntityDied`,
-`NamePlayerCooldownChanged`; `world.Player.Damaged`, `Died`, `Respawn`;
-`generated/java/*/attributes.go`, `enchantments.go`, `effects.go`.
+### What reconciliation changed
 
-**The master plan is out of date on one point.** It says M9.6 owns "damage
-attribution", and that landed: `event/damage.go` already carries cause, direct
-cause, damage type, and position, and already documents that protocol 47 sends
-none of it. What M9.6 still owns is the **respawn primitive** — there is no
-outbound action path at all until M8.8 Task 1, and no respawn action after it.
-Correct the master plan while closing this stage.
+Four things this plan asserted are not true of the tree it now runs against.
 
-**Task 0:** reconcile before touching anything.
+- **The respawn primitive is built, and this stage no longer owns it.**
+  `version.ActionRespawn` landed with M8.8's follow-on, `client.ActionRespawn` is
+  a type alias of it, `Do` refuses it before the player is placed, both adapters
+  encode it, and `examples/orbit` already sends it and has a test that asserts
+  it did. This plan's line — "there is no outbound action path at all until M8.8
+  Task 1, and no respawn action after it" — was true when it was written and is
+  not now. Task 5 keeps the respawn *scenario* (a real death, a real respawn,
+  the player back in play on both versions) and builds no primitive.
+- **The attack primitive is not this plan's, and attack is not its own action.**
+  `client.ActionAttack{Target int32}` does not exist and will not. Both protocols
+  encode an attack as a mode of the interact packet, so the [interaction
+  primitives plan](2026-08-18-interaction-primitives.md) ships
+  `version.ActionInteract{Entity int32, Kind InteractKind, At *Cursor, Hand Hand}`
+  with `InteractAttack`, and inventing a separate type here would invent a
+  distinction the wire does not make. What M9.6 owns is reach, cooldown, damage,
+  knockback, and death — the numbers, not the packet.
+- **`examples/orbit` is blocked on attack, not on respawn.** Its own source says
+  so: it runs from what hits it because fighting needs attack. The Task 6 step
+  that unblocks it should say that, and the thing that unblocks it is the
+  interaction primitives plan plus this stage's reach and cooldown rules.
+- **There is no `conformance` package.** Task 6's gate moves into
+  `minecraft-simulation/combat/`, beside the rules it gates: the simulation
+  cannot import `relay`'s examples module, so the two-version rule is carried by
+  a test that fails when a version has neither a corpus nor a recorded reason for
+  having none — the same shape `conform.Lane.AbsentReason` gives the harness on
+  the side that can reach it.
+
+### How the live tests in this plan must be written
+
+Every test here that starts a real server lands in the lane that already exists
+for that, and M9.3's reconciliation found the same thing before this one did. The
+rules, read off `client/vanilla_e2e_test.go` and `client/vanilla_scenario_test.go`
+on 2026-08-18:
+
+- The file carries `//go:build vanilla` and lives in `client/` (package
+  `client_test`). A live test without the tag breaks `task verify`, which must
+  stay offline; a live test outside `client/` is a test nothing runs, because the
+  task is `go test ./client/ -run TestVanilla -tags vanilla`.
+- The two versions are **two top-level tests**, not a loop over a version table:
+  `TestVanilla<Thing>` and `TestVanilla26<Thing>`, each one line, each calling a
+  shared scenario function with `lane1_8()` or `lane26()`. `-run TestVanilla`
+  selects both, and a failure names the version in the test name rather than in a
+  subtest the log has to be read for.
+- The server comes from `lane.start(t)`, which wraps `vanilla.Start(t,
+  vanilla.Options{…})`. 26.1.2's lane sets `Jar`, `Libraries`, `LevelType`, and a
+  longer `Ready`; a test that calls `vanilla.Start` with bare options gets a
+  1.8.9 server whatever it meant.
+- `vanilla.Server` exposes `Lines`, `Log`, `Matching`, and `Stop`. There is no
+  `LogLines` and no `Kill`.
+
+The snippets below show scenario bodies. Wrap each in that pair before running
+it, and do not invent a `vanillaVersions(t)` table — there is none, and a loop
+variable named `version` would shadow the `version` package the bodies now name.
+
+**What the master plan still gets wrong, and Task 6 fixes:** it says M9.6 owns
+damage attribution. That landed in M7 — `event/damage.go` carries cause, direct
+cause, damage type, and position, and documents that protocol 47 sends none of
+it. M9.6 owns the combat *numbers*.
 
 ## Global Constraints
 
@@ -108,9 +164,50 @@ server rejects is a client an anti-cheat notices.
 - `client/attack.go`, `client/attack_test.go`
 - `client/respawn.go`, `client/respawn_test.go`
 
-**`minecraft-simulation/conformance/`**
+**`minecraft-simulation/combat/`** — the gate lives with the rules it gates,
+because there is no `conformance` package and the simulation cannot import
+`relay`'s `conform` from an examples module.
 
 - `combat_test.go`, `testdata/combat/`
+
+---
+
+## Task 0: Reconcile this plan against what is built
+
+- [x] **Step 1: Check every symbol the table names**
+
+Done. Everything this plan expected from M8 landed under the names it used. Two
+things it expected to build had already been built — the respawn action — or had
+been claimed by another plan under a truer name — the attack, which is a mode of
+the interact packet rather than an action of its own.
+
+- [x] **Step 2: Check the claims about other repositories, not only this one**
+
+This plan asserted a blocker in `examples/orbit` and a gap in the master plan.
+Both were checked in the source rather than taken from the plan that wrote them:
+
+```bash
+cd headless-minecraft
+grep -rn 'ActionRespawn' client/action.go examples/orbit/
+grep -rn 'Fighting needs attack' examples/orbit/bot.go
+```
+
+Orbit sends the respawn and asserts it in a test; what it says stops it is
+attack. A stage that had "unblock orbit" as a step and the wrong reason for the
+block would have shipped the wrong fix.
+
+- [x] **Step 3: Check the harness before writing against it**
+
+`conform` declares absence through `Lane.AbsentReason`, and `Absent` is the
+resulting `Status`. Task 6's scenario literal is written that way, which it
+already nearly was.
+
+- [x] **Step 4: Commit the reconciliation**
+
+```bash
+git add docs/superpowers/plans/2026-08-17-m9-6-attack-damage-knockback.md
+git commit -m "docs(plan): reconcile M9.6 — respawn landed, attack is an interact mode"
+```
 
 ---
 
@@ -626,15 +723,28 @@ test rather than two that could drift."
 
 ---
 
-## Task 5: The attack and respawn primitives
+## Task 5: The attack and respawn scenarios
 
 **Files:**
 - Create: `headless-minecraft/client/attack.go`
-- Create: `headless-minecraft/client/respawn.go`
-- Test: one `_test.go` each
+- Test: `headless-minecraft/client/attack_test.go`
+- Test: `headless-minecraft/client/respawn_test.go`
 
 **Interfaces:**
-- Produces: `client.ActionAttack{Target int32}`, `client.ActionRespawn{}`.
+- Consumes: `version.ActionInteract{Entity int32, Kind version.InteractKind, At
+  *version.Cursor, Hand version.Hand}` with `version.InteractAttack`, and
+  `version.ActionSwing`, both from the [interaction primitives
+  plan](2026-08-18-interaction-primitives.md), Tasks 2 and 3; and
+  `version.ActionRespawn`, which is built and aliased as `client.ActionRespawn`.
+- Produces: `client.Attack(ctx, target int32) error` — the swing and the interact
+  together, refused when the target is out of this version's reach. **No new
+  action type.** `respawn.go` is not created: there is nothing left to build
+  there, and `respawn_test.go` is the scenario that proves what is already
+  built.
+
+The reach check is what makes this task M9.6's rather than the primitive's: a
+client that sends an attack the server will reject is a client an anti-cheat
+notices, so the refusal happens here, against Task 1's numbers.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -645,15 +755,17 @@ func TestAnAttackSwingsAndHits(t *testing.T) {
 	// Vanilla sends an animation with the attack. A client that sends the
 	// interact packet alone hits without swinging, which is visible to other
 	// players and to an anti-cheat.
-	for _, version := range vanillaVersions(t) {
-		t.Run(version.Name, func(t *testing.T) {
-			server := vanilla.Start(t, version.Options)
+	// The loop variable is `lane`, not `version`: the body names the version
+	// package, and a variable of that name would shadow it.
+	for _, lane := range vanillaVersions(t) {
+		t.Run(lane.Name, func(t *testing.T) {
+			server := vanilla.Start(t, lane.Options)
 			c := connected(t, server)
 			target := spawnTarget(t, server)
 
 			sent := recordOutbound(t, c)
-			if err := c.Do(t.Context(), client.ActionAttack{Target: target}); err != nil {
-				t.Fatalf("Do: %v", err)
+			if err := c.Attack(t.Context(), target); err != nil {
+				t.Fatalf("Attack: %v", err)
 			}
 
 			kinds := combatPacketKinds(t, sent)
@@ -675,7 +787,7 @@ func TestAnOutOfReachAttackIsNotSent(t *testing.T) {
 	target := spawnTargetAt(t, server, 20, 64, 20)
 
 	sent := recordOutbound(t, c)
-	err := c.Do(t.Context(), client.ActionAttack{Target: target})
+	err := c.Attack(t.Context(), target)
 	if err == nil {
 		t.Fatal("Do accepted an attack twenty blocks away")
 	}
@@ -692,7 +804,7 @@ func TestRespawnIsSentOnlyAfterDeath(t *testing.T) {
 	server := vanilla.Start(t, defaultOptions(t))
 	c := connected(t, server)
 
-	if err := c.Do(t.Context(), client.ActionRespawn{}); err == nil {
+	if err := c.Do(t.Context(), version.ActionRespawn{}); err == nil {
 		t.Fatal("Do accepted a respawn from a living player")
 	}
 }
@@ -700,19 +812,21 @@ func TestRespawnIsSentOnlyAfterDeath(t *testing.T) {
 func TestRespawnAfterDeathReturnsThePlayerToPlay(t *testing.T) {
 	t.Parallel()
 
-	// This is what examples/orbit is blocked on: its design says the example
-	// sends the respawn itself, because respawning is an action and actions
-	// are the caller's. The library supplies the primitive and no policy.
-	for _, version := range vanillaVersions(t) {
-		t.Run(version.Name, func(t *testing.T) {
-			server := vanilla.Start(t, version.Options)
+	// The primitive this exercises is built — orbit already sends it, and has a
+	// unit test that asserts it did. What is not built is this: a real death on
+	// a real server of each version, and the player back in play afterwards.
+	// The library supplies the primitive and no policy; orbit sends it itself,
+	// because respawning is an action and actions are the caller's.
+	for _, lane := range vanillaVersions(t) {
+		t.Run(lane.Name, func(t *testing.T) {
+			server := vanilla.Start(t, lane.Options)
 			c := connected(t, server)
 			events := subscribe(t, c, event.DomainPlayer)
 
 			killPlayer(t, server)
 			awaitName(t, events, event.NamePlayerDied)
 
-			if err := c.Do(t.Context(), client.ActionRespawn{}); err != nil {
+			if err := c.Do(t.Context(), version.ActionRespawn{}); err != nil {
 				t.Fatalf("Do respawn: %v", err)
 			}
 			awaitName(t, events, event.NamePlayerRespawned)
@@ -750,8 +864,8 @@ the client's reach must be the stricter of the two."
 ## Task 6: The gate, the corpus, and the milestone record
 
 **Files:**
-- Create: `minecraft-simulation/conformance/combat_test.go`
-- Create: `minecraft-simulation/conformance/testdata/combat/`
+- Create: `minecraft-simulation/combat/vanilla_test.go`
+- Create: `minecraft-simulation/combat/testdata/vanilla/1_8_9.json`, `26_1_2.json`
 - Modify: `headless-minecraft/MASTER_PLAN.md`
 - Modify: `headless-minecraft/docs/superpowers/specs/2026-08-16-orbit-example-design.md`
 
@@ -763,8 +877,11 @@ ticks; kill and respawn. Record the observed damage, the observed knockback
 trajectory, and the death and respawn packets.
 
 The knockback comparison goes through the trace document and
-`conformance.Compare`, at the version's own tolerance — a knockback is a
-trajectory, and M9.3 already built the comparator for those.
+`mctest.ReplayCaptured`, at the version's own tolerance — a knockback is a
+trajectory, and that is the comparator M9.2 built for trajectories. It is
+`mctest`, not the `conformance.Compare` this plan named: M9.3 proposed that
+package, its own reconciliation re-scoped the proposal into `mctest`, and M9.2
+built it there. `trace.ToleranceFor` supplies the per-version tolerance.
 
 - [ ] **Step 2: Declare the scenarios, with the cooldown one absent on 1.8.9**
 
@@ -777,7 +894,7 @@ conform.Scenario{
 			AbsentReason: "the attack cooldown arrived in 1.9; every 1.8.9 swing " +
 				"deals full damage regardless of timing",
 		},
-		{ProtocolID: "java/26.1", Recording: "testdata/combat/26_1_2-cooldown.json"},
+		{ProtocolID: "java/26.1", Recording: "testdata/vanilla/26_1_2-cooldown.json"},
 	},
 }
 ```
@@ -791,16 +908,21 @@ lane's, and it should read as smaller.
 
 - [ ] **Step 4: Unblock `examples/orbit`**
 
-Its design lists retaliation and respawn as M9.6 and marks itself blocked. With
-the primitives landed, update its status and run it against both servers. If it
-still cannot run, say what is still missing rather than marking the milestone
-complete around it.
+Reconciled: orbit is not blocked on respawn — it already sends
+`version.ActionRespawn` and tests that it did. What it says blocks it is attack:
+`bot.go` reads "it runs rather than fights on purpose. Fighting needs attack".
+So what unblocks it is `version.ActionInteract` from the interaction primitives
+plan plus this stage's reach and cooldown rules, and the step is to let it fight
+and run it against both servers. If it still cannot, say what is still missing
+rather than marking the milestone complete around it.
 
 - [ ] **Step 5: Correct the master plan's stale claim**
 
-It says M9.6 owns respawn *and* damage attribution. Attribution landed in
-`event/damage.go` before this stage started. Fix the line rather than leaving a
-completed item listed as outstanding.
+It says M9.6 owns respawn *and* damage attribution. Both had landed before this
+stage started — attribution in `event/damage.go` under M7, the respawn action
+with M8.8's follow-on. What M9.6 owns is the combat numbers and the scenarios
+that prove them. Fix the line rather than leaving completed items listed as
+outstanding.
 
 - [ ] **Step 6: Record the milestone**
 
