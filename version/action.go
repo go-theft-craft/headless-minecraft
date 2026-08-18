@@ -117,6 +117,39 @@ type ActionRespawn struct{}
 // ActionKind implements Action.
 func (ActionRespawn) ActionKind() string { return "respawn" }
 
+// ActionInput reports which movement keys the player is holding.
+//
+// It is not how a player moves. Position is reported by the movement actions
+// and always has been; this says what the body is doing while it moves, and a
+// server that never hears it sees coordinates changing with nobody walking.
+// What that costs is not an error — it is a player who slides.
+//
+// A client sends it when the state changes rather than every tick, which is
+// the caller's business: this package does not track the previous tick, for
+// the same reason it does not choose between the four movement packets.
+type ActionInput struct {
+	Forward, Backward, Left, Right bool
+	Jump, Sneak, Sprint            bool
+}
+
+// ActionKind implements Action.
+func (ActionInput) ActionKind() string { return "input" }
+
+// ActionSprint starts or stops sprinting.
+//
+// Sprinting is a declared state, not a speed. A client that simply moves
+// faster is a client the server corrects; one that says it is sprinting is one
+// the server lets run, and one that says nothing is walking. That is why this
+// exists separately from the input flags even though those carry a sprint bit
+// too: a real client sends both, and the state the server keeps comes from
+// this one.
+type ActionSprint struct {
+	Sprinting bool
+}
+
+// ActionKind implements Action.
+func (ActionSprint) ActionKind() string { return "sprint" }
+
 // UnsupportedAction returns the error an adapter reports for an intent it cannot
 // encode. Adapters share it so that two protocols refuse the same way.
 func UnsupportedAction(protocolID string, action Action) error {

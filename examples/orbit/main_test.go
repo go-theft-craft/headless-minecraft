@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/go-theft-craft/headless-minecraft/event"
+	"github.com/go-theft-craft/headless-minecraft/version"
 )
 
 func quiet() *slog.Logger {
@@ -65,6 +66,12 @@ type failing struct{ err error }
 func (f failing) Step(_ context.Context, from, _ Vec3, _ bool) (Vec3, error) { return from, f.err }
 func (f failing) Attack(context.Context, int32) error                        { return f.err }
 func (f failing) Respawn(context.Context) error                              { return f.err }
+
+// Locomotion succeeds even here. It is narration rather than an action, and
+// these cases are about what happens when an action a milestone owes is asked
+// for; failing the narration too would move the failure a line earlier and
+// test something else.
+func (failing) Locomotion(context.Context, bool) error { return nil }
 
 func TestAPendingPortStopsTheRunWithoutCrashing(t *testing.T) {
 	t.Parallel()
@@ -192,5 +199,48 @@ func TestFoldCarriesTheEdgeTriggeredFacts(t *testing.T) {
 		if !check.read(tick) {
 			t.Errorf("%s did not reach the tick", name)
 		}
+	}
+}
+
+// mute is an actuator whose locomotion fails and whose movement does not.
+type mute struct{ err error }
+
+func (mute) Step(_ context.Context, from, _ Vec3, _ bool) (Vec3, error) { return from, nil }
+func (mute) Attack(context.Context, int32) error                        { return nil }
+func (mute) Respawn(context.Context) error                              { return nil }
+func (m mute) Locomotion(context.Context, bool) error                   { return m.err }
+
+// TestAProtocolThatCannotNarrateStillWalks pins that the decoration is
+// optional and the movement is not.
+//
+// Protocol 47 has no input packet. A bot that treated its absence as a failure
+// would trade the thing that works for the thing that describes it, and the
+// legacy lane of this example would stop walking for the sake of a packet it
+// was never going to send.
+func TestAProtocolThatCannotNarrateStillWalks(t *testing.T) {
+	t.Parallel()
+
+	_, code, done, err := apply(
+		t.Context(), quiet(),
+		mute{err: version.UnsupportedAction("java/1.8.9", version.ActionInput{})},
+		NewBot(DefaultBounds()), Vec3{}, Action{Kind: StepTo},
+	)
+	if err != nil || done || code != 0 {
+		t.Fatalf("apply returned (%d, %v, %v), want the run to carry on", code, done, err)
+	}
+}
+
+// TestLocomotionFailingForAnyOtherReasonStopsTheRun pins that only the
+// protocol's refusal is tolerated. A broken connection is not a decoration.
+func TestLocomotionFailingForAnyOtherReasonStopsTheRun(t *testing.T) {
+	t.Parallel()
+
+	_, code, done, err := apply(
+		t.Context(), quiet(),
+		mute{err: errors.New("connection reset")},
+		NewBot(DefaultBounds()), Vec3{}, Action{Kind: StepTo},
+	)
+	if err == nil || !done || code != 70 {
+		t.Fatalf("apply returned (%d, %v, %v), want a stopped run", code, done, err)
 	}
 }

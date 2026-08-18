@@ -131,6 +131,26 @@ func TestEachActionEncodesToItsProtocol775Packet(t *testing.T) {
 			packet: "client_command",
 			want:   &gen26_1.PlayServerboundClientCommand{ActionID: "perform_respawn"},
 		},
+		// The protocol calls sneaking Shift, after the key rather than the
+		// posture, so the field the intent's Sneak lands in is not the one its
+		// name suggests.
+		"input": {
+			action: ActionInput{Forward: true, Sneak: true},
+			packet: "player_input",
+			want: &gen26_1.PlayServerboundPlayerInput{
+				Inputs: gen26_1.PlayServerboundPlayerInputInputsFlags{Forward: true, Shift: true},
+			},
+		},
+		"start sprinting": {
+			action: ActionSprint{Sprinting: true},
+			packet: "entity_action",
+			want:   &gen26_1.PlayServerboundEntityAction{ActionID: "start_sprinting"},
+		},
+		"stop sprinting": {
+			action: ActionSprint{},
+			packet: "entity_action",
+			want:   &gen26_1.PlayServerboundEntityAction{ActionID: "stop_sprinting"},
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -360,4 +380,29 @@ func packetID(t *testing.T, value any) int32 {
 	}
 
 	return identified.PacketID()
+}
+
+// TestProtocol47RefusesTheLocomotionItCannotName pins a deliberate gap.
+//
+// 47 has no input packet at all, and its entity_action declares actionId as a
+// bare varint with no names attached to the values. Encoding sprint for it
+// would mean hardcoding numbers this repository has not measured, and a wrong
+// one is a different action performed confidently — a client that thinks it is
+// sprinting and is in fact leaving a bed. Refusing says so; guessing would not.
+func TestProtocol47RefusesTheLocomotionItCannotName(t *testing.T) {
+	t.Parallel()
+
+	for name, action := range map[string]version.Action{
+		"input":  ActionInput{Forward: true},
+		"sprint": ActionSprint{Sprinting: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := java.Java1_8().Adapter.EncodeAction(action)
+			if !errors.Is(err, version.ErrUnsupportedAction) {
+				t.Fatalf("EncodeAction returned %v, want ErrUnsupportedAction", err)
+			}
+		})
+	}
 }

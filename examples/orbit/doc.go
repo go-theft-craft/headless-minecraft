@@ -28,7 +28,9 @@
 // world, classifies nothing in it, and refuses to move — which it reports on
 // startup rather than after standing still.
 //
-// What is still owed is attack, which is M9.6.
+// The bot runs from whatever hits it rather than hitting back, so attack --
+// which is M9.6, and unfinished -- is not on its path. The port for it stays
+// declared and unimplemented.
 //
 // The seam is [World], [Solidity], and [Actuator], and it is deliberately
 // narrow: each is one type to write when what it needs exists.

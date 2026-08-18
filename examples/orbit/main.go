@@ -356,6 +356,23 @@ func apply(
 	// that failed to send does not.
 	moved := from
 
+	// Say what the body is doing before saying where it is. A real client
+	// reports the keys it is holding and then the position they produced, and
+	// a watcher that sees the position first sees a frame of sliding.
+	//
+	// A protocol that cannot carry it is not a failure of the tick: the run is
+	// about walking a circle, and 47 walks the circle perfectly well without
+	// narrating it.
+	if err := actuator.Locomotion(ctx, action.Kind == StepTo); err != nil {
+		if !errors.Is(err, version.ErrUnsupportedAction) {
+			return moved, 70, true, fmt.Errorf("locomotion: %w", err)
+		}
+		logger.Info(
+			"this protocol carries no locomotion state; the bot will walk without announcing it",
+			slog.Any("reason", err),
+		)
+	}
+
 	switch action.Kind {
 	case Stand:
 		return moved, 0, false, nil

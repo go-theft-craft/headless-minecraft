@@ -124,3 +124,27 @@ func (c Circle) Nearest(p Vec3) int {
 func (c Circle) Deviation() float64 {
 	return c.Radius * (1 - math.Cos(math.Pi/float64(c.Waypoints)))
 }
+
+// Away returns a point distance blocks from here, directly away from threat.
+//
+// It aims at a point rather than returning a direction because that is what
+// the actuator takes, and it aims the full safe distance rather than one step:
+// the step is clamped on the way out, and a target that moved one step at a
+// time would need recomputing against a threat that has also moved.
+func Away(here, threat Vec3, distance float64) Vec3 {
+	dx, dz := here.X-threat.X, here.Z-threat.Z
+
+	length := math.Hypot(dx, dz)
+	if length == 0 {
+		// Standing exactly on it, which a mob that has walked into the bot
+		// manages. Any direction beats returning here and standing still while
+		// something hits the bot, so this picks one.
+		dx, dz, length = 1, 0, 1
+	}
+
+	return Vec3{
+		X: here.X + dx/length*distance,
+		Y: here.Y,
+		Z: here.Z + dz/length*distance,
+	}
+}

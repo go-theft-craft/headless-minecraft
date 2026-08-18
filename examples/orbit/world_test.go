@@ -67,6 +67,9 @@ type recording struct {
 	steps   []Vec3
 	attacks []int32
 	respawn int
+	// walking is every locomotion state it was told about, in order, so a test
+	// can assert that the bot announced the change and did not repeat itself.
+	walking []bool
 }
 
 func (r *recording) Step(_ context.Context, from, target Vec3, _ bool) (Vec3, error) {
@@ -77,6 +80,12 @@ func (r *recording) Step(_ context.Context, from, target Vec3, _ bool) (Vec3, er
 
 func (r *recording) Attack(_ context.Context, id int32) error {
 	r.attacks = append(r.attacks, id)
+
+	return nil
+}
+
+func (r *recording) Locomotion(_ context.Context, walking bool) error {
+	r.walking = append(r.walking, walking)
 
 	return nil
 }

@@ -40,6 +40,27 @@ func (adapter) EncodeAction(action version.Action) (protocol.Packet, error) {
 			Flags: flags775(value.OnGround, value.HorizontalCollision),
 		}), nil
 
+	case version.ActionInput:
+		return play775("player_input", &gen.PlayServerboundPlayerInput{
+			Inputs: gen.PlayServerboundPlayerInputInputsFlags{
+				Forward: value.Forward, Backward: value.Backward,
+				Left: value.Left, Right: value.Right,
+				// The protocol calls sneaking Shift, because the packet is
+				// named after the key rather than the posture.
+				Jump: value.Jump, Shift: value.Sneak, Sprint: value.Sprint,
+			},
+		}), nil
+
+	case version.ActionSprint:
+		// EntityID is the player's own, and the server reads it from the
+		// connection rather than from here: a real client fills it in and a
+		// server that disagreed would have no way to act on the difference.
+		// Zero is what this sends, because the adapter is not told the entity
+		// ID and inventing a wrong one would be worse than sending none.
+		return play775("entity_action", &gen.PlayServerboundEntityAction{
+			ActionID: sprintCommand775(value.Sprinting),
+		}), nil
+
 	case version.ActionRespawn:
 		// 775 names its client commands where 47 numbers them, so the action
 		// is the string the protocol declares rather than a zero.
@@ -54,6 +75,21 @@ func (adapter) EncodeAction(action version.Action) (protocol.Packet, error) {
 
 // respawnCommand775 is the client-command action that asks to respawn.
 const respawnCommand775 = "perform_respawn"
+
+// sprintCommand775 names the entity action that starts or stops sprinting.
+//
+// 775 names these where 47 numbers them, and the names are the protocol's own.
+// That difference is why this action is encoded here and refused there: 47's
+// schema declares actionId as a bare varint with no names attached, so a 47
+// implementation would have to hardcode numbers this repository has not
+// measured, and a wrong one is a different action performed confidently.
+func sprintCommand775(sprinting bool) string {
+	if sprinting {
+		return "start_sprinting"
+	}
+
+	return "stop_sprinting"
+}
 
 // flags775 builds the movement flags this protocol carries.
 func flags775(onGround, horizontalCollision bool) gen.MovementFlags {

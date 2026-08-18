@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/go-theft-craft/headless-minecraft/version"
@@ -38,14 +39,64 @@ type Sender struct {
 	// the tick rate changes how often the bot reports rather than how fast it
 	// claims to move.
 	step float64
+
+	// walking is the last locomotion state put on the wire, and nil until one
+	// has been. A real client speaks when the state changes rather than every
+	// tick, so this is what makes the difference between describing a body and
+	// narrating one.
+	walking *bool
+	// mute records that this protocol does not carry locomotion, so the
+	// refusal is asked for once rather than twenty times a second.
+	mute bool
 }
 
 // NewSender returns the actuator for a client, walking at the bounds' speed.
-func NewSender(client sender, bounds Bounds) Sender {
-	return Sender{
+//
+// A pointer, because it remembers what it last said about the body. Two
+// senders on one connection would each keep half that history and contradict
+// each other.
+func NewSender(client sender, bounds Bounds) *Sender {
+	return &Sender{
 		client: client,
 		step:   bounds.WalkSpeed * bounds.Tick.Seconds(),
 	}
+}
+
+// Locomotion declares what the body is doing: walking, or standing still.
+//
+// Reporting a position says where the player is, and says nothing about
+// whether anybody is walking there. A server told only the coordinates has a
+// player who slides; one told this has a player who walks. The bot never
+// claims to sprint, and that omission is the whole of the difference between
+// walking and running -- sprinting is a state a client declares, not a speed
+// it moves at, so a client that declares nothing is walking by definition.
+//
+// It speaks only on a change, which is what a real client does. Sending the
+// same state twenty times a second would be describing a key that is being
+// held down as though it were being pressed again.
+func (s *Sender) Locomotion(ctx context.Context, walking bool) error {
+	if s.mute || (s.walking != nil && *s.walking == walking) {
+		return nil
+	}
+
+	// Forward, because the bot faces where it is going: Step turns it toward
+	// the target before it moves, so the direction it is holding is forward
+	// and not a strafe.
+	err := s.client.Do(ctx, version.ActionInput{Forward: walking})
+	if err != nil {
+		// A protocol that cannot carry this is not a broken run. 47 has no
+		// input packet at all, and a bot that stopped walking over it would be
+		// trading the thing that works for the thing that decorates it.
+		if errors.Is(err, version.ErrUnsupportedAction) {
+			s.mute = true
+		}
+
+		return err
+	}
+
+	s.walking = &walking
+
+	return nil
 }
 
 // Step reports one position toward the target and returns the position it
@@ -65,7 +116,7 @@ func NewSender(client sender, bounds Bounds) Sender {
 // claim to be in the air that a server reads as flying. When a movement kernel
 // exists this is where it attaches; until then, saying so here is better than a
 // bot that quietly rises off the ground.
-func (s Sender) Step(ctx context.Context, from, target Vec3, _ bool) (Vec3, error) {
+func (s *Sender) Step(ctx context.Context, from, target Vec3, _ bool) (Vec3, error) {
 	next := from.Toward(target, s.step)
 
 	// MoveLook rather than Move: a bot that walks a circle without turning
@@ -90,7 +141,7 @@ func (s Sender) Step(ctx context.Context, from, target Vec3, _ bool) (Vec3, erro
 }
 
 // Attack swings at an entity.
-func (Sender) Attack(context.Context, int32) error {
+func (*Sender) Attack(context.Context, int32) error {
 	return fmt.Errorf("%w: attack is M9.6", ErrNotYet)
 }
 
@@ -101,6 +152,6 @@ func (Sender) Attack(context.Context, int32) error {
 // there until someone stops the process. This example is what found that — it
 // was killed by a slime on a live server and stood dead through the rest of the
 // run — and the primitive was added for it.
-func (s Sender) Respawn(ctx context.Context) error {
+func (s *Sender) Respawn(ctx context.Context) error {
 	return s.client.Do(ctx, version.ActionRespawn{})
 }

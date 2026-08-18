@@ -19,12 +19,18 @@ type Bounds struct {
 	MaxSkips int
 	// NoProgress is how long without net angular progress counts as stuck.
 	NoProgress time.Duration
-	// ChaseMargin is how far beyond the radius a fight may travel.
-	ChaseMargin float64
-	// Engagement is how long one fight may last.
-	Engagement time.Duration
-	// Reach is the attack range.
-	Reach float64
+	// FleeMargin is how far beyond the radius a flight may travel. The bot
+	// runs from a threat, not to the horizon: past this it stops running and
+	// walks back, on the grounds that whatever is chasing it has either given
+	// up or is a problem the circle cannot solve.
+	FleeMargin float64
+	// Escape is how long one flight may last.
+	Escape time.Duration
+	// SafeDistance is how far from a threat counts as clear of it. It is also
+	// how far ahead the bot aims while running, which is why it is one number
+	// and not two: a bot that aimed shorter than it needed to be safe would
+	// arrive and stop while still being hit.
+	SafeDistance float64
 	// TrappedBudget is how long the bot stands sealed in before it gives up
 	// and exits non-zero.
 	TrappedBudget time.Duration
@@ -62,9 +68,9 @@ func DefaultBounds() Bounds {
 		RadialBand:     4,
 		MaxSkips:       3,
 		NoProgress:     15 * time.Second,
-		ChaseMargin:    8,
-		Engagement:     30 * time.Second,
-		Reach:          3,
+		FleeMargin:     8,
+		Escape:         10 * time.Second,
+		SafeDistance:   12,
 		TrappedBudget:  10 * time.Minute,
 		BreakerBudget:  5,
 		Tick:           50 * time.Millisecond,

@@ -189,3 +189,74 @@ func TestWalkingAccumulatesAcrossSteps(t *testing.T) {
 		t.Errorf("sent %d distinct positions in 10 steps, want 10", len(seen))
 	}
 }
+
+// spy records the intents an actuator puts on the wire.
+type spy struct {
+	actions []version.Action
+	err     error
+}
+
+func (s *spy) Do(_ context.Context, action version.Action) error {
+	if s.err != nil {
+		return s.err
+	}
+	s.actions = append(s.actions, action)
+
+	return nil
+}
+
+// TestLocomotionSpeaksOnlyWhenTheStateChanges pins the edge trigger.
+//
+// A real client reports the keys it is holding when they change. Repeating the
+// same state twenty times a second would describe a held key as though it were
+// being pressed again, and it would put nineteen packets a second on a
+// connection to say nothing.
+func TestLocomotionSpeaksOnlyWhenTheStateChanges(t *testing.T) {
+	t.Parallel()
+
+	client := &spy{}
+	sender := NewSender(client, DefaultBounds())
+
+	for _, walking := range []bool{true, true, true, false, false, true} {
+		if err := sender.Locomotion(t.Context(), walking); err != nil {
+			t.Fatalf("Locomotion(%v): %v", walking, err)
+		}
+	}
+
+	want := []bool{true, false, true}
+	if len(client.actions) != len(want) {
+		t.Fatalf("sent %d intents, want %d: %+v", len(client.actions), len(want), client.actions)
+	}
+	for i, forward := range want {
+		input, ok := client.actions[i].(version.ActionInput)
+		if !ok {
+			t.Fatalf("intent %d is %T, want version.ActionInput", i, client.actions[i])
+		}
+		if input.Forward != forward {
+			t.Errorf("intent %d holds forward=%v, want %v", i, input.Forward, forward)
+		}
+		// Never. Sprinting is a declared state, and declaring none is what
+		// makes this a walk.
+		if input.Sprint {
+			t.Errorf("intent %d claims to be sprinting", i)
+		}
+	}
+}
+
+// TestLocomotionStopsAskingOnceTheProtocolRefuses pins that a protocol without
+// an input packet is asked once, not twenty times a second for the whole run.
+func TestLocomotionStopsAskingOnceTheProtocolRefuses(t *testing.T) {
+	t.Parallel()
+
+	client := &spy{err: version.UnsupportedAction("java/1.8.9", version.ActionInput{})}
+	sender := NewSender(client, DefaultBounds())
+
+	if err := sender.Locomotion(t.Context(), true); !errors.Is(err, version.ErrUnsupportedAction) {
+		t.Fatalf("first call returned %v, want the refusal", err)
+	}
+	for range 5 {
+		if err := sender.Locomotion(t.Context(), false); err != nil {
+			t.Fatalf("kept reporting the refusal: %v", err)
+		}
+	}
+}

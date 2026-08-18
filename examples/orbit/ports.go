@@ -79,7 +79,18 @@ type Actuator interface {
 	// Attack swings at an entity. Timing is the version profile's cooldown,
 	// not a constant here, because 1.8.9 and 26.1.2 disagree and the example
 	// must not encode either.
+	//
+	// Nothing in this example calls it: the bot runs from what hits it rather
+	// than hitting back, so the one action it cannot perform is also the one
+	// it never asks for. It stays on the port because the library still owes
+	// it and a consumer that wants to fight will need it, and because deleting
+	// the surface would hide that M9.6 is unfinished rather than record it.
 	Attack(ctx context.Context, id int32) error
+	// Locomotion declares whether the body is walking or standing, so that a
+	// watcher sees a player rather than a position that changes. It is
+	// separate from Step because it is edge-triggered: the state changes far
+	// less often than the position does.
+	Locomotion(ctx context.Context, walking bool) error
 	// Respawn answers a death.
 	Respawn(ctx context.Context) error
 }
@@ -95,6 +106,5 @@ func Missing() []string {
 		"none: gravity, collision, and the jump the design asks for; the " +
 			"action path reports a position and simulates no body, so this " +
 			"bot walks a flat world and nothing else",
-		"M9.6: attack, with the version profile's cooldown",
 	}
 }

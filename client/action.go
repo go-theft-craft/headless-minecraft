@@ -31,6 +31,10 @@ type (
 	ActionGround = version.ActionGround
 	// ActionRespawn asks the server to respawn a dead player.
 	ActionRespawn = version.ActionRespawn
+	// ActionInput reports which movement keys the player is holding.
+	ActionInput = version.ActionInput
+	// ActionSprint starts or stops sprinting.
+	ActionSprint = version.ActionSprint
 )
 
 // Do sends one outbound intent.

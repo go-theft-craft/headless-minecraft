@@ -15,8 +15,8 @@ const (
 	Orbiting
 	// Bypassing searches the band for a way around an obstacle.
 	Bypassing
-	// Engaging fights the entity that hit the bot.
-	Engaging
+	// Fleeing runs from the entity that hit the bot.
+	Fleeing
 	// Dead waits for a respawn to be sent and confirmed.
 	Dead
 	// Returning walks back to the circle after respawning.
@@ -36,8 +36,8 @@ func (s State) String() string {
 		return "orbiting"
 	case Bypassing:
 		return "bypassing"
-	case Engaging:
-		return "engaging"
+	case Fleeing:
+		return "fleeing"
 	case Dead:
 		return "dead"
 	case Returning:
@@ -84,7 +84,9 @@ const (
 	Stand ActionKind = iota
 	// StepTo emits one movement update.
 	StepTo
-	// Strike attacks an entity.
+	// Strike attacks an entity. The core no longer decides on one -- it flees
+	// instead -- and the kind stays because the actuator's Attack does, for
+	// the same reason.
 	Strike
 	// SendRespawn answers a death.
 	SendRespawn
@@ -121,8 +123,8 @@ type Bot struct {
 
 	// target is the entity being fought.
 	target int32
-	// engagedAt is when the current fight started.
-	engagedAt time.Time
+	// fledAt is when the current flight started.
+	fledAt time.Time
 
 	// progressAt is the last time the bot advanced a waypoint, and
 	// progressWaypoint the index it advanced to. Together they are the
@@ -177,8 +179,8 @@ func (b *Bot) Advance(t Tick, w World) Action {
 		return b.orbit(t, w)
 	case Bypassing:
 		return b.bypass(t, w)
-	case Engaging:
-		return b.engage(t, w)
+	case Fleeing:
+		return b.flee(t, w)
 	case Dead:
 		return b.dead(t)
 	case Returning:
@@ -316,23 +318,31 @@ func (b *Bot) bypass(t Tick, w World) Action {
 	return Action{Kind: Stand, Reason: "sealed in"}
 }
 
-// engage fights the target until it dies, leaves, or the clock runs out.
-func (b *Bot) engage(t Tick, w World) Action {
-	target, known := w.Entity(b.target)
+// flee runs from the threat until it is gone, until the bot is clear of it,
+// until the bot has run far enough from its circle, or until the clock runs
+// out. Whichever lands first, the bot goes back to orbiting.
+//
+// It runs rather than fights on purpose. Fighting needs attack, attack needs
+// the version profile's cooldown, and that is M9.6; running needs a direction
+// and the movement this example already has. A bot that runs is also the
+// honest demonstration of what the library can do today, where a bot that
+// swings at things would be a demonstration of an error message.
+func (b *Bot) flee(t Tick, w World) Action {
+	threat, known := w.Entity(b.target)
 	switch {
-	case !known || !target.Alive:
-		return b.disengage(t, "target gone")
-	case t.Now.Sub(b.engagedAt) > b.bounds.Engagement:
-		return b.disengage(t, "engagement timed out")
-	case target.Position.HorizontalDistance(b.circle.Centre) > b.circle.Radius+b.bounds.ChaseMargin:
-		return b.disengage(t, "target left the neighbourhood")
+	case !known || !threat.Alive:
+		return b.disengage(t, "threat gone")
+	case t.Now.Sub(b.fledAt) > b.bounds.Escape:
+		return b.disengage(t, "ran as long as it is worth running")
+	case t.Self.Position.HorizontalDistance(threat.Position) >= b.bounds.SafeDistance:
+		return b.disengage(t, "clear of the threat")
+	// The bot's distance from the centre, not the threat's. The bot is the one
+	// running, and it is the one that has to come back.
+	case t.Self.Position.HorizontalDistance(b.circle.Centre) > b.circle.Radius+b.bounds.FleeMargin:
+		return b.disengage(t, "ran far enough from the circle")
 	}
 
-	if t.Self.Position.HorizontalDistance(target.Position) > b.bounds.Reach {
-		return b.step(target.Position)
-	}
-
-	return Action{Kind: Strike, Entity: b.target, Reason: "in reach"}
+	return b.step(Away(t.Self.Position, threat.Position, b.bounds.SafeDistance))
 }
 
 // disengage returns to the circle at the nearest waypoint by angle.
@@ -433,9 +443,9 @@ func (b *Bot) trapped(t Tick, w World) Action {
 	return Action{Kind: Stand, Reason: "still sealed in"}
 }
 
-// provoked switches to Engaging when this tick carries an attacker.
+// provoked switches to Fleeing when this tick carries an attacker.
 func (b *Bot) provoked(t Tick, w World) (Action, bool) {
-	if t.Attacker == 0 || b.state == Engaging {
+	if t.Attacker == 0 || b.state == Fleeing {
 		return Action{}, false
 	}
 
@@ -445,16 +455,22 @@ func (b *Bot) provoked(t Tick, w World) (Action, bool) {
 	}
 
 	b.target = t.Attacker
-	b.engagedAt = t.Now
-	b.state = Engaging
+	b.fledAt = t.Now
+	b.state = Fleeing
 
-	return b.engage(t, w), true
+	return b.flee(t, w), true
 }
 
-// step is a movement update toward a target. The bot always jumps: jumping in a
-// circle is the point.
+// step is a movement update toward a target.
+//
+// It does not jump. It used to claim it did, on the grounds that jumping in a
+// circle is the point, and nothing honoured the claim -- the actuator has no
+// body to jump with and discarded the flag. That was harmless while the flag
+// stayed inside this program. It stopped being harmless once the bot began
+// declaring what it is doing on the wire, because then the claim is a
+// statement to the server about a jump that never happens.
 func (b *Bot) step(target Vec3) Action {
-	return Action{Kind: StepTo, Target: target, Jump: true}
+	return Action{Kind: StepTo, Target: target, Jump: false}
 }
 
 // exit ends the run.
