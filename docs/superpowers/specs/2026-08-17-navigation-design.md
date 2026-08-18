@@ -262,7 +262,7 @@ test, hard to debug, and impossible to compare against a captured trace.
 
 | Dependency | State | Effect if missing |
 | --- | --- | --- |
-| `data.Block.Falling` | **Missing.** Needs `mcreference` extraction, `instanceof BlockFalling` | The search cannot tell sand from stone. `Material` will not substitute: soul sand shares `Material.sand` and does not fall |
+| `BlockMovementRegistry.FallsByState` | **Landed 2026-08-18** by `mcreference` extraction, `instanceof BlockFalling`. Not a field on `data.Block`, as this table first said: upstream publishes it nowhere, so it rides in the measured `blockMovement.json` beside `blocksMovement` | The search cannot tell sand from stone. `Material` will not substitute: soul sand shares `Material.sand` and does not fall |
 | Break time | M9.4, planned | Dig edge costs are stubbed |
 | Placement legality | M9.5, planned | Place, Support, and Collapse edges are stubbed |
 | `movement` jump arcs | Exists | — |
@@ -293,7 +293,8 @@ speed is worse than one that refuses to mine.
 
 ## Sequencing
 
-1. `data.Block.Falling` extraction. Everything with a dig edge waits on it.
+1. Falling and climbable extraction, into `BlockMovementRegistry`. Everything
+   with a dig edge waits on it. **Done 2026-08-18.**
 2. `terrain`, with the orbit example rewritten onto it. This ships alone and is
    useful alone.
 3. `navigation` with the movement edges only: Walk, Step, Fall, JumpGap, Swim.

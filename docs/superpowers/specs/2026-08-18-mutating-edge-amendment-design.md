@@ -118,15 +118,28 @@ The parent design's data-dependency table lists these. Their state as of
 
 | Prerequisite | Repository | State |
 | --- | --- | --- |
-| `data.Block.Falling` | `minecraft-protocol` | **Still missing.** `data/block.go` has no such field, and `Material` will not substitute — the parent design records that soul sand shares `Material.sand` and does not fall. Step 1 of the parent sequencing; everything with a dig edge waits on it. |
+| `BlockMovementRegistry.FallsByState` | `minecraft-protocol` | **Landed 2026-08-18.** Not the `data.Block.Falling` this document first named: upstream publishes the property nowhere, so it is measured out of the pinned jars and rides in `blockMovement.json` beside `blocksMovement`, whose provenance the manifest already records. `Material` will not substitute — soul sand shares `Material.sand` with gravel and does not fall. |
 | Break time | `minecraft-simulation` | M9.4, planned. Dig costs stay stubbed and dig stays off by default. |
 | Placement legality | `minecraft-simulation` | M9.5, planned. Place, Pillar, Support, and Collapse stay stubbed and placement stays off by default. |
-| Climbable block property | `minecraft-protocol` | Missing. Needed by the other amendment, listed here because it is the same extraction pass. |
+| `BlockMovementRegistry.ClimbableByState` | `minecraft-protocol` | **Landed 2026-08-18**, in the same extraction pass, for the same reason and in the same place. Needed by the other amendment; listed here because one pass supplied both. |
 | `PostureFall` | `minecraft-simulation` | The other amendment. Blocks `Pillar` only. |
 
 Two of these five land in `minecraft-protocol`, and both are block properties
 that one extraction pass supplies. That pass is the first task of this work
 even though the search code lives elsewhere.
+
+**Where they landed, and why not where this document first said.** Both were
+drafted as `data.Block.Falling`, a field on the published block record. That was
+wrong, and `data/block_movement.go` already stated the rule that says so:
+upstream's block data says what a block is called, how hard it is, and what it
+drops, and says nothing about either of these. A fact measured out of a Mojang
+jar belongs with the measured dataset whose manifest records the jar's digest,
+not on the record built from what upstream published. So they extend
+`blockMovement.json` and `BlockMovementRegistry`, and `data.Block` gained no
+field. The rule that comes with that home is the one that matters most: a
+version nobody has measured publishes no registry rather than an empty one, and
+a block the measurement does not describe reports "not described" rather than
+"does not fall".
 
 The parent design's rule holds unchanged: "Until M9.4 and M9.5 land,
 `Capability` defaults digging and placement off and the follower refuses those
@@ -158,8 +171,8 @@ Extending the parent design's acceptance criteria rather than replacing them.
 
 ## Sequencing
 
-1. Extract `Falling` and the climbable property in `minecraft-protocol`. Both
-   amendments wait on this and nothing else does.
+1. Extract falling and climbable in `minecraft-protocol`. Both amendments wait
+   on this and nothing else does. **Done 2026-08-18.**
 2. `Overlay` and the validation loop, with `Place` alone. The smallest edge
    that exercises the overlay.
 3. `Pillar`, the two bounds, and the recomputed heuristic.
