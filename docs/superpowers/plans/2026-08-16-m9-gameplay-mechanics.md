@@ -450,6 +450,8 @@ makes reconciling that list Task 0. Treat them as drafts against a moving target
 not as approved plans: the risk the paragraphs below describe has not gone away,
 it has been made explicit and pushed into each plan's first task.
 
+- [M9.2 dropped items and arrows](2026-08-18-m9-2-items-and-arrows.md) — written
+  2026-08-18, when M9.1b made its second lane possible.
 - [M9.3 movement scenarios](2026-08-17-m9-3-movement-scenarios.md)
 - [M9.4 digging and block breaking](2026-08-17-m9-4-digging-block-breaking.md)
 - [M9.5 building and placement](2026-08-17-m9-5-building-and-placement.md)
