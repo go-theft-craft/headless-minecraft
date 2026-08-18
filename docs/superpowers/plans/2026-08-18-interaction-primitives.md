@@ -87,7 +87,7 @@ What M9.4 still owns is the break time. Say so.
 
 In the M9 section, the Task 6 primitive list — "use, place, attack, interact, dig, slot, click, drop, and close stay with M9, mechanic by mechanic" — becomes: the primitives land under the interaction primitives plan; M9.4 through M9.8 keep their gates.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/superpowers/plans/ MASTER_PLAN.md
@@ -107,7 +107,7 @@ git commit -m "docs: reconcile the M9.4 and M9.6 plans with the landed action pa
 
 Every interaction action carries at least one of these, so they land first and alone.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestFaceValuesMatchTheWireOrder(t *testing.T) {
@@ -144,12 +144,12 @@ func TestHandStringsAreStable(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./version/ -run 'TestFace|TestHand' -v`
 Expected: FAIL, undefined.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```go
 package version
@@ -232,12 +232,12 @@ type BlockPos struct{ X, Y, Z int32 }
 type Cursor struct{ X, Y, Z float32 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `devbox run -- go test ./version/ -run 'TestFace|TestHand' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add version/action_hand.go version/action_hand_test.go
@@ -260,7 +260,7 @@ git commit -m "feat(version): add the hand, face, and cursor vocabulary"
 
 These two first because attack with a sword, place a block, cast a rod, and raise a shield all begin by selecting a slot, and none of them is expressible without it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestHeldSlotEncodesTheHotbarIndex(t *testing.T) {
@@ -315,12 +315,12 @@ func TestSwingWithTheOffHandStillEncodesOn47(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./version/... ./internal/adapter/... -run 'TestHeldSlot|TestSwing' -v`
 Expected: FAIL, undefined.
 
-- [ ] **Step 3: Write the actions**
+- [x] **Step 3: Write the actions**
 
 ```go
 package version
@@ -352,7 +352,7 @@ type ActionSwing struct {
 func (ActionSwing) ActionKind() string { return "swing" }
 ```
 
-- [ ] **Step 4: Add the protocol 47 cases**
+- [x] **Step 4: Add the protocol 47 cases**
 
 In `internal/adapter/v1_8/action.go`, before the `default`:
 
@@ -382,16 +382,16 @@ And the constant:
 const maxHotbarSlot = 8
 ```
 
-- [ ] **Step 5: Add the protocol 775 cases**
+- [x] **Step 5: Add the protocol 775 cases**
 
 The same two cases in `internal/adapter/v26_1/action.go`, against that version's generated types, with the swing carrying the hand rather than dropping it.
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `devbox run -- go test ./version/... ./internal/adapter/... -run 'TestHeldSlot|TestSwing' -v`
 Expected: PASS on both adapters.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add version/ internal/adapter/
@@ -411,7 +411,7 @@ git commit -m "feat(version): add held-slot and swing actions"
 - Consumes: `Hand`, `Face`, `BlockPos`, `Cursor` from task 1.
 - Produces: `ActionUseItem{Hand}`, `ActionUseOn{Block BlockPos, Face Face, Cursor Cursor, Hand Hand}`, `ActionReleaseUse{Hand}`, `ActionInteract{Entity int32, Kind InteractKind, At *Cursor, Hand Hand}`, `type InteractKind uint8` with `InteractAttack`, `InteractUse`, `InteractUseAt`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestUseOnCarriesTheCursorNotTheCentre(t *testing.T) {
@@ -501,12 +501,12 @@ func TestInteractUseAtWithoutAPositionIsRefused(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./internal/adapter/... -run 'TestUseOn|TestUseItem|TestInteract' -v`
 Expected: FAIL, undefined.
 
-- [ ] **Step 3: Write the actions**
+- [x] **Step 3: Write the actions**
 
 ```go
 // InteractKind names what an interaction with an entity does.
@@ -573,7 +573,7 @@ type ActionInteract struct {
 func (ActionInteract) ActionKind() string { return "interact" }
 ```
 
-- [ ] **Step 4: Add the protocol 47 cases**
+- [x] **Step 4: Add the protocol 47 cases**
 
 `ActionUseOn` maps to `PlayServerboundBlockPlace` with the cursor scaled to sixteenths. `ActionUseItem` maps to the same packet at the sentinel position with `Direction: -1`. `ActionReleaseUse` maps to `PlayServerboundBlockDig` with the release status — 47 carries it there and not on a use packet. `ActionInteract` maps to `PlayServerboundUseEntity`.
 
@@ -588,16 +588,16 @@ const attackMouse47 = 1
 const releaseUseStatus47 = 5
 ```
 
-- [ ] **Step 5: Add the protocol 775 cases**
+- [x] **Step 5: Add the protocol 775 cases**
 
 775 has separate use and use-on packets and carries the hand on each. The release is its own status there too; follow the generated names.
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `devbox run -- go test ./internal/adapter/... -run 'TestUseOn|TestUseItem|TestInteract' -v`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add version/ internal/adapter/
@@ -619,7 +619,7 @@ git commit -m "feat(version): add use, use-on, release, and interact actions"
 
 One type with a stage, not three types. The wire is one packet with a status field.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestDigStagesMapToTheirStatuses(t *testing.T) {
@@ -672,12 +672,12 @@ func TestDigCarriesNoTiming(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./internal/adapter/... -run TestDig -v`
 Expected: FAIL, undefined.
 
-- [ ] **Step 3: Write the action**
+- [x] **Step 3: Write the action**
 
 ```go
 package version
@@ -730,16 +730,16 @@ type ActionDig struct {
 func (ActionDig) ActionKind() string { return "dig" }
 ```
 
-- [ ] **Step 4: Add both adapter cases**
+- [x] **Step 4: Add both adapter cases**
 
 Map `DigStart`, `DigCancel`, and `DigFinish` to statuses 0, 1, and 2 on both protocols, with the block position converted to the generated `Position` type.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `devbox run -- go test ./internal/adapter/... -run TestDig -v`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add version/action_dig.go internal/adapter/
@@ -759,7 +759,7 @@ git commit -m "feat(version): add the dig action"
 - Produces: `ActionClickSlot{Window uint8, Slot int16, Button uint8, Mode ClickMode, Transaction int16}`, `ActionDrop{Whole bool}`, `ActionCloseWindow{Window uint8}`, `ActionEntityAction{Kind EntityActionKind}`, `ActionSwapHands{}`, `ActionChat{Message string}`, `ActionCommand{Command string}`.
 - Modifies: `ActionSprint` becomes a caller of `ActionEntityAction` rather than a separate wire concept.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestSwapHandsIsRefusedOn47(t *testing.T) {
@@ -816,12 +816,12 @@ func TestSprintStillEncodesAsItDidBefore(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./internal/adapter/... -run 'TestSwapHands|TestCommand|TestSprint' -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Write the actions and both adapter cases**
+- [x] **Step 3: Write the actions and both adapter cases**
 
 `ActionEntityAction` carries `EntityActionKind` with `SneakStart`, `SneakStop`, `SprintStart`, `SprintStop`, `LeaveBed`, and the horse members each protocol defines. On 47 all of these are `PlayServerboundEntityAction` with the player's own entity ID and the numbered action.
 
@@ -829,12 +829,12 @@ Expected: FAIL.
 
 `ActionCommand` on 47 encodes as `PlayServerboundChat` with `"/"` prefixed when the command does not already begin with one.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `devbox run -- go test ./internal/adapter/... -run 'TestSwapHands|TestCommand|TestSprint' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add version/ internal/adapter/
@@ -853,7 +853,7 @@ git commit -m "feat(version): add window, state, and speech actions"
 - Consumes: every action from tasks 2 through 5.
 - Produces: nothing. These are the gates that stop a later action being added without a decision.
 
-- [ ] **Step 1: Write the kind uniqueness gate**
+- [x] **Step 1: Write the kind uniqueness gate**
 
 ```go
 func TestEveryActionKindIsUniqueAndSnakeCase(t *testing.T) {
@@ -882,7 +882,7 @@ func TestEveryActionKindIsUniqueAndSnakeCase(t *testing.T) {
 
 `allActions` returns one zero value of every exported action type, and lives beside this test. Adding an action without adding it to that list fails the coverage gate below, which is the point.
 
-- [ ] **Step 2: Write the coverage gate**
+- [x] **Step 2: Write the coverage gate**
 
 ```go
 func TestEveryActionEitherEncodesOrRefusesOnBothProtocols(t *testing.T) {
@@ -913,7 +913,7 @@ func TestEveryActionEitherEncodesOrRefusesOnBothProtocols(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Write the no-numbers gate**
+- [x] **Step 3: Write the no-numbers gate**
 
 ```go
 func TestNoMilestoneNumbersLeakedIntoVersion(t *testing.T) {
@@ -933,12 +933,12 @@ func TestNoMilestoneNumbersLeakedIntoVersion(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: Run every gate**
+- [x] **Step 4: Run every gate**
 
 Run: `devbox run -- task verify`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add version/ internal/adapter/
@@ -964,3 +964,68 @@ git commit -m "test(version): gate action kinds and per-protocol coverage"
 | 47's release-use through the dig packet looks like a bug and gets "fixed" | The constant is named `releaseUseStatus47` and its comment says why. `TestUseOn` and the release test both pin it |
 | An action is added later and silently falls through one adapter's default | The coverage gate in task 6 fails on any action not named in a refusal |
 | The cursor scaling to sixteenths is wrong and places blocks subtly wrong | `TestUseOnCarriesTheCursorNotTheCentre` pins one non-centre value; M9.5's gate measures the rest against vanilla |
+
+---
+
+## What executing this plan found
+
+Eight things, recorded here because six of them contradict something this plan
+or a neighbouring one asserted.
+
+- **Attack is not a mode of the interact packet on protocol 775, in this
+  schema.** The plan and the design both said "both protocols encode it as a
+  mode of the interact packet". The *games* do — 1.8.9's C02PacketUseEntity and
+  26.1.2's ServerboundInteractPacket each carry an interact/attack/interact-at
+  enumeration — but the pinned minecraft-data schema for 775 splits attack onto
+  a packet of its own, `attack` at ID 1, carrying nothing but an entity ID, and
+  leaves `use_entity` with no mode field at all. The conclusion the plan drew
+  survives and its reason does not: `ActionInteract` with `InteractAttack` is
+  still one action, and the split now lives in the adapter, which is what an
+  adapter is for.
+- **`use_entity` on 775 carries its location unconditionally**, so `InteractUse`
+  and `InteractUseAt` reach the same packet and a plain interaction sends the
+  entity's own origin. There is no way in this schema to say "interact, not
+  interact-at".
+- **A hand swap is a digging status on 775, not an entity action.** Task 5 said
+  to put it with the state actions. 26.1.2's
+  `ServerboundPlayerActionPacket.Action` has it as its seventh member, on the
+  same packet as digging, dropping, and releasing a use — which is not where a
+  reader who knows 1.8.9 would look.
+- **Sneaking is expressible on exactly one version each way round.** 26.1.2's
+  `ServerboundPlayerCommandPacket.Action` names sleeping, sprinting, horse
+  jumps, vehicle inventories, and elytra, and no sneak: it moved onto the input
+  packet. Protocol 47 has the sneak and no input packet. So
+  `ActionEntityAction{SneakStart}` encodes on 47 and refuses on 775, and
+  `ActionInput` does the reverse — the first symmetric pair of refusals in this
+  package.
+- **Protocol 47's sprint refusal is lifted, because the numbers are now
+  measured.** The shipped comment said 47's `actionId` is a bare varint "with no
+  names attached to the values", so encoding sprint would mean hardcoding
+  numbers this repository had not measured. `C0BPacketEntityAction.Action` in
+  the deobfuscated 1.8.9 jar names all seven and the packet writes an ordinal,
+  and `NetHandlerPlayServer.processEntityAction` acts on its own `playerEntity`
+  and never reads the packet's entity ID. Both halves of the old refusal are
+  answered, so `ActionSprint` now encodes on both versions and only
+  `ActionInput` is refused on 47.
+- **47's use-in-air sentinel is a position as well as a direction.** The plan
+  named only `Direction: -1`. `C08PacketPlayerBlockPlacement`'s own
+  single-argument constructor sends `BlockPos(-1, -1, -1)` with direction 255,
+  and the generated field is signed, so the byte is written as -1. The server
+  branches on the direction alone, so the position is free to match what a real
+  client sends, and it does.
+- **775's chat packet does not write without its acknowledgement bitset.** The
+  field is a fixed three bytes and the codec refuses any other length, so a nil
+  slice is a packet that fails at the write on a live connection rather than at
+  the encode. Every action is now put through its own generated codec by the
+  coverage gate, which is what would have caught it.
+- **The coverage gate could not live where the plan put it.**
+  `internal/adapter/` is two packages and a directory with no Go files, so a
+  test file there has no package to belong to. It lives in `version/java`
+  instead, which is the one package that holds both adapters, and it holds the
+  kind gate and the no-numbers gate too — one list of actions rather than two
+  to keep in step.
+
+One thing outside the plan: `task verify`'s secret scan reads the working tree,
+so it sees `.local/`, where a pinned 26.1.2 server writes a management secret
+into its own properties file on first boot. Git can never see that path, and a
+finding there hides a real one, so `.gitleaks.toml` now excludes it.
