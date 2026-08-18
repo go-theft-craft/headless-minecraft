@@ -133,6 +133,33 @@ func (r *readiness) Observe(batch version.Batch) (version.ReadyState, []protocol
 
 			r.ready = true
 			r.state.Ready = true
+
+			// Tell the server the client has finished loading in.
+			//
+			// Protocol 775 holds a joining player in a loading state until
+			// this arrives, and while it is held the server keeps the player
+			// where it put them and does not take their word for where they
+			// are. It does not wait forever: vanilla gives the client sixty
+			// ticks and then declares it loaded anyway, which is what makes a
+			// client that never sends this look like it works. Three seconds
+			// of walking is discarded, the server adopts the position in the
+			// next packet it reads, and that position is three seconds of
+			// travel away from where it left the player — so the first thing
+			// a silent client does is appear to teleport, and the server says
+			// so. The orbit example met this as one "moved too quickly" about
+			// three seconds into every single run, at whatever distance it
+			// happened to have covered by then.
+			//
+			// It belongs in the readiness rule rather than in a handler
+			// because it is the one thing here that is genuinely settled once:
+			// the player loads at spawn, and no later position packet is a
+			// second arrival. The teleport confirmation sits on the other side
+			// of that line, which is why the two live apart.
+			loaded := &gen.PlayServerboundPlayerLoaded{}
+
+			return r.state, []protocol.Packet{serverbound(
+				gen.StatePlay, "player_loaded", loaded.PacketID(), loaded,
+			)}, nil
 		}
 	}
 

@@ -46,15 +46,16 @@ func TestBundleDelimiterIsTheGeneratedPacketName(t *testing.T) {
 	}
 }
 
-// TestReadinessReportsPlayAndAnswersNothing pins where the split landed.
+// TestReadinessReportsPlayAndLoadsIn pins where the split landed.
 //
-// The rule decides that the server will accept action packets. It does not
-// confirm the teleport the placing position carries, because the server sends
-// that same packet again for every correction and owes a confirmation each
-// time, while this rule is settled once and stops looking. Leaving the
-// confirmation here is what let corrections go unconfirmed, and a server that
-// is waiting on one discards every move the client sends.
-func TestReadinessReportsPlayAndAnswersNothing(t *testing.T) {
+// The rule decides that the server will accept action packets, and says the
+// client has loaded in, which is the one thing a joining player does exactly
+// once. It does not confirm the teleport the placing position carries, because
+// the server sends that same packet again for every correction and owes a
+// confirmation each time, while this rule is settled once and stops looking.
+// Leaving the confirmation here is what let corrections go unconfirmed, and a
+// server that is waiting on one discards every move the client sends.
+func TestReadinessReportsPlayAndLoadsIn(t *testing.T) {
 	t.Parallel()
 
 	rule := adapter.Readiness()
@@ -85,8 +86,63 @@ func TestReadinessReportsPlayAndAnswersNothing(t *testing.T) {
 	if !state.Ready {
 		t.Fatal("rule did not report ready after login and position")
 	}
-	if len(reply) != 0 {
-		t.Fatalf("rule sent %d packets; the position handler owns the confirmation", len(reply))
+	// One packet, and it is the arrival rather than the confirmation. The
+	// confirmation is owed again on every correction, so it belongs to the
+	// position handler; loading in happens once, so it belongs here.
+	if len(reply) != 1 {
+		t.Fatalf("rule sent %d packets, want 1", len(reply))
+	}
+	if _, ok := reply[0].Value.(*gen.PlayServerboundTeleportConfirm); ok {
+		t.Fatal("rule sent the teleport confirmation; the position handler owns it")
+	}
+	if _, ok := reply[0].Value.(*gen.PlayServerboundPlayerLoaded); !ok {
+		t.Fatalf("rule sent %T, want *PlayServerboundPlayerLoaded", reply[0].Value)
+	}
+	if reply[0].Name != "player_loaded" {
+		t.Errorf("packet is named %q, want player_loaded", reply[0].Name)
+	}
+	if reply[0].State != gen.StatePlay {
+		t.Errorf("packet is addressed to %q, want play", reply[0].State)
+	}
+	if reply[0].Direction != protocol.DirectionServerbound {
+		t.Errorf("packet is %v, want serverbound", reply[0].Direction)
+	}
+}
+
+// TestThePlayerLoadsInOnlyOnce pins that a correction is not a second arrival.
+//
+// The server sends the same position packet to place a player and to correct
+// one, and it holds a joining player in a loading state until the client says
+// it has loaded. Saying so again on every correction would be answering a
+// question the server stopped asking, and the rule's own short-circuit is the
+// only thing preventing it.
+func TestThePlayerLoadsInOnlyOnce(t *testing.T) {
+	t.Parallel()
+
+	rule := adapter.Readiness()
+	_, _, err := rule.Observe(version.Batch{Packets: []protocol.Packet{login()}})
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+
+	// Ordered, because the point is that the second one is silent.
+	rounds := []struct {
+		name string
+		want int
+	}{
+		{"placement", 1},
+		{"correction", 0},
+	}
+	for _, round := range rounds {
+		_, reply, err := rule.Observe(version.Batch{Packets: []protocol.Packet{
+			clientbound("position", &gen.PlayClientboundPosition{TeleportID: 1, X: 1, Y: 2, Z: 3}),
+		}})
+		if err != nil {
+			t.Fatalf("Observe(%s): %v", round.name, err)
+		}
+		if len(reply) != round.want {
+			t.Errorf("%s sent %d packets, want %d", round.name, len(reply), round.want)
+		}
 	}
 }
 

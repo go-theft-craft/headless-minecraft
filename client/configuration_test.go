@@ -109,13 +109,19 @@ func TestConfigurationIsDrivenByTheClientIntoPlay(t *testing.T) {
 	))
 
 	// The three things the client owes a 26.1 server before it can play, in
-	// the order the server asks for them, plus the teleport confirmation that
-	// completes the placement.
+	// the order the server asks for them, plus the two the placement itself
+	// owes: the teleport confirmation that completes it, and the notice that
+	// the player has loaded in. A server holds a player it has not heard that
+	// from in a loading state and discards where they say they are, so its
+	// absence here is three seconds of movement thrown away on every join.
 	var sent []string
 	for _, p := range sender.sent {
 		sent = append(sent, p.Name)
 	}
-	want := []string{"select_known_packs", "keep_alive", "finish_configuration", "teleport_confirm"}
+	want := []string{
+		"select_known_packs", "keep_alive", "finish_configuration",
+		"teleport_confirm", "player_loaded",
+	}
 	if len(sent) != len(want) {
 		t.Fatalf("client sent %v, want %v", sent, want)
 	}
