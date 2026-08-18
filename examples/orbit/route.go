@@ -299,6 +299,32 @@ func (n Navigator) Walkable(chunks world.ChunksView, from, to Vec3) bool {
 	}, from, to)
 }
 
+// Hurting reports whether the body at a position is standing in something that
+// damages it.
+//
+// Deliberately narrower than Walkable, which answers false for a great many
+// reasons: a wall, a hole, an unstreamed chunk. Unknown ground is not ground
+// that hurts, and a bot that treated the two alike would decide it was on fire
+// every time it walked to the edge of what the server has sent it.
+func (n Navigator) Hurting(chunks world.ChunksView, at Vec3) bool {
+	view := predict.NewTerrain(chunks, n.blocks, n.profile)
+	query := terrain.Query{View: view, Facts: n.facts, Body: n.capability.Body}
+
+	for _, cell := range n.bodyCells(at) {
+		hazard, lookup, err := query.HazardAt(cell)
+		if err == nil && lookup != simworld.LookupUnknown && hazard != terrain.HazardNone {
+			return true
+		}
+
+		fluid, lookup, err := query.FluidAt(cell)
+		if err == nil && lookup != simworld.LookupUnknown && fluid == terrain.FluidLava {
+			return true
+		}
+	}
+
+	return false
+}
+
 // cellOf is the block a position stands in, in the simulation's terms.
 func cellOf(p Vec3) simgeom.BlockPos {
 	block := p.Floor()

@@ -14,6 +14,8 @@ type scripted struct {
 	// which is what the strict path refuses.
 	loaded   func(BlockPos) bool
 	entities map[int32]Entity
+	// harmful holds the cells that damage a body standing in them.
+	harmful map[BlockPos]bool
 }
 
 func newScripted() *scripted {
@@ -23,6 +25,7 @@ func newScripted() *scripted {
 		solid:    map[BlockPos]bool{},
 		loaded:   func(BlockPos) bool { return true },
 		entities: map[int32]Entity{},
+		harmful:  map[BlockPos]bool{},
 	}
 }
 
@@ -50,6 +53,18 @@ func (s *scripted) Route(from, to Vec3) (Route, bool) {
 	}
 
 	return Route{Steps: append(steps, to), Complete: true}, true
+}
+
+// Hurting reports the cells a test has declared harmful.
+func (s *scripted) Hurting(at Vec3) bool {
+	foot := at.Floor()
+	for h := range 2 {
+		if s.harmful[BlockPos{X: foot.X, Y: foot.Y + h, Z: foot.Z}] {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Walkable is the same straight line Route walks, asked on its own.

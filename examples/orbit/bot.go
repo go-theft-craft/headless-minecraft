@@ -15,6 +15,8 @@ const (
 	Orbiting
 	// Fleeing runs from the entity that hit the bot.
 	Fleeing
+	// Escaping gets out of ground that is hurting the bot.
+	Escaping
 	// Dead waits for a respawn to be sent and confirmed.
 	Dead
 	// Returning walks back to the circle after respawning.
@@ -34,6 +36,8 @@ func (s State) String() string {
 		return "orbiting"
 	case Fleeing:
 		return "fleeing"
+	case Escaping:
+		return "escaping"
 	case Dead:
 		return "dead"
 	case Returning:
@@ -128,6 +132,9 @@ type Bot struct {
 
 	// target is the entity being fought.
 	target int32
+	// escapedAt is when the bot last noticed it was standing in something that
+	// hurts, which bounds how long it may spend getting out.
+	escapedAt time.Time
 	// escapeTo is the goal the current flight is running to. It is kept so
 	// that a flight follows one chosen way out instead of choosing a new one
 	// every tick as the threat moves.
@@ -181,6 +188,15 @@ func (b *Bot) Advance(t Tick, w World) Action {
 		}
 	}
 
+	// Standing in something that hurts outranks everything except dying. A bot
+	// deciding which waypoint is next while it burns is a bot that will finish
+	// deciding somewhere it cannot be revived from.
+	if b.state != Done && b.state != Dead && b.state != Escaping && t.Ready && w.Hurting(t.Self.Position) {
+		b.state = Escaping
+		b.escapedAt = t.Now
+		b.route = Route{}
+	}
+
 	switch b.state {
 	case Joining:
 		return b.join(t, w)
@@ -188,6 +204,8 @@ func (b *Bot) Advance(t Tick, w World) Action {
 		return b.orbit(t, w)
 	case Fleeing:
 		return b.flee(t, w)
+	case Escaping:
+		return b.escape(t, w)
 	case Dead:
 		return b.dead(t)
 	case Returning:
@@ -412,6 +430,66 @@ func (b *Bot) unreachable(t Tick) Action {
 
 	return Action{Kind: Stand, Reason: "sealed in"}
 }
+
+// escape gets the bot off ground that is hurting it.
+//
+// It outranks the orbit, the flight and the walk home, because all three are
+// about where to be next and this is about not dying where the bot already is.
+// Lava does most of its damage to something that stands in it and thinks about
+// the route.
+//
+// The way out is short and in whatever direction works. A route is planned to a
+// few blocks off in each of eight headings and the first that lands somewhere
+// safe is taken -- not the best one, the first, because the search costs ticks
+// and every tick here is damage. Nothing routable in any direction means the
+// bot is in it deep enough that the planner will not start from where it
+// stands, so it walks straight out on the shortest heading and takes its
+// chances, which beats standing in lava reasoning about headings.
+func (b *Bot) escape(t Tick, w World) Action {
+	if !w.Hurting(t.Self.Position) {
+		return b.disengage(t, "out of it")
+	}
+
+	if t.Now.Sub(b.escapedAt) > b.bounds.Escape {
+		return b.disengage(t, "still in it, but out of time to be careful")
+	}
+
+	// Keep walking the way out already found.
+	if b.routedFor == escapeRoute && len(b.route.Steps) > 0 {
+		if action, routed := b.follow(t, w, b.escapeTo, escapeRoute); routed {
+			return action
+		}
+	}
+
+	for _, heading := range escapeHeadings {
+		goal := t.Self.Position.
+			Add(Vec3{X: b.bounds.EscapeReach}).
+			RotatedAbout(t.Self.Position, heading)
+
+		route, found := w.Route(t.Self.Position, goal)
+		if !found {
+			continue
+		}
+
+		b.leg, b.routedFor, b.escapeTo = 0, escapeRoute, goal
+		b.route = route
+
+		return b.step(b.route.Steps[0])
+	}
+
+	// Nothing plans from in here. Walk, and pick the direction rather than
+	// stand: a planner that will not start is a planner that has nothing to
+	// say about which way is better, and one of them is out.
+	return b.step(t.Self.Position.Add(Vec3{X: b.bounds.EscapeReach}))
+}
+
+// escapeHeadings are the directions tried when getting out of something that
+// hurts. Eight of them, which is finer than the planner's own four and coarse
+// enough to be exhausted inside one tick.
+var escapeHeadings = []float64{0, 45, -45, 90, -90, 135, -135, 180}
+
+// escapeRoute is the route key for getting out of something that hurts.
+const escapeRoute = -2
 
 // flee runs from the threat until it is gone, until the bot is clear of it,
 // until the bot has run far enough from its circle, or until the clock runs

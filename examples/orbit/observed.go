@@ -39,6 +39,11 @@ func (o Observed) Route(from, to Vec3) (Route, bool) {
 	return o.navigator.Plan(o.ctx, o.snapshot.Chunks, from, to)
 }
 
+// Hurting reports whether the bot is standing in something that damages it.
+func (o Observed) Hurting(at Vec3) bool {
+	return o.navigator.Hurting(o.snapshot.Chunks, at)
+}
+
 // Walkable reports whether a straight line is still clear over this snapshot.
 func (o Observed) Walkable(from, to Vec3) bool {
 	return o.navigator.Walkable(o.snapshot.Chunks, from, to)

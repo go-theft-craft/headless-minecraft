@@ -760,3 +760,84 @@ func (c *counting) Walkable(from, to Vec3) bool {
 
 	return c.scripted.Walkable(from, to)
 }
+
+// TestStandingInLavaOutranksEverything pins the priority.
+//
+// A bot deciding which waypoint comes next while it burns is a bot that
+// finishes deciding somewhere it cannot be revived from. Getting out is above
+// the orbit, above the flight and above the walk home; only dying outranks it.
+func TestStandingInLavaOutranksEverything(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+
+	// The ground the bot is standing on turns to lava.
+	w.harmful[position.Floor()] = true
+
+	action := bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position}, Revision: 2,
+	}, w)
+
+	if bot.State() != Escaping {
+		t.Fatalf("the bot is %v while standing in lava, want escaping", bot.State())
+	}
+	if action.Kind != StepTo {
+		t.Errorf("produced %v while standing in lava, want a step out", action.Kind)
+	}
+}
+
+// TestEscapingEndsWhenTheGroundIsSafeAgain pins the way back.
+func TestEscapingEndsWhenTheGroundIsSafeAgain(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+
+	w.harmful[position.Floor()] = true
+	bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position}, Revision: 2,
+	}, w)
+	if bot.State() != Escaping {
+		t.Fatalf("the bot is %v, want escaping", bot.State())
+	}
+
+	// One step later it is standing somewhere that does not hurt.
+	safe := position.Add(Vec3{X: 3})
+	bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: safe}, Revision: 3,
+	}, w)
+
+	if bot.State() == Escaping {
+		t.Error("still escaping from ground that no longer hurts")
+	}
+}
+
+// TestUnstreamedGroundIsNotMistakenForLava pins the distinction that broke the
+// first attempt at this: a world that has sent nothing is not a world on fire.
+func TestUnstreamedGroundIsNotMistakenForLava(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	w.loaded = func(BlockPos) bool { return false }
+	position := Vec3{Y: 64}
+
+	bot := NewBot(DefaultBounds())
+	c := newClock()
+	bot.Advance(Tick{Now: c.advance(time.Second), Ready: true, Self: Self{Position: position}}, w)
+
+	if bot.State() == Escaping {
+		t.Error("the bot decided it was burning on ground nobody has described")
+	}
+}

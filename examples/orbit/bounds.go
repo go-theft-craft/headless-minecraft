@@ -24,6 +24,10 @@ type Bounds struct {
 	FleeMargin float64
 	// Escape is how long one flight may last.
 	Escape time.Duration
+	// EscapeReach is how far the bot aims when getting out of ground that is
+	// hurting it. Short: the nearest edge of a lava pool is usually a block or
+	// two, and aiming far turns a step out of the fire into a journey.
+	EscapeReach float64
 	// SafeDistance is how far from a threat counts as clear of it. It is also
 	// how far ahead the bot aims while running, which is why it is one number
 	// and not two: a bot that aimed shorter than it needed to be safe would
@@ -83,6 +87,7 @@ func DefaultBounds() Bounds {
 		NoProgress:     15 * time.Second,
 		FleeMargin:     8,
 		Escape:         10 * time.Second,
+		EscapeReach:    4,
 		SafeDistance:   12,
 		TrappedBudget:  10 * time.Minute,
 		BreakerBudget:  5,

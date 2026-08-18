@@ -65,6 +65,14 @@ type World interface {
 	// the next stretch is still the stretch it planned across, and it is a
 	// cheaper question than planning again.
 	Walkable(from, to Vec3) bool
+	// Hurting reports whether the body at a position is standing in something
+	// that damages it.
+	//
+	// Narrower than Walkable on purpose. Walkable is false for a wall, a hole
+	// and an unstreamed chunk as well as for lava, and a bot that read "not
+	// walkable" as "I am burning" would panic every time it reached the edge
+	// of the world the server has sent it.
+	Hurting(at Vec3) bool
 	// Entity reports one tracked entity by ID.
 	Entity(id int32) (Entity, bool)
 }
