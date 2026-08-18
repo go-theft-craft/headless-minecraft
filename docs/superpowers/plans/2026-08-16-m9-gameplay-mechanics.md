@@ -505,7 +505,7 @@ is rewritten:
 | Stage | Delivers | Reconcile its plan after | Gate |
 | --- | --- | --- | --- |
 | M9.1b | The capture oracle on protocol 775, against a pinned 26.1.2 server | M9.1's live check | A 775 trace replays deterministically, and the replay tolerance is derived from 775's own position encoding |
-| M9.2 | Dropped item and arrow rules, both profiles | M9.1b and M8.4 | Captured traces replay within tolerance on 1.8.9 and 26.1.2 |
+| M9.2 | Dropped item and arrow rules, both profiles | M9.1b and M8.4 | Complete 2026-08-18 on 1.8.9: 440 item ticks agree with the jar bit for bit, and two captured trajectories replay within 0.017 of a block. The 26.1 lanes are written and skip until this module's minecraft-protocol pin carries that version's item and arrow constants |
 | M9.3 | Movement scenarios | M8.8 | Correction, teleport, and disconnect mid-action behave as vanilla on both versions |
 | M9.4 | Digging and block breaking | M9.3 | Break times match vanilla across tool, block, and effect combinations on both versions |
 | M9.5 | Building and placement | M9.4 | Placement legality and resulting block state match vanilla on both versions |

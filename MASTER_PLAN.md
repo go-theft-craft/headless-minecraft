@@ -513,7 +513,7 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M8.6 | Canonical recording and replay, and a six-target determinism matrix | `minecraft-simulation` | Complete; all six targets agree, and the matrix found an arm64 fused-multiply-add bug | M8.3 for encoding, M8.4 for the matrix | [M8.6 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-6-replay-and-determinism.md) |
 | M8.7 | `profile/java/v26_1` for the player, plus a 26.1.2 physics dumper and dataset | `minecraft-reference`, `minecraft-protocol`, `minecraft-simulation` | Complete; 4,800 ticks agree with a real 26.1.2 server, and four rules the reading got wrong were found by asking it | M8.4, M4 | [M8.7 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-7-v26-1-player-movement.md) |
 | M8.8 | One kernel driven by client prediction and server authority, gated on zero corrections from vanilla | `minecraft-simulation`, `headless-minecraft`, `server` | Complete; zero corrections from a real 1.8.9 server and a real 26.1.2 server, in offline mode | M8.4, M6, M7 | [M8.8 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) |
-| M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic, each verified against both 1.8.9 and 26.1.2 | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.1b complete, so both versions have an oracle and a gate harness; M9.3–M9.8 plans drafted ahead of their prerequisites, each with a reconcile-first task; M9.2 next | M9.1 on M5 and `relay` v0.2.0; M9.1b on M9.1 and M4; M9.2–M9.8 on M8.8, M9.1, and M9.1b | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite), [M9.1b–M10 cross-version plan](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) |
+| M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic, each verified against both 1.8.9 and 26.1.2 | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.1b complete, so both versions have an oracle and a gate harness; M9.2 complete on 1.8.9 and awaiting a dependency bump on 26.1.2; M9.3–M9.8 plans drafted ahead of their prerequisites, each with a reconcile-first task | M9.1 on M5 and `relay` v0.2.0; M9.1b on M9.1 and M4; M9.2–M9.8 on M8.8, M9.1, and M9.1b | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite), [M9.1b–M10 cross-version plan](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps, [M10 plan](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) |
 | M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | Complete: M11.1 through M11.7 | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), six sub-milestone designs, and a plan for each, [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) |
 
@@ -1440,7 +1440,7 @@ independently verifiable against a vanilla server.
 | --- | --- | --- |
 | M9.1 | Entity-trace capture in a new protocol 47 proxy repository | A captured trace replays deterministically from its recording |
 | M9.1b | The same capture oracle on protocol 775, against a pinned 26.1.2 server | Complete 2026-08-18. Three 26.1.2 recordings replay to their own digests. The relative move is 4096 units a block, measured from two arrows landing on one surface; the tolerance is zero at an absolute sample, because 775 sends `float64`, and 1/4096 per relative move, against 47's 1/32 everywhere |
-| M9.2 | Dropped item and arrow rules, both profiles | Captured traces replay within tolerance on 1.8.9 and 26.1.2 |
+| M9.2 | Dropped item and arrow rules, both profiles | Complete 2026-08-18 on 1.8.9, and written-and-skipped on 26.1.2 until this module's `minecraft-protocol` pin carries that version's item and arrow constants. 440 item ticks agree with the jar bit for bit; two captured item trajectories replay within 0.017 of a block over sixty blocks of fall, against the 1/32 the wire carries |
 | M9.3 | Movement scenarios | Correction, teleport, and disconnect mid-action behave as vanilla on 1.8.9 and 26.1.2 |
 | M9.4 | Digging and block breaking | Break times match vanilla for tool, block, and effect combinations on 1.8.9 and 26.1.2 |
 | M9.5 | Building and placement | Placement legality and resulting block state match vanilla on 1.8.9 and 26.1.2 |
@@ -1615,8 +1615,50 @@ because each one changes what a stage costs:
   real protocol 775 bundle, which the 4096-packet default has never met; and
   the first real 775 traffic through the headless client's reducers, which M7
   covered only with scripted packets against generated values.
-- [ ] Verify dropped items and arrows against captured traces on both versions
-  (M9.2).
+- [x] Verify dropped items and arrows against captured traces on both versions
+  (M9.2). Done 2026-08-18. Two gates rather than one, because a wire capture
+  cannot check a tick: a server states an item's and an arrow's position **once
+  every twenty ticks**, so a captured trajectory holds checkpoints and says
+  nothing about what happened between two of them. The primary gate is the jar,
+  as it was for the player — 440 item ticks compared bit for bit against a real
+  `EntityItem` ticking inside the 1.8.9 server. The second is the wire: both
+  1.8.9 items replay within 0.017 of a block over thirteen checkpoints and sixty
+  blocks of fall, against the 1/32 that protocol carries, and the arrow's flight
+  within 0.024.
+
+  What the work found, none of it budgeted. **Every phase in both profiles read
+  `entity.FamilyPlayer` outright**, so a dropped item in the world fell at the
+  player's gravity and nothing said so; phases now read the body's own family
+  and a family with no constants fails the tick rather than moving at a guessed
+  rate. **26.1's move rebuilt every body's box at the player's 0.6 by 1.8**,
+  which stood an item up eighteen tenths of a block tall and landed it a block
+  early. **26.1's gravity and two drag phases were unguarded by family**, so an
+  arrow fell twice a tick and had its horizontal motion multiplied by a friction
+  that version's guarded friction phase never computed for it. All three are
+  defects only a non-player body could reach, which is why M8 never met them.
+
+  Three constants differ between the versions in a way one shared number would
+  get wrong: both gravities are `double` literals in 26.1 and `float` literals in
+  1.8.9, and 26.1's item is dragged by a `float` on the horizontal axes and a
+  `double` on the vertical one in the same statement. Two rules differ too —
+  26.1 tests that an item is falling before it bounces, and 1.8.9 does not.
+
+  Two limits are recorded rather than papered over. An arrow's landing is
+  compared at a looser bound than the wire's, because the game stops an arrow
+  where a ray cast hit and backs it off along its own direction while this module
+  sweeps a box to rest against the floor: measured at 0.047 blocks on 1.8.9 and
+  0.05 on 26.1, which is the backoff itself. And an item landing on slime
+  disagrees with the game by the whole slime bounce, which is a gap in the block
+  table — no block here has a landing rule, because the dataset publishes none —
+  rather than anything about items.
+
+  **The 26.1 lanes are written and skipped, not run.** That version's item and
+  arrow constants are transcribed, confirmed in bytecode, and pinned in
+  `minecraft-protocol`, but this module pins that library at v0.5.0. Every 26.1
+  check skips with that reason recorded and turns on at the bump; each was run
+  against the new dataset locally and passes. The bump must regenerate
+  `replay/testdata/26_1`, because a profile that gains two families gains a data
+  digest. Evidence in `../oracle-evidence/2026-08-18-m9-2-items-and-arrows/`.
 - [ ] Add movement scenarios: walk, sprint, sneak, jump, fall, collide,
   correction, teleport, and disconnect mid-action.
 - [ ] Add attack scenarios: target selection, reach validation, cooldown or
