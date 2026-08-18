@@ -1008,11 +1008,27 @@ two-version rule here is the same thing that carries it in `mctest`: a test that
 fails when a version has no lane, in the shape of `mctest`'s own
 `TestBothVersionsHaveACapturedLane`.
 
-- [ ] **Step 1: Capture the corpus**
+- [x] **Step 1: Capture the corpus**
 
-Through the proxy, on each version, dig one block per combination and record
-the elapsed ticks the server reported. The combinations, chosen to cover the
-branches rather than to be exhaustive:
+**Done differently, and this is the one change Task 5 made to its own
+instructions.** This step said to dig through the proxy on each version and
+record the elapsed ticks the server reported. A server reports its own leniency
+rather than the break time: 1.8.9's `ItemInWorldManager.blockRemoving` accepts a
+finish once the progress reaches 0.7 and otherwise breaks the block itself on
+its own schedule, and 26.1.2's `ServerPlayerGameMode` does the same with its own
+thresholds. A capture through the proxy therefore measures the anti-cheat
+threshold, which is a real thing to measure and is not what `mining.BreakTicks`
+computes.
+
+The corpus is asked of the jars instead, which is the route M9.2 calls its
+*primary* gate for exactly this reason. `internal/oracle/java/MiningOracle.java`
+asks 1.8.9's `Block.getPlayerRelativeBlockHardness` and
+`internal/oracle/java/MiningOracle26.java` asks 26.1.2's
+`BlockState.getDestroyProgress`, both with a real player holding a real
+enchanted tool under real effects, and both are run by
+`internal/oracle/mining_test.go` under the movement generator's own
+`-write-fixtures` flag. The combinations, chosen to cover the branches rather
+than to be exhaustive:
 
 | Axis | Cases |
 | --- | --- |
@@ -1027,7 +1043,14 @@ test nothing new. Take the combinations that exercise a distinct branch, and
 **log which combinations were dropped and why**, in the test file. A matrix that
 silently samples reads as "covered everything" when it did not.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
+
+Built as `mining/vanilla_test.go`, in package `mining_test` rather than
+`mining`: the gate needs the two profiles and the profiles import `mining`, so a
+test inside the package would be an import cycle. The sketch below is what it
+does; what it also does is compare the tool speed and the harvest legality
+before the tick count, because a wrong classification makes every number after
+it wrong for a reason the failure would not name.
 
 ```go
 func TestBreakTimesMatchVanilla(t *testing.T) {
@@ -1073,11 +1096,14 @@ The comparison is exact. A break time is an integer number of ticks and vanilla
 computes it deterministically; a tolerance here would hide the off-by-one that
 an anti-cheat will not.
 
-- [ ] **Step 3: Run it, fix what it names**
+- [x] **Step 3: Run it, fix what it names**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./mining/ -run BreakTimes -v`
 
-- [ ] **Step 4: Refuse a one-version gate**
+It named four things on the first run, and three of them were the test's fault
+rather than the arithmetic's. They are recorded under "What Task 5 found" below.
+
+- [x] **Step 4: Refuse a one-version gate**
 
 There is no `conform.Scenario` to register from here, so the two-version rule is
 a test:
@@ -1097,10 +1123,18 @@ func TestBothVersionsHaveABreakTimeCorpus(t *testing.T) {
 }
 ```
 
-Then record the stage in `relay`'s `conform` matrix the way M9.1b's harness
-expects, from the side that may import it.
+**Nothing was registered in `relay`'s `conform`, and this step's last sentence
+is withdrawn.** A `conform.Outcome` carries a tolerance and a maximum deviation
+in blocks, because that harness compares trajectories against captured traces; a
+break time is an integer tick count with no tolerance at all, and there is no
+field in that shape for it. Nor is there a live matrix to register into:
+`conform` is imported by its own tests and by nothing else in any repository.
+The two-version rule is carried by `TestBothVersionsHaveABreakTimeCorpus`, and
+`TestTheTwoCorporaAskTheSameQuestions` carries the half that test cannot — that
+the two lanes ask the *same* questions, which is how a lane quietly covering
+less would otherwise pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd minecraft-simulation
@@ -1115,9 +1149,9 @@ the cross product are logged in the test rather than left implied."
 
 ## Task 6: The milestone record
 
-- [ ] **Step 1: Mark M9.4 complete in both stage tables**
+- [x] **Step 1: Mark M9.4 complete in both stage tables**
 
-- [ ] **Step 2: Write what the work found**
+- [x] **Step 2: Write what the work found**
 
 Candidates, if they hold: whether the 26.1.2 `incorrect_for_<tier>_tool`
 materials behaved as this plan assumed; whether any break-time constant turned
@@ -1125,13 +1159,81 @@ out to be a widened `float`, as M8.1 found for the motion constants; how many
 combinations the matrix actually covered against how many the cross product
 holds; and whether a jar-backed dump was possible for both versions or only one.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -m "docs(plan): close M9.4, and what the break-time matrix found"
 ```
 
 ---
+
+---
+
+## What Task 5 found, 2026-08-18
+
+M9.4 is complete. The matrix runs on both versions, 46 cases each, and every
+number in it is a jar's.
+
+- **Both versions' generated data gets shears wrong, on the same two blocks.**
+  1.8.9 gives shears a speed of 6 against leaves and 4.8 against wool; its
+  `ItemShears.getStrVsBlock` returns 15 and 5. 26.1 gives 1 against both; its
+  `ShearsItem.createToolProperties` returns 15 and 5. The 26.1 half was already
+  pinned by Task 2; the 1.8.9 half was not known before this run, and
+  `profile/java/v1_8` now carries the same pinning test its counterpart does.
+  Whatever generated these tables kept the rule about *which* blocks shears mine
+  and dropped the rule about *how fast* — on both versions, which is what makes
+  it one upstream defect rather than two.
+- **The corpus records a divergence rather than dropping the case.** A case
+  marked as diverging is asserted to still diverge; the day either dataset is
+  corrected, the gate fails and says to remove the marker. Dropping the case
+  instead would have made the correction invisible.
+- **A hardness has to be compared at single width.** The generated data states
+  leaves at 0.2 and the jar holds 0.20000000298023224. These are the same number
+  in the width the game computes in, and every per-tick damage in the corpus
+  matched while three hardnesses did not — the arithmetic narrows the hardness
+  before dividing by it, so the difference never reaches an answer.
+- **Harvest legality is unobservable for an unbreakable block.** Both games
+  return before consulting it — 1.8.9 on a hardness below zero, 26.1.2 on a
+  destroy speed of -1 — and 1.8.9's bedrock is exactly a case where the data
+  says one thing (no harvest tools listed, so no tool required) and the jar says
+  another (`Material.rock` requires a tool). The gate does not compare a
+  question the game never asks.
+- **26.1 cannot answer at all without loading its data pack.** That version
+  keeps a tool's speeds in an item component and its enchantments in a
+  data-driven registry, and a server binds both when it loads its pack:
+  bootstrapping alone leaves every `ItemStack` construction throwing "Components
+  not bound yet", and binding against the built-in registries alone fails
+  because an item component reads damage-type tags. The harness runs the load in
+  the order `WorldLoader.load` runs it — pack repository, resource manager,
+  static-layer tags, worldgen registries, `ReloadableServerResources`,
+  `updateComponentsAndStaticRegistryTags` — which is also where its Efficiency
+  holder comes from, so the enchantment and the tool speeds cannot disagree
+  about which pack they came from.
+- **Two harness rules are transcribed rather than executed, and both are named
+  in the files.** The loop that accumulates progress until it reaches one lives
+  in a client class no server jar carries, so it is written in Java at the game's
+  own width in both harnesses. And 26.1's submerged flag is stated rather than
+  observed: the game decides it by tracking fluids across a tick through a chunk
+  source the stub level does not have. 1.8.9 needs neither workaround for the
+  second — it reads the eye's block directly, so its harness is given real water.
+- **`MoveOracle.StubWorld` is no longer final.** An `EntityPlayer` reads a spawn
+  point in its constructor and the collision stub carries no world info to read
+  one from, so the mining harness extends it. Extending rather than copying is
+  what keeps the three 1.8.9 harnesses from being able to disagree about what a
+  world is.
+- **`task fmt` was writing what `task lint` rejects**, in this repository and in
+  `minecraft-simulation`, for anyone with a `go.work`. `MODULE` came from
+  `go list -m`, which in a workspace prints every module; the gci prefix section
+  built from it matched nothing and both `go-theft-craft` modules landed in one
+  import group. Fixed by asking with `GOWORK=off`. It is not M9.4's, and it was
+  in M9.4's way.
+
+Still open after this stage, and belonging to no stage yet: nothing in
+`headless-minecraft` drives a dig against a real server. `client.Dig` is unit
+tested and the break time it is handed is now gated against both jars, but the
+three packets have never been sent to a vanilla server in that order with that
+timing. M10's anti-cheat lane is where that would be noticed, and it has not
+run.
 
 ## Definition of done
 

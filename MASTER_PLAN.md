@@ -38,7 +38,7 @@ here.
 | M6 | Finish the server migration and connect the headless client | `server`, `headless-minecraft` | Complete except **M6.4** (Microsoft device-code), postponed |
 | M7 | Immutable observed world state, wire-ordered reducers | `headless-minecraft` | Complete |
 | M8 | Deterministic 1.8.9 and 26.1.2 movement kernel, replay, consumer integration | `minecraft-simulation` | Complete (M8.1–M8.8) |
-| M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **In progress**: M9.1 complete, live check run 2026-08-17; M9.1b and M9.2 complete; M9.3 and M9.4 part-done; M9.5–M9.8 not started |
+| M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **In progress**: M9.1 complete, live check run 2026-08-17; M9.1b, M9.2 and M9.4 complete; M9.3 part-done; M9.5–M9.8 not started |
 | M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **In progress**: reconciled 2026-08-18, task 1 of six done |
 | P4 | Put every consumer on the released `minecraft-protocol` and keep them there | `minecraft-protocol` | Complete |
 | M11 | Turn `server` into a framework | `server` | Complete (M11.1–M11.7) |
@@ -95,12 +95,16 @@ below are what is left of them.
   freeze the trace document, the reader and comparator in
   `minecraft-simulation`, capture the corpus on both versions, and the six
   ordinary scenarios (walk, sprint, sneak, jump, fall, collide).
-- [ ] **M9.4 — digging and block breaking**
+- Closed, 2026-08-18: **M9.4 — digging and block breaking**
   ([plan](docs/superpowers/plans/2026-08-17-m9-4-digging-block-breaking.md)).
-  Tasks 1–6 are done and the kernel side has landed in `minecraft-simulation`
-  (`06b97a9`, `0019b26`, `eb21f71`). Open: task 7 — capture the corpus, the
-  failing cross-version test, and the refusal of a one-version gate — and
-  task 8, the milestone record.
+  The matrix gate runs on both versions from a corpus asked of each version's
+  own jar (`minecraft-simulation` `44339e8`), because a capture through the
+  proxy measures a server's leniency rather than a client's break time — the
+  plan's Task 5 records that change and what the matrix found. Two things it
+  found are open elsewhere: both versions' generated data gets shears wrong
+  against leaves and wool, pinned per version and reported below; and nothing
+  in this repository has yet sent the three dig packets to a real server in
+  order, which is M10's anti-cheat lane rather than a stage of M9.
 - [ ] **M9.5 — building and placement**
   ([plan](docs/superpowers/plans/2026-08-17-m9-5-building-and-placement.md)).
   Only the reconcile task is done; tasks 1–6 are open.
@@ -237,6 +241,16 @@ Still owned by M10 and outside that plan:
 
 ### `minecraft-simulation`
 
+- [ ] **Get the shears tool speeds corrected upstream.** M9.4's matrix found
+  that *both* versions' generated data gives shears the wrong speed against
+  leaves and wool — 1.8.9 says 6 and 4.8, 26.1 says 1 and 1, and both jars say
+  15 and 5. Until the data is fixed, the break times this project computes for
+  shears on those blocks are wrong, and no test on this side can make them
+  right. Pinned by `TestTheDatasetToolSpeedsThisVersionGetsWrong` in each
+  profile and carried as a declared divergence in
+  `mining/testdata/vanilla/*.json`, so a correction makes the gate fail rather
+  than passing unnoticed. The same test records 26.1's copper tools, which are
+  wrong for the same kind of reason.
 - [ ] **Replace the 26.1 item fixture.** M9.2's 26.1 item lane rests on an item
   this repository's own client dropped, whose start position was accumulated
   from relative moves and whose start velocity the server stated at a different
