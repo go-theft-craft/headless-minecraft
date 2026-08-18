@@ -67,7 +67,7 @@ All paths relative to the `minecraft-simulation` repository root.
 
 **Why the test is a unit assertion rather than an end-to-end one.** The natural test would be a world where the search returns a non-shortest route. That is awkward to build: the overestimate is bounded — the old floor is `FallTicks` and the new one is `FallTicks/2` whenever falls are cheapest, so `h` is inflated by at most 2× — and a demonstrating fixture needs two routes whose costs sit inside that factor with the cheaper one running downhill. The defect is *admissibility*, so assert admissibility directly: it is a stronger, sharper check than any single fixture, and it fails today.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `navigation/search_test.go`:
 
@@ -149,12 +149,12 @@ func TestPerBlockFloorIsTheLowestCostPerBlockClosed(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -run "Heuristic|PerBlockFloor" -v`
 Expected: FAIL. `TestHeuristicNeverExceedsTheCostOfAFall` reports `heuristic = 6, exceeds the true cost 3`. `TestPerBlockFloorIsTheLowestCostPerBlockClosed` fails to compile (`perBlockFloor` undefined) — fix the compile error by writing Step 3, then re-run to see the value assertions.
 
-- [ ] **Step 3: Replace `cheapest` with `perBlockFloor`**
+- [x] **Step 3: Replace `cheapest` with `perBlockFloor`**
 
 In `navigation/navigation.go`, replace the whole `cheapest` method:
 
@@ -182,7 +182,7 @@ func (c Capability) perBlockFloor() float64 {
 }
 ```
 
-- [ ] **Step 4: Correct the heuristic's doc comment and its call**
+- [x] **Step 4: Correct the heuristic's doc comment and its call**
 
 In `navigation/search.go`, replace `heuristic`'s comment and the `cheapest()` call:
 
@@ -202,14 +202,14 @@ func (c Capability) heuristic(from, goal geom.BlockPos) float64 {
 }
 ```
 
-- [ ] **Step 5: Run the whole navigation suite**
+- [x] **Step 5: Run the whole navigation suite**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -v`
 Expected: PASS, all tests. `TestSearchesAreReproducible` must still pass — the floor is lower, so the search explores more nodes, but its ordering is unchanged.
 
 If a pre-existing path test now reports a different path or cost, **stop and report it**. A lower floor can legitimately change which of two equal-cost routes wins, and that is a fact worth surfacing rather than absorbing.
 
-- [ ] **Step 6: Full suite and commit**
+- [x] **Step 6: Full suite and commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -233,7 +233,7 @@ git commit -m "fix(navigation): scale the heuristic per block closed, not per ed
 
 **This task decides whether the rest of the plan is worth doing.** The design's premise is that terrain reads dominate — each `Passable` runs two `collision.Gather` sweeps, and the frontier only does `log n` work on a slice. If the profile disagrees, the memo is the wrong optimization and **the plan stops here for a design revision**. Report the finding either way; do not proceed to Task 3 on a profile that does not support it.
 
-- [ ] **Step 1: Write the benchmarks**
+- [x] **Step 1: Write the benchmarks**
 
 Create `navigation/bench_test.go`:
 
@@ -299,12 +299,12 @@ func BenchmarkFindMaze(b *testing.B) {
 }
 ```
 
-- [ ] **Step 2: Run the benchmarks and record the numbers**
+- [x] **Step 2: Run the benchmarks and record the numbers**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -bench . -benchmem -run '^$' -count 5 | tee /tmp/nav-baseline.txt`
 Expected: three benchmark lines with ns/op, B/op, allocs/op.
 
-- [ ] **Step 3: Profile the long search**
+- [x] **Step 3: Profile the long search**
 
 Run:
 
@@ -316,11 +316,11 @@ devbox run -- go tool pprof -top -nodecount=25 /tmp/nav-cpu.out
 
 Read the top entries. The question to answer is narrow: **what fraction of time is under `terrain.Query.Passable`, `terrain.Query.Fits`, `terrain.Query.Ground`, and `collision.Gather`, versus under the frontier (`container/heap`, `queue.Less`, `nodeLess`) and the maps (`cameFrom`, `cost`)?**
 
-- [ ] **Step 4: Write the baseline document**
+- [x] **Step 4: Write the baseline document**
 
 Create `docs/navigation-baseline.md` with: the exact commands run, the Go version and machine, the five-run benchmark output, the pprof top-25, and one paragraph answering the question in Step 3 — does terrain reading dominate, yes or no, with the percentages that say so.
 
-- [ ] **Step 5: Commit, then STOP and report**
+- [x] **Step 5: Commit, then STOP and report**
 
 ```bash
 cd <minecraft-simulation>
@@ -348,7 +348,7 @@ Then report to the controller with the verdict:
 
 Deriving by hand which cells a `Passable` answer depended on would be wrong the first time a body's height changed. This decorator records what was actually read instead, which is what `sim.TickState` does one layer up with its `Dependency` list.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `navigation/recording_test.go`:
 
@@ -448,12 +448,12 @@ func TestRecordingViewDrivesATerrainQuery(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -run TestRecordingView -v`
 Expected: FAIL — `undefined: recordingView`.
 
-- [ ] **Step 3: Implement the recorder**
+- [x] **Step 3: Implement the recorder**
 
 Create `navigation/recording.go`:
 
@@ -521,12 +521,12 @@ func (r *recordingView) record(pos geom.BlockPos) {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -run TestRecordingView -v`
 Expected: PASS, five tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -552,7 +552,7 @@ git commit -m "feat(navigation): record the cells a terrain answer was computed 
 
 The seam moves `arriveAt` off `Capability` and behind the interface, so the memo can substitute an implementation without `Find` knowing.
 
-- [ ] **Step 1: Define the oracle**
+- [x] **Step 1: Define the oracle**
 
 Create `navigation/oracle.go`:
 
@@ -593,7 +593,7 @@ func (d directOracle) arriveAt(cell geom.BlockPos) (arrival, error) {
 }
 ```
 
-- [ ] **Step 2: Rename the existing gate and thread the oracle through**
+- [x] **Step 2: Rename the existing gate and thread the oracle through**
 
 In `navigation/search.go`:
 
@@ -609,19 +609,19 @@ In `navigation/search.go`:
 
 Change nothing else. Every cost, every edge, every ordering stays as it is.
 
-- [ ] **Step 3: Run the whole suite unchanged**
+- [x] **Step 3: Run the whole suite unchanged**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -v`
 Expected: PASS, every existing test, with no test file edited.
 
 If any test required a change, **stop and report** — a refactor that moves behaviour is not this task.
 
-- [ ] **Step 4: Confirm the benchmarks did not regress**
+- [x] **Step 4: Confirm the benchmarks did not regress**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -bench . -benchmem -run '^$' -count 5`
 Expected: within noise of Task 2's baseline. An interface call per cell is one indirection; if it costs more than a few percent, record the number in the report.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -645,7 +645,7 @@ git commit -m "refactor(navigation): ask terrain through an oracle the search ca
 
 Every cached answer is keyed by cell alone, which is sound only because one memo serves one `Capability` — a different body reads a different span and would need a different answer.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `navigation/memo_test.go`:
 
@@ -780,12 +780,12 @@ func TestMemoResetDropsEverything(t *testing.T) {
 var _ oracle = (*memoOracle)(nil)
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -run TestMemo -v`
 Expected: FAIL — `undefined: newMemoOracle`.
 
-- [ ] **Step 3: Implement the memo**
+- [x] **Step 3: Implement the memo**
 
 Create `navigation/memo.go`:
 
@@ -989,12 +989,12 @@ func (m *memoOracle) reset() {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -run TestMemo -v`
 Expected: PASS, six tests — including the negative control, which proves the invalidation test is testing something.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -1018,7 +1018,7 @@ git commit -m "feat(navigation): cache terrain answers and invalidate them by de
 
 `Find` currently builds its own oracle inline. To let `Plan` reuse the search with a different oracle, extract the loop into an unexported `search(ctx, o oracle, capability Capability, from, goal, budget)` that both call. `Find` keeps its exact signature and behaviour.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `navigation/planner_test.go`:
 
@@ -1193,12 +1193,12 @@ func TestResetDropsTheCache(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -run "TestPlan|TestObserve|TestWithoutObserve|TestNewPlanner|TestReset" -v`
 Expected: FAIL — `undefined: NewPlanner`.
 
-- [ ] **Step 3: Extract the search loop**
+- [x] **Step 3: Extract the search loop**
 
 In `navigation/search.go`, change `Find` so its body after the `ErrNoBody` guard becomes a call to a new unexported function, and move the loop into it:
 
@@ -1237,7 +1237,7 @@ func Find(
 }
 ```
 
-- [ ] **Step 4: Implement the Planner**
+- [x] **Step 4: Implement the Planner**
 
 Create `navigation/planner.go`:
 
@@ -1318,14 +1318,14 @@ func (p *Planner) Reset() {
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -v`
 Expected: PASS — every new planner test and every pre-existing test, unchanged.
 
 `TestPlanEqualsFind` is the one to watch. If it fails, the memo is changing an answer and that is a Critical defect, not a tuning problem: **stop and report the seed, the diverging edge, and both paths.**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -1350,7 +1350,7 @@ git commit -m "feat(navigation): add a Planner that caches terrain across search
 
 An unbounded memo is a leak — a bot walks a long way, and every cell it passes stays cached forever. Eviction order must never affect an answer, only whether it must be recomputed.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `navigation/memo_test.go`:
 
@@ -1419,12 +1419,12 @@ func TestMemoEvictionDoesNotChangeAnswers(t *testing.T) {
 
 Update the existing `newMemoOracle` calls in `memo_test.go` to pass a limit of `0`, meaning the default.
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -run TestMemoEvict -v`
 Expected: FAIL to compile — `newMemoOracle` takes three arguments.
 
-- [ ] **Step 3: Add the bound**
+- [x] **Step 3: Add the bound**
 
 In `navigation/memo.go`:
 
@@ -1462,12 +1462,12 @@ In `navigation/planner.go`, pass the option through:
 		memo:       newMemoOracle(view, facts, capability, options.MemoCells),
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -v`
 Expected: PASS, everything — including `TestPlanEqualsFind`, which now exercises a bounded cache.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -1493,7 +1493,7 @@ git commit -m "feat(navigation): bound the memo and evict in insertion order"
 
 A performance change without an after is as much a guess as one without a before.
 
-- [ ] **Step 1: Add the planner benchmarks**
+- [x] **Step 1: Add the planner benchmarks**
 
 Append to `navigation/bench_test.go`:
 
@@ -1564,15 +1564,15 @@ func BenchmarkPlanAfterChange(b *testing.B) {
 }
 ```
 
-- [ ] **Step 2: Run every benchmark and compare**
+- [x] **Step 2: Run every benchmark and compare**
 
 Run: `cd <minecraft-simulation> && devbox run -- go test ./navigation/ -bench . -benchmem -run '^$' -count 5`
 
-- [ ] **Step 3: Record the comparison**
+- [x] **Step 3: Record the comparison**
 
 Update `docs/navigation-baseline.md` with an "After" section: the same table, the delta against the baseline, and one paragraph of plain assessment. **If warm planning is not meaningfully faster than `Find`, say so.** A memo that does not pay is a finding, not a failure to hide — report it and let the controller decide whether Task 7's bound, the dependency-set size, or the design's premise is at fault.
 
-- [ ] **Step 4: Document the Planner**
+- [x] **Step 4: Document the Planner**
 
 In `README.md`, extend the `navigation` package-table row to mention the planner, leaving every other row untouched:
 
@@ -1598,7 +1598,7 @@ And under `### Fixed`, creating the section if it does not exist:
   not shortest. It now scales by the lowest cost per block closed.
 ```
 
-- [ ] **Step 5: Verify everything and commit**
+- [x] **Step 5: Verify everything and commit**
 
 ```bash
 cd <minecraft-simulation>
@@ -1615,3 +1615,29 @@ git commit -m "test(navigation): benchmark the planner and record the measured r
 - No D* Lite, deferred in the design with reasons.
 - `Plan` and `Find` return identical paths in every case here, because no abstraction is in play yet. The design's "valid but possibly suboptimal" contract for `Plan` only starts to apply when the cluster graph lands.
 - No change to `terrain`. Every seam added here lives in `navigation`.
+
+---
+
+## Execution record, 2026-08-18
+
+All eight tasks landed in `minecraft-simulation`, `32d753c` through `a51820d`.
+Every commit passed `task test` and `task lint`; Task 8 passed `task verify`.
+
+**Task 2's gate: terrain reading dominates, so the memo was worth building.**
+`terrain.Query.Passable` is 57.48% of `BenchmarkFindLong` cumulative and
+`arrivalAt` another 10.24%, against 6–8% for the frontier and under 9% for the
+search's own maps. `docs/navigation-baseline.md` has the numbers.
+
+**The measured result.** A warm `Plan` is 2.11× faster than a fresh `Find` on
+half the allocations. A cold `Plan` is 1.31× *slower* — filling the memo costs
+39,000 allocations `Find` never makes, so a caller that plans once should call
+`Find`. `Observe` of one changed cell costs nothing measurable: the replan comes
+out level with the warm case.
+
+Three deviations from the plan as written, all forced:
+
+| Deviation | Why |
+| --- | --- |
+| `Find` declares `var o oracle = directOracle{...}` rather than `o := directOracle{...}` | The plan's form converted to the interface at every `expand` call. `directOracle` is wider than a word, so that boxed it on the heap once per node expanded — `BenchmarkFindLong` went from 21,263 to 24,263 allocations. Declaring the variable as the interface converts once and returns the count to baseline |
+| `property_test.go`'s `search` helper is renamed `findPath` | Task 6 introduces a package-level `search`, and test files share the package. Two declarations of one name do not compile. The plan anticipated a local shadowing `search` but not an existing helper holding the name |
+| Task 7's memo bound was committed before Task 6's `Planner` | `revive` rejected `NewPlanner`'s `options` parameter as unused while `newMemoOracle` still took no limit: `unused-parameter: parameter 'options' seems to be unused`. Since lint gates every commit, `Options` could not exist un-wired in any committed state. Landing the bound first made the wiring available; both commits are self-consistent and the end state is what the plan specifies |
