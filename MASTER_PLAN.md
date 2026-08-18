@@ -38,7 +38,7 @@ here.
 | M6 | Finish the server migration and connect the headless client | `server`, `headless-minecraft` | Complete except **M6.4** (Microsoft device-code), postponed |
 | M7 | Immutable observed world state, wire-ordered reducers | `headless-minecraft` | Complete |
 | M8 | Deterministic 1.8.9 and 26.1.2 movement kernel, replay, consumer integration | `minecraft-simulation` | Complete (M8.1–M8.8) |
-| M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **In progress**: M9.1 complete, live check run 2026-08-17; M9.1b, M9.2, M9.4 and M9.5 complete; M9.3 blocked on a human capture; M9.6–M9.8 not started |
+| M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **In progress**: M9.1 complete, live check run 2026-08-17; M9.1b, M9.2, M9.4, M9.5 and M9.6 complete; M9.3 blocked on a human capture; M9.7–M9.8 not started |
 | M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **In progress**: reconciled 2026-08-18, task 1 of six done |
 | P4 | Put every consumer on the released `minecraft-protocol` and keep them there | `minecraft-protocol` | Complete |
 | M11 | Turn `server` into a framework | `server` | Complete (M11.1–M11.7) |
@@ -121,12 +121,25 @@ below are what is left of them.
   **1.8.9's handles now name a block state rather than a block** (sixteen per
   block, a name still resolving metadata zero), which is what gave a placement
   somewhere to put its answer and fixed a top slab colliding as a bottom one.
-- [ ] **M9.6 — attack, damage, knockback**
+- Closed, 2026-08-18: **M9.6 — attack, damage, knockback**
   ([plan](docs/superpowers/plans/2026-08-17-m9-6-attack-damage-knockback.md)).
-  Only the reconcile task is done. Damage attribution and the respawn
-  primitive have landed already, so what remains is reach validation,
-  cooldown, damage and knockback, the attack command and phase, and the
-  scenarios.
+  The combat rules landed in `minecraft-simulation/combat`, gated on a two-jar
+  corpus asked of each version's own jar, the same route M9.4 took: 1.8.9
+  answers full strikes and matches bit for bit outside the sine table's yaw
+  quantisation; 26.1.2 answers its charge curve exactly and its base impulse
+  within the width difference, because its hurt path demands a real
+  `ServerLevel` — the corpus's `Dropped` list states the smaller claim.
+  `client.Attack` refuses out-of-reach swings before the wire; the respawn
+  guard refuses a living player's respawn version-neutrally. The live
+  scenarios on both jars found that a 1.8.9 server syncs health only from
+  inside the handler the client's own idle reports drive — a silent client is
+  never told it died. `examples/orbit` fought, died, respawned, and returned
+  to its circle on a live 26.1.2 server; on 1.8.9 it orbits and cannot be
+  provoked, because protocol 47 names no attacker and orbit infers none —
+  which is `event/damage.go`'s recorded limit, not a gap. This entry used to
+  say M9.6 owned damage attribution and respawn; both had landed earlier —
+  attribution under M7, the respawn action with M8.8's follow-on — and what
+  M9.6 owned was the combat numbers and the scenarios that prove them.
 - [ ] **M9.7 — containers and inventory**
   ([plan](docs/superpowers/plans/2026-08-17-m9-7-containers-and-inventory.md)).
   Only the reconcile task is done. Task 1 is an audit whose failure is the

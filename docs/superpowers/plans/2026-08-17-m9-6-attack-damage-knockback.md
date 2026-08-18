@@ -1,5 +1,26 @@
 # M9.6 Attack, Damage, and Knockback Implementation Plan
 
+> **Status: complete, 2026-08-18.** The combat package shipped in
+> `minecraft-simulation` — reach to the nearest point of the box, the cooldown
+> with 1.8.9's recorded absence, damage and knockback at the games' own float
+> widths, and the attack phase — and `client.Attack` plus the respawn guard
+> shipped here. The gate is a two-jar corpus: 1.8.9 answers full strikes
+> through `EntityPlayer.attackTargetEntityWithCurrentItem` and matches
+> `combat.Damage` and `combat.Knockback` bit for bit wherever no bonus rides
+> the attacker's yaw; 26.1.2 answers its charge curve exactly and its base
+> impulse within the width difference, because its hurt path demands a real
+> `ServerLevel` — the smaller claim is stated in the corpus's `Dropped` list.
+> The live scenarios ran against both jars on 2026-08-18 and found one real
+> thing: a 1.8.9 server syncs health — the packet a death arrives in — only
+> from inside the handler the client's own idle reports drive, so a client
+> that goes silent between actions is never told it died. `examples/orbit`
+> fought, died, respawned, and returned to its circle on 26.1.2; on 1.8.9 it
+> orbits but cannot be provoked, because protocol 47 names no attacker and
+> orbit deliberately infers none. What waits on a `minecraft-simulation`
+> release: the client's transcribed reach constants are pinned by literals,
+> and the cross-module agreement test activates when the released module
+> first carries `combat`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or execute this plan inline one task at a time. Keep every checkbox current.
 
 **Goal:** Match vanilla on reach validation, damage, knockback, death, and respawn on both Java Edition 1.8.9 and 26.1.2 — including the attack cooldown, which exists on 26.1.2 and does not exist on 1.8.9 — and prove the respawn path end to end. (Reconciled: the respawn *primitive* landed with M8.8's follow-on; what is missing is the scenario that proves it against a real server, and the reach and cooldown rules `examples/orbit` needs before it can fight rather than flee.)
@@ -242,7 +263,7 @@ type Reach struct {
 func InReach(eye geom.Vec3, target geom.AABB, r float64) bool
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestReachIsMeasuredToTheNearestPointOfTheBox(t *testing.T) {
@@ -289,22 +310,22 @@ func TestEachProfileDeclaresItsOwnReach(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./combat/ -v`
 
-- [ ] **Step 3: Confirm the reach numbers against the game**
+- [x] **Step 3: Confirm the reach numbers against the game**
 
 Do not take them from memory. Measure them from the captured corpus in Task 6,
 or dump them the way M8.1 dumped the physics constants, and record the source in
 the doc comment. If one version's number can only be measured rather than
 dumped, say so — the same weaker-gate note M8.7's plan requires.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
-- [ ] **Step 5: Run the tests and gates**
+- [x] **Step 5: Run the tests and gates**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd minecraft-simulation
@@ -351,7 +372,7 @@ type Cooldown interface {
 func NoCooldown(reason string) Cooldown
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestVersion1_8_9HasNoCooldownAndSaysWhy(t *testing.T) {
@@ -412,16 +433,16 @@ func TestChargeIsClampedAtBothEnds(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `attackSpeed` comes from the generated attribute data
 (`generated/java/v26_1/attributes.go`), not from a literal.
 
-- [ ] **Step 4: Run the tests and gates**
+- [x] **Step 4: Run the tests and gates**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd minecraft-simulation
@@ -478,7 +499,7 @@ func Damage(s Strike) float64
 func Knockback(from, to geom.Vec3, s Strike, base geom.Vec3) geom.Vec3
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestAFullyChargedStrikeBeatsAnUnchargedOne(t *testing.T) {
@@ -558,9 +579,9 @@ func TestSprintAndKnockbackEnchantmentBothIncreaseIt(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
-- [ ] **Step 3: Derive the constants from the game**
+- [x] **Step 3: Derive the constants from the game**
 
 Same route as M8.1 and M9.4: dump or measure, record the source, and mark
 anything unverified as unverified in the doc comment rather than in a note
@@ -568,11 +589,11 @@ somebody will not read. Assume any constant in this path is a widened Java
 `float` until checked — that was M8.1's finding for the motion constants and
 nothing suggests combat is different.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
-- [ ] **Step 5: Run the tests and gates**
+- [x] **Step 5: Run the tests and gates**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd minecraft-simulation
@@ -608,7 +629,7 @@ func (Attack) CommandKind() string { return "combat.attack" }
 func Phase() sim.Phase
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestAnOutOfReachAttackIsRefusedWithAReason(t *testing.T) {
@@ -703,13 +724,13 @@ func TestTheCooldownGatesRepeatedAttacksOn26_1_2Only(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
-- [ ] **Step 4: Run the tests and gates**
+- [x] **Step 4: Run the tests and gates**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd minecraft-simulation
@@ -746,7 +767,7 @@ The reach check is what makes this task M9.6's rather than the primitive's: a
 client that sends an attack the server will reject is a client an anti-cheat
 notices, so the refusal happens here, against Task 1's numbers.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestAnAttackSwingsAndHits(t *testing.T) {
@@ -839,16 +860,16 @@ func TestRespawnAfterDeathReturnsThePlayerToPlay(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Respawn is version-owned at the wire — 47 sends a client-status packet, 775
 sends its own — and version-neutral in the guard that refuses it while alive.
 
-- [ ] **Step 4: Run the tests and gates**
+- [x] **Step 4: Run the tests and gates**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/attack.go client/respawn.go client/*_test.go internal/adapter/
@@ -869,7 +890,7 @@ the client's reach must be the stricter of the two."
 - Modify: `headless-minecraft/MASTER_PLAN.md`
 - Modify: `headless-minecraft/docs/superpowers/specs/2026-08-16-orbit-example-design.md`
 
-- [ ] **Step 1: Capture the corpus on both versions**
+- [x] **Step 1: Capture the corpus on both versions**
 
 Attack a passive mob at the reach boundary and just beyond it; attack with and
 without sprint; attack with a knockback enchantment; attack twice in consecutive
@@ -883,7 +904,7 @@ trajectory, and that is the comparator M9.2 built for trajectories. It is
 package, its own reconciliation re-scoped the proposal into `mctest`, and M9.2
 built it there. `trace.ToleranceFor` supplies the per-version tolerance.
 
-- [ ] **Step 2: Declare the scenarios, with the cooldown one absent on 1.8.9**
+- [x] **Step 2: Declare the scenarios, with the cooldown one absent on 1.8.9**
 
 ```go
 conform.Scenario{
@@ -904,9 +925,9 @@ checks assert on what the player did rather than on who the server named,
 because protocol 47 sends no attacker. That is a smaller claim than the 775
 lane's, and it should read as smaller.
 
-- [ ] **Step 3: Run the gate, fix what it names**
+- [x] **Step 3: Run the gate, fix what it names**
 
-- [ ] **Step 4: Unblock `examples/orbit`**
+- [x] **Step 4: Unblock `examples/orbit`**
 
 Reconciled: orbit is not blocked on respawn — it already sends
 `version.ActionRespawn` and tests that it did. What it says blocks it is attack:
@@ -916,7 +937,7 @@ plan plus this stage's reach and cooldown rules, and the step is to let it fight
 and run it against both servers. If it still cannot, say what is still missing
 rather than marking the milestone complete around it.
 
-- [ ] **Step 5: Correct the master plan's stale claim**
+- [x] **Step 5: Correct the master plan's stale claim**
 
 It says M9.6 owns respawn *and* damage attribution. Both had landed before this
 stage started — attribution in `event/damage.go` under M7, the respawn action
@@ -924,14 +945,14 @@ with M8.8's follow-on. What M9.6 owns is the combat numbers and the scenarios
 that prove them. Fix the line rather than leaving completed items listed as
 outstanding.
 
-- [ ] **Step 6: Record the milestone**
+- [x] **Step 6: Record the milestone**
 
 Write what the work found. Candidates: whether the reach numbers were dumpable
 or only measurable; whether the cooldown charge curve matched on the first try;
 how much of the damage formula rested on unverified constants; and whether
 `examples/orbit` ran end to end on both versions or only one.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git commit -m "docs(plan): close M9.6, and what the combat corpus found"
