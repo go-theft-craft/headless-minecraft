@@ -74,6 +74,10 @@ type Server struct {
 	cmd  *exec.Cmd
 	port int
 	dir  string
+	// console is the server's own command line. It is opened before the process
+	// starts because that is the only time a pipe can be attached, which is the
+	// whole reason it is kept here rather than asked for when it is needed.
+	console io.WriteCloser
 
 	mu    sync.Mutex
 	lines []string
@@ -164,7 +168,12 @@ func Start(t *testing.T, options Options) *Server {
 	}
 	cmd.Stderr = cmd.Stdout
 
-	server := &Server{cmd: cmd, port: options.Port, dir: dir}
+	console, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatalf("open the server's console: %v", err)
+	}
+
+	server := &Server{cmd: cmd, port: options.Port, dir: dir, console: console}
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start the server: %v", err)
 	}
@@ -242,10 +251,8 @@ func (s *Server) Stop() {
 
 	// The server's own stop command, over its console. A server killed outright
 	// can leave a region file half written, and the next run would inherit it.
-	if stdin, err := s.cmd.StdinPipe(); err == nil {
-		_, _ = io.WriteString(stdin, "stop\n")
-		_ = stdin.Close()
-	}
+	_, _ = io.WriteString(s.console, "stop\n")
+	_ = s.console.Close()
 
 	select {
 	case <-done:
@@ -253,6 +260,57 @@ func (s *Server) Stop() {
 		_ = s.cmd.Process.Kill()
 		<-done
 	}
+}
+
+// Console runs one command on the server, as the console operator does.
+//
+// It is how a test makes the server act of its own accord — teleport a player,
+// kick one — rather than reacting to something the client sent. Those are the
+// behaviours a client-driven test cannot reach at all: a server-initiated
+// teleport is not something a client can ask for.
+//
+// The command carries no leading slash. The console does not take one.
+func (s *Server) Console(command string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.stopped {
+		return fmt.Errorf("%w: it has been stopped", ErrServer)
+	}
+	if _, err := io.WriteString(s.console, command+"\n"); err != nil {
+		return fmt.Errorf("%w: console %q: %w", ErrServer, command, err)
+	}
+
+	return nil
+}
+
+// Kill ends the server without letting it say goodbye.
+//
+// It is separate from Stop, and it is not a faster Stop: it is the case a
+// clean shutdown cannot produce. A stopped server disconnects its clients with
+// a reason, and a client that reads one is a client taking an ordinary path. A
+// killed one leaves the connection to fail on its own, which is what a dropped
+// route or a crashed process looks like from the other end, and it is the only
+// way to test what a client does with work the server will never confirm.
+//
+// A server killed this way may leave a region file half written. That is
+// acceptable in a test whose world is a temporary directory, and it is why this
+// is not what Stop does.
+func (s *Server) Kill() {
+	s.mu.Lock()
+	if s.stopped {
+		s.mu.Unlock()
+
+		return
+	}
+	s.stopped = true
+	s.mu.Unlock()
+
+	if s.cmd.Process == nil {
+		return
+	}
+	_ = s.cmd.Process.Kill()
+	_ = s.cmd.Wait()
 }
 
 // classpathFor joins a jar with every jar in a directory tree.
