@@ -1,4 +1,4 @@
 github.com/go-theft-craft/minecraft-protocol v0.8.0 h1:nJsW9ApPwfgBP5ziy11A4UQh1RGjy3K4Y3WZSj2AQG4=
 github.com/go-theft-craft/minecraft-protocol v0.8.0/go.mod h1:jEtrfISpmos7X2YQhXjyRcBFmSA00sLSGiF1poU7efs=
-github.com/go-theft-craft/minecraft-simulation v0.2.0 h1:vlSFBIHgvIwVOE32OJY3QQ8tRYDpZWKzlVKPBQv091w=
-github.com/go-theft-craft/minecraft-simulation v0.2.0/go.mod h1:htVcXqkk+xmnO1oXY9nn1UM6OPnJqmZX1GhA5WvuIMs=
+github.com/go-theft-craft/minecraft-simulation v0.2.1-0.20260818172105-5d344056065b h1:SuCCGb2fSMCf8xlgLotJVZc0NeI0VU/BI2AIBD+CTdc=
+github.com/go-theft-craft/minecraft-simulation v0.2.1-0.20260818172105-5d344056065b/go.mod h1:htVcXqkk+xmnO1oXY9nn1UM6OPnJqmZX1GhA5WvuIMs=

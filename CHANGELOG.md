@@ -121,6 +121,12 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
   the stream discarded that packet when its queue closed with the transport.
   This client saw a bare EOF instead of the server's reason, rarely and only
   under load — about three sessions in eight hundred on a busy machine.
+- `examples/orbit`: a bot in a pool swims out of it rather than hopping across
+  it. The planner offered a gap-crossing jump from a cell the body was swimming
+  in, so the route out of water was three jumps no body can make; a swimmer
+  cannot push off anything, and `minecraft-simulation` says so as of the pin
+  below. That defect only became visible from here once the bot started
+  performing the jumps it was routed, which is the entry above.
 - `examples/orbit`: the bot jumps the edges it was routed over. The planner
   crosses a one-block rise with `EdgeStep` and a hole with `EdgeJumpGap`, and the
   example flattened a path to bare positions — so the edge kind was lost, every
