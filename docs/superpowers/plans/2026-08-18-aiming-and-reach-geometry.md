@@ -1,31 +1,30 @@
 # Aiming and reach geometry Implementation Plan
 
-> **Status: six of seven tasks complete; task 5, the release, is open and it
-> matters, 2026-08-18.** The geometry landed in `minecraft-simulation/geom`
-> (`57a0b56`): `AABB.Nearest` and `AABB.Reaches`, the example's vector
-> arithmetic as `Vec3` methods, `Yaw`, `Pitch`, and `Look`, and `Behind`,
-> `Lead`, `Tangent`, and `Away`. `examples/orbit` deleted its own `Vec3` and
-> sends a computed pitch (`7cc675d`).
+> **Status: complete, 2026-08-18.** The geometry landed in
+> `minecraft-simulation/geom` (`57a0b56`): `AABB.Nearest` and `AABB.Reaches`,
+> the example's vector arithmetic as `Vec3` methods, `Yaw`, `Pitch`, and `Look`,
+> and `Behind`, `Lead`, `Tangent`, and `Away`. `examples/orbit` deleted its own
+> `Vec3` and sends a computed pitch (`7cc675d`). `minecraft-simulation` v0.2.0
+> is tagged, pushed, and served by the proxy, and both `headless-minecraft`
+> modules require it (`d3b8a0a`).
 >
-> **Tasks 6 and 7 ran before task 5, which this plan told them not to do.** Its
-> words were: do not start task 6 before task 5 has pushed a tag, because
-> `headless-minecraft` is public and a `replace` directive in it is not
-> acceptable. No `replace` was added — a `go.work` was used instead, which is
-> the same hazard wearing a different hat, because the workspace is gitignored
-> and makes every local gate pass against code no consumer can resolve.
+> **Tasks 6 and 7 ran before task 5, which this plan told them not to do, and
+> the cost was three hours of a red `main`.** The instruction was: do not start
+> task 6 before task 5 has pushed a tag, because `headless-minecraft` is public
+> and a `replace` directive in it is not acceptable. No `replace` was added. A
+> `go.work` was used instead, which is the same hazard wearing a different hat,
+> because the workspace is gitignored and makes every local gate pass against
+> code no consumer can resolve.
 >
-> The result is not theoretical, and it is worse than an absent tag.
-> `minecraft-simulation`'s only tag is `v0.1.0`, which is what
-> `headless-minecraft`'s `go.mod` and `examples/go.mod` still require, and every
-> gate in that repository's `Taskfile.yml` runs under `GOWORK=off` on purpose,
-> so the workspace does not paper over a stale pin. **`task test`, `task
-> verify`, and `task build` are therefore red on `main` right now**, with
-> `undefined: navigation.EdgePlace`, `EdgePillar`, `EdgeJumpGap`,
-> `EdgeWaterDrop`, `EdgeClimb`, `EdgeDoor`, and `Vec3.HorizontalDistance` and
-> `Toward` undefined in `behaviour/`. The gate was built to catch exactly this
-> and it did; what did not happen is anyone reading it. Task 5 and the two bumps
-> that follow it are what close it, and nothing else in this pillar should be
-> started first.
+> It did not stay theoretical. `go.mod` pinned `minecraft-simulation` v0.1.0,
+> which had none of the six edge kinds or two `Vec3` methods `behaviour/`
+> imports, and every gate in that repository's `Taskfile.yml` runs `GOWORK=off`
+> on purpose — so `task test`, `task verify`, and `task build` all failed from
+> the moment `behaviour` landed until the tag was cut. The gate was built to
+> catch exactly this and it did. What did not happen is anyone reading it. The
+> lesson is the ordering, not the tag: a release step placed before its
+> consumers in a plan is load-bearing, and a workspace is not a substitute for
+> it.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -672,7 +671,7 @@ git commit -m "feat(geom): add Behind, Lead, Tangent, and Away"
 
 `headless-minecraft` is public and a `replace` directive in it is not acceptable, which the navigation plan of 2026-08-17 records. Tasks 6 and 7 cannot start until this one has pushed.
 
-- [ ] **Step 1: Add the changelog entry**
+- [x] **Step 1: Add the changelog entry**
 
 Under a new `## v0.2.0` heading, in the style the existing entries use:
 
@@ -688,12 +687,12 @@ Under a new `## v0.2.0` heading, in the style the existing entries use:
   moved from `headless-minecraft/examples/orbit`.
 ```
 
-- [ ] **Step 2: Run the release gate**
+- [x] **Step 2: Run the release gate**
 
 Run: `cd minecraft-simulation && devbox run -- task release:check`
 Expected: PASS.
 
-- [ ] **Step 3: Commit and tag**
+- [x] **Step 3: Commit and tag**
 
 ```bash
 git add CHANGELOG.md
@@ -702,7 +701,7 @@ git tag v0.2.0
 git push origin main --tags
 ```
 
-- [ ] **Step 4: Confirm the module proxy serves it**
+- [x] **Step 4: Confirm the module proxy serves it**
 
 Run: `cd minecraft-simulation && GOPROXY=https://proxy.golang.org go list -m github.com/go-theft-craft/minecraft-simulation@v0.2.0`
 Expected: the version prints. If it does not, wait and retry; do not proceed to task 6 until it does.

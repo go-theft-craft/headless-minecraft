@@ -13,14 +13,14 @@
 > have since run, so what is missing is a recorded session with a rod in it, not
 > the instrument.
 >
-> **This package does not compile under the repository's own gates.** It imports
-> `navigation.EdgePlace`, `EdgePillar`, `EdgeJumpGap`, `EdgeWaterDrop`,
-> `EdgeClimb`, `EdgeDoor`, and `geom.Vec3.Toward`, none of which is in
-> `minecraft-simulation` v0.1.0, which is what `go.mod` pins. Every task target
-> runs `GOWORK=off`, so `task test` fails on `main` and the local `go.work` is
-> the only reason the work looked finished. The fix is the
-> [aiming plan](2026-08-18-aiming-and-reach-geometry.md)'s task 5 and the bumps
-> after it, not anything in this plan.
+> For three hours this package did not compile under the repository's own gates.
+> It imports `navigation.EdgePlace`, `EdgePillar`, `EdgeJumpGap`,
+> `EdgeWaterDrop`, `EdgeClimb`, `EdgeDoor`, and `geom.Vec3.Toward`, none of which
+> was in `minecraft-simulation` v0.1.0, which is what `go.mod` pinned. Every task
+> target runs `GOWORK=off`, so `task test` failed on `main` while the local
+> `go.work` made the work look finished. Closed by v0.2.0 and the two bumps in
+> `d3b8a0a`; the ordering that caused it is recorded in the
+> [aiming plan](2026-08-18-aiming-and-reach-geometry.md).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

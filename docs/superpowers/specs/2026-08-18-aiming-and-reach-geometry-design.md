@@ -81,6 +81,10 @@ cannot use them until a **new** `minecraft-simulation` release carries them.
 This design therefore spans two repositories and a release between them, and
 the plan sequences it that way rather than discovering it at the import.
 
+That release is v0.2.0, cut 2026-08-18. It was cut after the consumers were
+written rather than before, which the plan forbade and which cost three hours of
+a red `main`; the plan records what that looked like.
+
 ## Functions
 
 All angles are degrees in the protocol's own convention, which is what `Yaw`
