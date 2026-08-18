@@ -707,293 +707,153 @@ can disagree, and a disagreement is the informative outcome."
 
 ## Task 5: The correction scenario
 
-M8.8's gate is zero corrections, so M8.8 cannot test what a correction does.
-This can.
+**Rewritten by Task 0.** The plan's tests were written against `c.Predicted()`
+and a correction event, neither of which exists. Corrections are a callback on
+`predict.Options`, and the predicted body is on the loop.
 
 **Files:**
-- Create: `headless-minecraft/client/correction_test.go`
-- Modify: `headless-minecraft/examples/scenario/main.go`
+- Create: `headless-minecraft/predict/correction_test.go`
+- Create: `headless-minecraft/client/vanilla_scenario_test.go`
+- Modify: `headless-minecraft/predict/predict.go`
 
-**Interfaces:**
-- Consumes: `predict.Loop`, `predict.Correction`, `client.Do`, `vanilla.Start`.
+- [x] **Step 1: Write the failing test**
 
-- [ ] **Step 1: Write the failing test**
+Two, in two places. Offline, in `predict`: a callback that asks the loop what it
+now believes, which is the first thing any caller does with a correction. Live,
+in the vanilla lane: a position no player could have walked to, sent out of
+band, and the server's answer to it.
 
-```go
-func TestACorrectionReconcilesRatherThanAccumulates(t *testing.T) {
-	t.Parallel()
+- [x] **Step 2: Run it to verify it fails**
 
-	for _, version := range vanillaVersions(t) {
-		t.Run(version.Name, func(t *testing.T) {
-			server := vanilla.Start(t, version.Options)
-			c := connected(t, server)
+It deadlocked, which is a sharper answer than a failed assertion. `OnCorrection`
+was called from `reconcile`, which runs under the loop's own mutex, so
+`Predicted()` inside it blocked forever on a lock its own goroutine held.
 
-			corrections := subscribe(t, c, event.DomainPlayer)
+- [x] **Step 3: Implement the reconciliation**
 
-			// Move somewhere the server will refuse: through a wall, fast
-			// enough to trip "moved too quickly". The server answers with an
-			// absolute position, and the client must adopt it rather than
-			// treating it as one more delta on top of where it thought it was.
-			if err := c.Do(t.Context(), client.ActionMove{X: 10_000, Y: 64, Z: 0}); err != nil {
-				t.Fatalf("Do: %v", err)
-			}
+`reconcile` now reports the correction instead of publishing it, and `step`
+publishes after releasing the lock and before simulating the tick that follows.
+That is the ordering the plan asked for, made testable: at the moment the
+callback runs, the adoption has happened and the next tick has not, so
+`Predicted()` answers with the position the correction names.
 
-			correction := awaitCorrection(t, corrections)
-			settled := awaitSettled(t, c)
+- [x] **Step 4: Run the tests and gates**
 
-			if distance(settled.Position, correction.To) > 1e-9 {
-				t.Fatalf("after a correction to %v the client settled at %v; a "+
-					"correction is absolute and adopting it as a delta doubles "+
-					"every future one", correction.To, settled.Position)
-			}
-			if got := server.LogLines("moved wrongly"); len(got) > 1 {
-				t.Fatalf("the server corrected %d times; one correction that is "+
-					"not adopted becomes a correction loop", len(got))
-			}
-		})
-	}
-}
+- [x] **Step 5: Commit**
 
-func TestACorrectionIsPublishedBeforeTheNextTickIsPredicted(t *testing.T) {
-	t.Parallel()
+### What this scenario can and cannot prove
 
-	// Ordering matters: a caller that reads Predicted() after a correction
-	// event must see the corrected position, not the one the correction
-	// replaced. Publishing after the next prediction would make the event
-	// describe a world that no longer exists.
-	server := vanilla.Start(t, defaultOptions(t))
-	c := connected(t, server)
-	corrections := subscribe(t, c, event.DomainPlayer)
+Recorded because it changes what the test asserts, and because the plan assumed
+otherwise.
 
-	if err := c.Do(t.Context(), client.ActionMove{X: 10_000, Y: 64, Z: 0}); err != nil {
-		t.Fatalf("Do: %v", err)
-	}
+A server that refuses a move puts the player back at the last position it
+accepted — and that position is the one the client itself reported on its
+previous tick. So `From` equals `To`, exactly, and nothing is adopted because
+nothing disagreed. The first run made this visible twice over: with the client
+standing still, the server corrected it to where it already was, the snapshot
+did not change, and the loop saw no correction at all. Walking first is what
+makes a rejection observable, and it is the same reason M8.8 counts corrections
+from the wire rather than from the loop.
 
-	correction := awaitCorrection(t, corrections)
-	if distance(c.Predicted().Position, correction.To) > 1e-9 {
-		t.Fatalf("Predicted() = %v at the moment the correction named %v",
-			c.Predicted().Position, correction.To)
-	}
-}
-```
-
-- [ ] **Step 2: Run it to verify it fails**
-
-Run: `cd headless-minecraft && devbox run -- go test ./client/ -run Correction -v`
-Expected: FAIL.
-
-- [ ] **Step 3: Implement the reconciliation**
-
-A correction replaces the predicted position and clears accumulated motion; it
-does not add to it. Where the protocols differ — 775's position packet carries
-per-axis relativity flags and a teleport ID that must be confirmed, 47's carries
-a bitmask and no confirmation — the difference lives in the version adapter, not
-in the loop. A loop that branched on protocol would make every later mechanic
-branch too.
-
-- [ ] **Step 4: Run the tests and gates**
-
-Run: `cd headless-minecraft && devbox run -- task verify`
-Expected: PASS on both versions.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add client/correction_test.go client/
-git commit -m "feat(client): adopt a server correction rather than accumulating it
-
-M8.8's gate is zero corrections, so it can never test this path. Provoke
-one deliberately and require the client to settle where the server said,
-on both protocols."
-```
+What survives, and is asserted: the refused move never enters the prediction,
+one refusal produces one answer, and the client ends where the server says it
+is. The claim that a correction is *adopted* needs a server-chosen destination,
+and that is Task 6.
 
 ---
 
 ## Task 6: The teleport scenario
 
-A teleport differs from a correction in intent and, on 775, in mechanism: it
-carries a teleport ID the client must confirm, and a server that never receives
-the confirmation will keep resending.
+**Rewritten by Task 0.** The 775 confirmation already exists — it is in
+`internal/adapter/v26_1/handlers.go` and fires on every server-initiated
+position. This task is a test against that claim, not a feature.
 
 **Files:**
-- Create: `headless-minecraft/client/teleport_test.go`
+- Modify: `headless-minecraft/client/vanilla_scenario_test.go`
+- Modify: `headless-minecraft/internal/vanilla/server.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Give the test server a console**
 
-```go
-func TestATeleportIsConfirmedOnceOn775(t *testing.T) {
-	t.Parallel()
+A teleport is something the server does of its own accord, so a client-driven
+test cannot reach it. `vanilla.Server.Console` runs a command the way an
+operator does.
 
-	// Protocol 775 pairs a position packet with a teleport ID and expects a
-	// serverbound confirmation. A client that does not send it looks stuck to
-	// the server, which resends; a client that sends it twice desynchronises
-	// the ID sequence. Once, with the ID the server named.
-	server := vanilla.Start(t, options775(t))
-	c := connected(t, server)
+Writing it found a defect in the shutdown path: `Stop` asked for the process's
+stdin pipe *after* the process had started, which cannot work, so the "stop"
+command was never sent and every server in the suite was killed twenty seconds
+later by the timeout the comment describes as the fallback. The pipe is now
+opened before the process starts and kept, which is what both `Console` and
+`Stop` needed.
 
-	teleportPlayer(t, server, geom.Vec3{X: 100, Y: 70, Z: 100})
+- [x] **Step 2: Write the failing test**
 
-	confirms := awaitConfirmations(t, c)
-	if len(confirms) != 1 {
-		t.Fatalf("sent %d teleport confirmations, want exactly 1", len(confirms))
-	}
-	if got := server.LogLines("moved wrongly"); len(got) != 0 {
-		t.Fatalf("the server complained after a teleport: %v", got)
-	}
-}
+- [x] **Step 3: Run it**
 
-func TestATeleportOn47NeedsNoConfirmation(t *testing.T) {
-	t.Parallel()
+- [x] **Step 4: Run the tests and gates**
 
-	// The 1.8.9 counterpart, stated rather than skipped. Protocol 47's
-	// position packet carries no teleport ID; the client answers with its own
-	// position instead. A shared implementation that sent a confirmation here
-	// would be sending a packet that does not exist.
-	server := vanilla.Start(t, options47(t))
-	c := connected(t, server)
+- [x] **Step 5: Commit**
 
-	teleportPlayer(t, server, geom.Vec3{X: 100, Y: 70, Z: 100})
+### What execution changed
 
-	settled := awaitSettled(t, c)
-	if distance(settled.Position, geom.Vec3{X: 100, Y: 70, Z: 100}) > 1.0/32 {
-		t.Fatalf("settled at %v after a teleport to (100,70,100)", settled.Position)
-	}
-}
-
-func TestATeleportDoesNotReplayQueuedInput(t *testing.T) {
-	t.Parallel()
-
-	// Input queued before a teleport describes a world that no longer exists.
-	// Applying it afterwards walks the player off the destination, which reads
-	// as a physics bug and is not one.
-	server := vanilla.Start(t, defaultOptions(t))
-	c := connected(t, server)
-
-	queueInput(t, c, forwardFor(20))
-	teleportPlayer(t, server, geom.Vec3{X: 100, Y: 70, Z: 100})
-
-	settled := awaitSettled(t, c)
-	if distance(settled.Position, geom.Vec3{X: 100, Y: 70, Z: 100}) > 1.0 {
-		t.Fatalf("settled at %v; queued pre-teleport input was replayed after it",
-			settled.Position)
-	}
-}
-```
-
-- [ ] **Step 2: Run it to verify it fails**
-
-Run: `cd headless-minecraft && devbox run -- go test ./client/ -run Teleport -v`
-Expected: FAIL.
-
-- [ ] **Step 3: Implement**
-
-The confirmation is version-owned and belongs in the 775 adapter. The
-input-queue flush is version-neutral and belongs in the prediction loop.
-
-- [ ] **Step 4: Run the tests and gates**
-
-Run: `cd headless-minecraft && devbox run -- task verify`
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add client/teleport_test.go client/ internal/adapter/
-git commit -m "feat(client): confirm a 775 teleport once and flush queued input
-
-47 has no teleport ID and needs no confirmation; sending one would be
-sending a packet that does not exist. The confirmation is version-owned;
-the queue flush is not."
-```
+**The confirmation count is measured from the teleport, not from the session.**
+The first run reported two confirmations for one teleport, and both were
+correct: 775's placing position during login carries a teleport identifier of
+its own and is confirmed like any other. Counting over the whole session counts
+the login's. The test now discards everything before the teleport, which is what
+lets it assert exactly one rather than at least one — and "exactly" is the
+assertion worth having, since none and two are opposite failures.
 
 ---
 
 ## Task 7: Disconnect mid-action
 
+**Rewritten by Task 0.** `vanilla.Server` had no `Kill`, and `Wait` does not
+return an error for a session that ended.
+
 **Files:**
-- Create: `headless-minecraft/client/disconnect_action_test.go`
+- Modify: `headless-minecraft/client/vanilla_scenario_test.go`
+- Modify: `headless-minecraft/client/close.go`, `client/loop.go`, `client/client.go`
+- Modify: `headless-minecraft/client/internal/fixture/server.go`
+- Modify: `headless-minecraft/client/connect_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
-```go
-func TestADisconnectMidActionAppliesNothingUnconfirmed(t *testing.T) {
-	t.Parallel()
+- [x] **Step 2: Run it to verify it fails**
 
-	// A change set is computed against a revision. If the connection dies
-	// before the server confirms that revision, applying the change set writes
-	// a world state the server never agreed to, and a reconnecting caller
-	// starts from a fiction.
-	for _, version := range vanillaVersions(t) {
-		t.Run(version.Name, func(t *testing.T) {
-			server := vanilla.Start(t, version.Options)
-			c := connected(t, server)
+It failed on both halves, and only one of them was a defect.
 
-			before := c.World().Player.Position
-			queueInput(t, c, forwardFor(20))
-			server.Kill()
+- [x] **Step 3: Implement**
 
-			if err := c.Wait(); err == nil {
-				t.Fatal("Wait returned nil after the server died")
-			}
+**The defect: a server that dies without saying so published nothing at all.**
+`publishDisconnect` reported a transport loss only when the read loop stopped
+with an error. A killed server sends no disconnect packet and resets nothing —
+the operating system closes the socket, the client reads EOF, and the loop stops
+with no error. So the one ending a subscriber has no other way to learn about
+was the one ending that was never reported. `event.DisconnectByTransport` is
+documented as "a connection loss with no disconnect packet", which is exactly
+this case.
 
-			after := c.World().Player.Position
-			if distance(before, after) > 1.0 {
-				t.Fatalf("the world moved from %v to %v after the connection died; "+
-					"unconfirmed prediction was applied", before, after)
-			}
-		})
-	}
-}
+The fix reports on what has already been said rather than on whether there was
+an error: the loop records that the server gave its own reason, and the
+transport report at the end publishes only when nothing did. A kick still
+reports once.
 
-func TestADisconnectMidActionPublishesWhatItHad(t *testing.T) {
-	t.Parallel()
+**Not a defect: `Wait` returning nil.** Its contract is that a connection ending
+is not this client's failure, so it reports nil however the session ended. The
+plan assumed an error. What the test asserts instead is that `Wait` returns at
+all — a caller blocked forever on a server that is gone has no way to find out
+that it is gone.
 
-	// The opposite failure: dropping events the client already observed.
-	// A caller reading the subscription must see everything up to the
-	// disconnect, then the disconnect, then nothing.
-	server := vanilla.Start(t, defaultOptions(t))
-	c := connected(t, server)
-	events := subscribe(t, c, event.DomainSession|event.DomainPlayer)
+The offline lane needed a fixture for this, because the one that existed sets a
+zero linger and sends a reset, which gives the client an error to report from.
+`ThenHangUp` closes gracefully instead, which is what a killed server leaves
+behind. Without it the defect is invisible to `task verify`, and the 26.1.2
+server happens to reset rather than hang up — so on that lane alone the test
+would have passed over the bug.
 
-	queueInput(t, c, forwardFor(20))
-	server.Kill()
-	_ = c.Wait()
+- [x] **Step 4: Run the tests and gates**
 
-	names := drainNames(t, events)
-	if !slices.Contains(names, event.NameSessionDisconnected) {
-		t.Fatalf("events = %v, want a session.disconnected", names)
-	}
-	if last := names[len(names)-1]; last != event.NameSessionClosed &&
-		last != event.NameSessionDisconnected {
-		t.Fatalf("last event = %q, want the session's end; something published "+
-			"after the connection died", last)
-	}
-}
-```
-
-- [ ] **Step 2: Run it to verify it fails**
-
-Run: `cd headless-minecraft && devbox run -- go test ./client/ -run DisconnectMidAction -v`
-Expected: FAIL.
-
-- [ ] **Step 3: Implement**
-
-The prediction loop stops on loop failure, discards its uncommitted change set,
-and lets the existing close path publish. `Client.Close` and `loopFinished`
-already own the publish ordering; do not add a second path.
-
-- [ ] **Step 4: Run the tests and gates**
-
-Run: `cd headless-minecraft && devbox run -- task verify`
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add client/disconnect_action_test.go client/
-git commit -m "feat(client): discard unconfirmed prediction on disconnect
-
-A change set computed against a revision the server never confirmed
-must not be applied. Everything already observed still publishes."
-```
+- [x] **Step 5: Commit**
 
 ---
 
