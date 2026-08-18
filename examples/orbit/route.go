@@ -225,9 +225,23 @@ func NewNavigator(legacy bool, bounds Bounds) (Navigator, error) {
 	}
 
 	body := terrain.Body{
-		HalfWidth:  (state.Box.MaxX - state.Box.MinX) / 2,
-		Height:     state.Box.MaxY - state.Box.MinY,
-		StepHeight: state.StepHeight,
+		HalfWidth: (state.Box.MaxX - state.Box.MinX) / 2,
+		Height:    state.Box.MaxY - state.Box.MinY,
+		// Zero, and not the profile's own step height.
+		//
+		// The box is measured off the game because the game is right about it.
+		// The step height is not a fact about the player, it is a claim about
+		// this bot, and the claim would be false: the example reports a
+		// position and simulates no body, so it has nothing that rises. Passing
+		// the profile's 0.6 told the planner it could route a one-block step,
+		// the planner did, and the bot walked horizontally into the raised
+		// block and was pushed back until the breaker ended the run -- a cell
+		// the planner called steppable and the server called a wall.
+		//
+		// It goes back to the profile's value the day a movement kernel is
+		// attached, and not before. Describing a body with legs to a planner
+		// bolted to a bot without them is how a route becomes a lie.
+		StepHeight: 0,
 	}
 
 	return Navigator{
@@ -236,11 +250,13 @@ func NewNavigator(legacy bool, bounds Bounds) (Navigator, error) {
 		budget:  navigation.Budget{Nodes: routeNodes},
 		capability: navigation.Capability{
 			Body: body,
-			// The bot does not swim and does not want to fall. Both are
-			// choices about this bot rather than facts about the game: a
-			// circle walked at ground level has no business in water, and a
-			// drop it cannot climb back out of ends the orbit.
-			SafeFall: 3,
+			// It cannot fall either, for the same reason it cannot step: a
+			// drop is something a body does under gravity, and this one has
+			// none, so a route down a ledge would have it walking out over
+			// the edge and reporting itself still on the ground. Nor does it
+			// swim. Both are the shape of this bot rather than facts about
+			// the game.
+			SafeFall: 0,
 			CanSwim:  false,
 			// Costs in ticks, from the speed this bot walks at. One block at
 			// WalkSpeed blocks a second takes 20/WalkSpeed ticks, and a step

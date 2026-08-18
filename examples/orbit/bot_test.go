@@ -597,3 +597,79 @@ func TestAnUnnamedAttackerIsStillRunFrom(t *testing.T) {
 		t.Errorf("the bot is %v after something it cannot name hit it, want fleeing", bot.State())
 	}
 }
+
+// TestAWayOutNeverRunsAtTheThreat pins the rule the game states outright.
+//
+// Vanilla's avoid-entity goal throws out any destination no further from the
+// thing being avoided than the mob already is. Without it a wide fan of
+// headings will cheerfully pick one that closes the distance, which is not an
+// escape however confidently it is walked.
+func TestAWayOutNeverRunsAtTheThreat(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+	threat := Entity{
+		ID: 42, Position: position.Add(Vec3{X: 2}), Health: 20, Alive: true,
+		Kind: Kind{Name: "Zombie", Pursues: true}, Named: true,
+	}
+	w.entities[42] = threat
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+	bot.Advance(Tick{
+		Now:      c.advance(50 * time.Millisecond),
+		Ready:    true,
+		Self:     Self{Position: position},
+		Attacker: 42,
+	}, w)
+
+	if bot.State() != Fleeing {
+		t.Fatalf("the bot is %v, want fleeing", bot.State())
+	}
+
+	route := bot.Route()
+	if len(route.Steps) == 0 {
+		t.Fatal("fleeing without a route")
+	}
+
+	was := position.HorizontalDistance(threat.Position)
+	for i, step := range route.Steps {
+		if got := step.HorizontalDistance(threat.Position); got < was-0.001 && i == len(route.Steps)-1 {
+			t.Errorf("the way out ends %.2f from the threat, closer than the %.2f it started at", got, was)
+		}
+	}
+}
+
+// TestNowhereToRunKeepsTheBotOnItsCircle pins that a cornered bot walks.
+//
+// It used to stand still, which is the one answer worse than either
+// alternative: it is being hit either way, and standing gives up the orbit as
+// well. The game does the same thing -- a mob whose avoid goal cannot find a
+// path does not start it, and carries on with what it was doing.
+func TestNowhereToRunKeepsTheBotOnItsCircle(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+	w.entities[42] = Entity{
+		ID: 42, Position: position.Add(Vec3{X: 1}), Health: 20, Alive: true,
+		Kind: Kind{Name: "Zombie", Pursues: true}, Named: true,
+	}
+	// Nothing routes anywhere: every destination is unreachable.
+	w.loaded = func(BlockPos) bool { return false }
+
+	bot, c := join(t, w, position)
+	bot.Advance(Tick{
+		Now:      c.advance(50 * time.Millisecond),
+		Ready:    true,
+		Self:     Self{Position: position},
+		Attacker: 42,
+	}, w)
+
+	if bot.State() == Fleeing {
+		t.Error("the bot started a flight it has nowhere to run to")
+	}
+}

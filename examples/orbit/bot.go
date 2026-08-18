@@ -335,11 +335,21 @@ func (b *Bot) follow(t Tick, w World, goal Vec3, key int) (Action, bool) {
 	return b.step(b.route.Steps[b.leg]), true
 }
 
-// fleeTurns are the escape headings to try, in order: straight away first,
-// then wider either side, and behind the threat last. Turning by thirty
-// degrees is finer than the planner's own four directions, so a bot that can
-// leave at all finds a heading it can leave on.
-var fleeTurns = []float64{0, 30, -30, 60, -60, 90, -90, 120, -120, 150, -150, 180}
+// fleeTurns are the escape headings to try, in order: straight away first, then
+// wider either side.
+//
+// Ninety degrees is where it stops, which is where the game stops. Vanilla's
+// own avoid-entity goal draws its escape inside pi/2 radians of directly away
+// and then throws out any destination no further from the threat than the mob
+// already is; past a quarter turn those are the same rule, because a heading
+// more than ninety degrees off is closing the distance. This walked into that:
+// a fan that ran to a full half turn would happily pick a way out that ran at
+// the thing it was running from.
+//
+// Deterministic where the game is random. A mob picks a direction inside the
+// arc and retries; this takes the straightest heading that routes, because an
+// example whose behaviour changes run to run is an example nobody can debug.
+var fleeTurns = []float64{0, 30, -30, 60, -60, 90, -90}
 
 // fleeRoute is the route key for a flight. Waypoint indices only ever grow
 // from zero, so a negative one cannot collide with them.
@@ -402,29 +412,20 @@ func (b *Bot) flee(t Tick, w World) Action {
 		}
 	}
 
-	// Choose one. Directly away if the ground allows it, and otherwise at
-	// progressively wider angles either side, because "away" is a direction
-	// the threat picks and the ground has no obligation to agree with it. A
-	// bot cornered against a wall has to run along the wall, and the straight
-	// answer is the one that walks into it.
-	direct := Away(t.Self.Position, threat.Position, b.bounds.SafeDistance)
-	for _, turn := range fleeTurns {
-		goal := direct.RotatedAbout(t.Self.Position, turn)
-
-		route, found := w.Route(t.Self.Position, goal)
-		if !found {
-			continue
-		}
-
-		b.route, b.leg, b.routedFor, b.escapeTo = route, 0, fleeRoute, goal
-
-		return b.step(b.route.Steps[0])
+	// The way out ran out and the threat is still here. Look for another, and
+	// go back to the circle if there is none -- walking a circle while being
+	// hit beats standing still while being hit, and it is what the game does:
+	// a mob whose avoid goal cannot find a path does not freeze, it carries on
+	// with whatever it was doing.
+	goal, found := b.wayOut(t, w, threat)
+	if !found {
+		return b.disengage(t, "nowhere to run from "+threatName(threat))
 	}
 
-	// Nowhere to run. Standing still while something hits the bot is bad; it
-	// is still better than walking into a wall, which the server refuses and
-	// the breaker ends the run over. The escape clock is running either way.
-	return Action{Kind: Stand, Reason: "cornered, nowhere to run"}
+	// wayOut left the route on the bot; this is the rest of the bookkeeping.
+	b.leg, b.routedFor, b.escapeTo = 0, fleeRoute, goal
+
+	return b.step(b.route.Steps[0])
 }
 
 // disengage returns to the circle at the nearest waypoint by angle.
@@ -561,12 +562,66 @@ func (b *Bot) provoked(t Tick, w World) (Action, bool) {
 		return Action{}, false
 	}
 
+	// Look for a way out before committing to one, the way the game decides
+	// whether an avoid goal may start at all. A bot that switched to fleeing
+	// and then found nowhere to go would have abandoned its circle to stand
+	// still, which is the worst of both.
 	b.target = t.Attacker
-	b.fledAt = t.Now
-	b.state = Fleeing
 	b.route = Route{}
 
+	goal, found := b.wayOut(t, w, attacker)
+	if !found {
+		b.target = 0
+
+		return Action{}, false
+	}
+
+	b.fledAt = t.Now
+	b.state = Fleeing
+	b.leg, b.routedFor, b.escapeTo = 0, fleeRoute, goal
+
+	// Through flee rather than straight to the step, so that the tick which
+	// starts the flight is still subject to the tests that end one. A threat
+	// already out of range, or a bot already past its margin, ends the flight
+	// on the tick it began.
 	return b.flee(t, w), true
+}
+
+// wayOut picks a heading the bot can actually leave on, and plans the route.
+//
+// Two rules, both the game's. The heading stays inside a quarter turn of
+// directly away, and a destination no further from the threat than the bot
+// already is gets thrown out -- the second is what stops a wide fan choosing a
+// way out that runs at the thing being run from, and it is a rule vanilla
+// states outright in its own avoid-entity goal.
+//
+// It leaves the route on the bot, because planning it is most of the work and
+// the caller is about to walk it.
+func (b *Bot) wayOut(t Tick, w World, threat Entity) (Vec3, bool) {
+	here := t.Self.Position
+	direct := Away(here, threat.Position, b.bounds.SafeDistance)
+	// Vanilla measures sixteen blocks; this measures the safe distance, which
+	// is shorter, because this bot is on a leash that one is not -- it has a
+	// circle to get back to, and FleeMargin ends a flight that leaves it.
+	gap := here.HorizontalDistance(threat.Position)
+
+	for _, turn := range fleeTurns {
+		goal := direct.RotatedAbout(here, turn)
+		if goal.HorizontalDistance(threat.Position) <= gap {
+			continue
+		}
+
+		route, found := w.Route(here, goal)
+		if !found {
+			continue
+		}
+
+		b.route = route
+
+		return goal, true
+	}
+
+	return Vec3{}, false
 }
 
 // threatName is what to call a threat in a log line.

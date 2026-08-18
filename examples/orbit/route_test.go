@@ -124,3 +124,39 @@ func TestARiseIsNeverSmoothedThrough(t *testing.T) {
 	}
 	t.Errorf("smoothed straight over the rise: %+v", taut)
 }
+
+// TestThePlannerIsNotToldTheBotCanStepOrFall pins the shape of the body the
+// search routes for.
+//
+// The box is measured off the game, because the game is right about it. The
+// step height and the safe fall are not facts about a player, they are claims
+// about this bot, and both would be false: it reports a position and simulates
+// no body, so it has nothing that rises and nothing that falls. Handing the
+// planner the profile's own step height told it a one-block rise was routable,
+// it routed one, and the bot walked horizontally into the raised block and was
+// pushed back until the correction breaker ended the run.
+//
+// This goes back to the profile's values the day a movement kernel is attached,
+// and the test is what will say so.
+func TestThePlannerIsNotToldTheBotCanStepOrFall(t *testing.T) {
+	t.Parallel()
+
+	navigator, err := NewNavigator(false, DefaultBounds())
+	if err != nil {
+		t.Fatalf("NewNavigator: %v", err)
+	}
+
+	if got := navigator.capability.Body.StepHeight; got != 0 {
+		t.Errorf("step height is %v, want 0: this bot has nothing that rises", got)
+	}
+	if got := navigator.capability.SafeFall; got != 0 {
+		t.Errorf("safe fall is %v, want 0: this bot has nothing that falls", got)
+	}
+	// The box is the game's, though, and has to stay that way.
+	if got := navigator.capability.Body.HalfWidth; got <= 0.29 || got >= 0.31 {
+		t.Errorf("half width is %v, want the player's 0.3", got)
+	}
+	if got := navigator.capability.Body.Height; got <= 1.79 || got >= 1.81 {
+		t.Errorf("height is %v, want the player's 1.8", got)
+	}
+}
