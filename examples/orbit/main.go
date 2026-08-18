@@ -269,6 +269,11 @@ func drive(
 					predicted, placed = self.Position, true
 				}
 				self.Position = predicted
+				// Declared on Self since the first version of this example and
+				// never filled, because nothing could answer it: the snapshot's
+				// value is the server echoing the client's own last claim. The
+				// actuator simulates the body now, so it knows.
+				self.OnGround = sender.OnGround()
 				pending.Self = self
 			}
 			pending.Revision = snapshot.Revision

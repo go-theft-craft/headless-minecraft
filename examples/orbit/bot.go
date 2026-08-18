@@ -398,23 +398,26 @@ func (b *Bot) follow(t Tick, w World, goal simgeom.Vec3, key int) (Action, bool)
 	// block a tick and this runs on every tick the world changed, so anything
 	// beyond a couple of blocks is being re-examined long before it is walked,
 	// and the cost of asking is paid twenty times a second.
-	if b.leg < len(b.route.Steps) && t.Revision != b.checkedAt {
+	// Only while the body is standing on something.
+	//
+	// The check asks whether the body could stand on the ground just ahead, and
+	// a body mid-jump cannot stand anywhere. The first thing it asks about is the
+	// position the body is at, and nothing is holding an airborne body up, so
+	// every airborne tick answered "the way ahead changed", dropped the route,
+	// planned the same one, and dropped it again. Measured against one world that
+	// churn went from fourteen a run to nearly three hundred the day the body
+	// started jumping.
+	//
+	// Probing at the route's height rather than the body's does not fix it, and
+	// was tried: a leg inherits the height it was planned from, so mid-arc both
+	// ends of the probe are airborne and the answer does not change. The question
+	// is only meaningful of a body on the ground, so it is only asked then — and
+	// a body in the air is committed to its arc either way.
+	if b.leg < len(b.route.Steps) && t.Revision != b.checkedAt && t.Self.OnGround {
 		b.checkedAt = t.Revision
 
-		// At the route's own height, not the body's.
-		//
-		// The question is whether the ground ahead is still walkable, and the
-		// body is not always standing on it: it jumps now, and mid-arc it is a
-		// block or two above the floor. Asking from up there fails on "nothing
-		// is holding it up" every airborne tick, which drops the route, plans
-		// the same one again, and drops it again — the bot spent a run doing
-		// that. A leg is a place on the ground, so the probe belongs at a leg's
-		// height.
-		leg := b.route.Steps[b.leg]
-		here := simgeom.Vec3{X: t.Self.Position.X, Y: leg.At.Y, Z: t.Self.Position.Z}
-
-		ahead := here.Toward(leg.At, lookahead)
-		if !w.Walkable(here, ahead) {
+		ahead := t.Self.Position.Toward(b.route.Steps[b.leg].At, lookahead)
+		if !w.Walkable(t.Self.Position, ahead) {
 			// Plan again from here rather than walk on. The next tick finds no
 			// route and asks for one, over a world that now has the lava in it.
 			b.route = Route{}

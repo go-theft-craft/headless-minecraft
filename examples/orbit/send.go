@@ -300,6 +300,19 @@ func (s *Sender) Step(ctx context.Context, from, target simgeom.Vec3, jump bool)
 	return next, nil
 }
 
+// OnGround reports whether the simulated body is standing on something.
+//
+// It is the actuator that knows. The observed snapshot carries what the server
+// says about the player, and for a client's own body that is only ever the
+// client's last claim reflected back a tick later; the kernel here is what
+// decided it. Nothing else in the example can answer while the body is mid-arc,
+// which is exactly when it matters.
+func (s *Sender) OnGround() bool {
+	body, ok := s.store.Entities().Entity(simBody)
+
+	return ok && body.OnGround
+}
+
 // sprintFrom is how many ticks of ground must remain before the bot runs,
 // rather than walks, at it.
 //

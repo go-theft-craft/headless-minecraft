@@ -112,9 +112,12 @@ func (o Observed) Entity(id int32) (Entity, bool) {
 
 // Self reads the local player out of the same snapshot.
 //
-// OnGround is not observed. The server never tells a client whether it is
-// standing on something — the client tells the server — so this is false until
-// M8.8 owns the body that knows. Nothing in the core reads it yet.
+// OnGround is not observed, and still is not: the server never tells a client
+// whether it is standing on something — the client tells the server. It is left
+// false here and filled in by the tick loop from the actuator, which simulates
+// the body and is the only thing that knows. That was the condition this note
+// used to state as waiting on M8.8; the movement kernel in the actuator is what
+// met it.
 func observeSelf(snapshot world.Snapshot) (Self, bool) {
 	player := snapshot.Player
 	if !player.Known || !player.Placed {

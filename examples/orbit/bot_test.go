@@ -411,12 +411,17 @@ func TestLavaPouredInFrontOfACommittedRouteIsNoticed(t *testing.T) {
 	position := circle.At(0, 0)
 
 	bot, c := join(t, w, position)
-	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+	// Standing, throughout. The way-ahead check only asks about ground a body
+	// is standing on, so a fixture that left this false would be testing that
+	// an airborne bot ignores a pour — which it does, deliberately, and is not
+	// what this test is about.
+	standing := func() Self { return Self{Position: position, OnGround: true} }
+	advanceTo(t, bot, w, c, standing, Orbiting, 4)
 
 	// Walking, with a route in hand.
 	action := bot.Advance(Tick{
 		Now: c.advance(50 * time.Millisecond), Ready: true,
-		Self: Self{Position: position}, Revision: 1,
+		Self: standing(), Revision: 1,
 	}, w)
 	if action.Kind != StepTo {
 		t.Fatalf("produced %v before the pour, want a step", action.Kind)
@@ -433,7 +438,7 @@ func TestLavaPouredInFrontOfACommittedRouteIsNoticed(t *testing.T) {
 
 	action = bot.Advance(Tick{
 		Now: c.advance(50 * time.Millisecond), Ready: true,
-		Self: Self{Position: position}, Revision: 2,
+		Self: standing(), Revision: 2,
 	}, w)
 
 	if action.Kind == StepTo && action.Target == blocked {

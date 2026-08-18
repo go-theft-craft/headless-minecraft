@@ -19,6 +19,14 @@ import (
 type Self struct {
 	Position simgeom.Vec3
 	Health   float64
+	// OnGround reports that the body is standing on something rather than in
+	// the air. The tick loop fills it from the actuator, which simulates the
+	// body; the snapshot cannot answer it, because for a client's own body the
+	// server only ever echoes the client's last claim.
+	//
+	// It gates the checks that ask "could the body stand here", because a body
+	// mid-jump cannot stand anywhere and asking anyway makes every airborne
+	// tick look like the world changed.
 	OnGround bool
 	// OnFire reports that the player is burning, read from the burning bit of
 	// its own entity metadata. It stays true for as long as the fire lasts,
