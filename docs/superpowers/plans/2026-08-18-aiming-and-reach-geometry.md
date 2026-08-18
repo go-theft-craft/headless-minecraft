@@ -1,5 +1,32 @@
 # Aiming and reach geometry Implementation Plan
 
+> **Status: six of seven tasks complete; task 5, the release, is open and it
+> matters, 2026-08-18.** The geometry landed in `minecraft-simulation/geom`
+> (`57a0b56`): `AABB.Nearest` and `AABB.Reaches`, the example's vector
+> arithmetic as `Vec3` methods, `Yaw`, `Pitch`, and `Look`, and `Behind`,
+> `Lead`, `Tangent`, and `Away`. `examples/orbit` deleted its own `Vec3` and
+> sends a computed pitch (`7cc675d`).
+>
+> **Tasks 6 and 7 ran before task 5, which this plan told them not to do.** Its
+> words were: do not start task 6 before task 5 has pushed a tag, because
+> `headless-minecraft` is public and a `replace` directive in it is not
+> acceptable. No `replace` was added — a `go.work` was used instead, which is
+> the same hazard wearing a different hat, because the workspace is gitignored
+> and makes every local gate pass against code no consumer can resolve.
+>
+> The result is not theoretical, and it is worse than an absent tag.
+> `minecraft-simulation`'s only tag is `v0.1.0`, which is what
+> `headless-minecraft`'s `go.mod` and `examples/go.mod` still require, and every
+> gate in that repository's `Taskfile.yml` runs under `GOWORK=off` on purpose,
+> so the workspace does not paper over a stale pin. **`task test`, `task
+> verify`, and `task build` are therefore red on `main` right now**, with
+> `undefined: navigation.EdgePlace`, `EdgePillar`, `EdgeJumpGap`,
+> `EdgeWaterDrop`, `EdgeClimb`, `EdgeDoor`, and `Vec3.HorizontalDistance` and
+> `Toward` undefined in `behaviour/`. The gate was built to catch exactly this
+> and it did; what did not happen is anyone reading it. Task 5 and the two bumps
+> that follow it are what close it, and nothing else in this pillar should be
+> started first.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Give the outbound path a pitch to send and a reach test to measure legality with, and retire the duplicate `Vec3` in `examples/orbit` before four more callers copy it.
@@ -50,7 +77,7 @@ This plan touches two repositories and a release between them. Tasks 1 through 4
 
 This is first because everything else that measures a distance to a target measures it to this point. Reach in the game is measured to the nearest point of the target's box, not to its centre, and a client that measures to the centre refuses attacks the server would have accepted.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestNearestClampsEachAxisIndependently(t *testing.T) {
@@ -98,12 +125,12 @@ func TestReachesComparesToTheNearestPointNotTheCentre(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./geom/ -run 'TestNearest|TestReaches' -v`
 Expected: FAIL, `box.Nearest undefined` and `box.Reaches undefined`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `geom/aabb.go`:
 
@@ -146,12 +173,12 @@ func clamp(v, lo, hi float64) float64 {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./geom/ -run 'TestNearest|TestReaches' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Add the property test**
+- [x] **Step 5: Add the property test**
 
 ```go
 func TestNearestAlwaysLandsInsideTheBox(t *testing.T) {
@@ -177,12 +204,12 @@ func TestNearestAlwaysLandsInsideTheBox(t *testing.T) {
 }
 ```
 
-- [ ] **Step 6: Run the package suite**
+- [x] **Step 6: Run the package suite**
 
 Run: `cd minecraft-simulation && devbox run -- task test`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add geom/aabb.go geom/aabb_test.go
@@ -202,7 +229,7 @@ git commit -m "feat(geom): measure reach to a box's nearest point"
 
 These three exist and are correct in `examples/orbit/geometry.go`. This task moves them, with their doc comments, because the reasoning in those comments was paid for by a live run and must not be lost. `Floor` and `Add` already exist in `geom` and are not moved.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestYawIsMeasuredFromSouthTowardWest(t *testing.T) {
@@ -259,21 +286,21 @@ func TestTowardAtZeroDistanceDoesNotDivideByZero(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./geom/ -run 'TestYaw|TestToward' -v`
 Expected: FAIL, `Yaw undefined` and `Toward undefined`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Copy `HorizontalDistance`, `Toward`, and `Yaw` verbatim from `headless-minecraft/examples/orbit/geometry.go` into `geom/vector.go`, keeping their doc comments unchanged. The bodies are already correct; only the package and the receiver type change, and `geom.Vec3` has the same three fields.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./geom/ -run 'TestYaw|TestToward' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add geom/vector.go geom/vector_test.go
@@ -294,7 +321,7 @@ git commit -m "feat(geom): add horizontal distance, Toward, and Yaw"
 
 This is the task the whole design exists for. `examples/orbit/send.go` sends `Pitch: 0` as a literal, so the bot cannot look at anything above or below its own eyes, and every aimed primitive is blocked behind it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestPitchIsPositiveDownward(t *testing.T) {
@@ -343,12 +370,12 @@ func TestLookAgreesWithYawAndPitchSeparately(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./geom/ -run 'TestPitch|TestLook' -v`
 Expected: FAIL, `Pitch undefined`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```go
 // Pitch returns the angle from v to o in degrees, as the wire carries it.
@@ -375,12 +402,12 @@ func (v Vec3) Look(o Vec3) (yaw, pitch float32) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./geom/ -run 'TestPitch|TestLook' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add geom/vector.go geom/vector_test.go
@@ -403,7 +430,7 @@ These are functions rather than methods because none of them is a question about
 
 `Away` already exists in `examples/orbit/geometry.go` and moves here verbatim with its doc comment, for the same reason `Toward` did in task 2: `behaviour.Flee` is its second caller, and a second copy is what this plan exists to prevent.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestBehindIsOppositeTheFacing(t *testing.T) {
@@ -511,12 +538,12 @@ func TestTangentAtTheCentreIsZero(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./geom/ -run 'TestBehind|TestLead|TestTangent' -v`
 Expected: FAIL, undefined.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```go
 // Package-internal note: these three answer questions a body asks about a
@@ -592,12 +619,12 @@ func Tangent(centre, here Vec3, clockwise bool) Vec3 {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./geom/ -run 'TestBehind|TestLead|TestTangent' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Move Away**
+- [x] **Step 5: Move Away**
 
 Copy `Away` verbatim from `headless-minecraft/examples/orbit/geometry.go` into `geom/aim.go`, keeping its doc comment, and add the case that pins its direction:
 
@@ -616,17 +643,17 @@ func TestAwayGoesOppositeTheThreat(t *testing.T) {
 }
 ```
 
-- [ ] **Step 6: Verify geom still imports only the standard library**
+- [x] **Step 6: Verify geom still imports only the standard library**
 
 Run: `cd minecraft-simulation && devbox run -- go list -deps ./geom | grep -v '^\(internal/\|[a-z]*$\|[a-z]*/\)' | grep -v 'go-theft-craft' || echo "stdlib only"`
 Expected: no `github.com/` line for any third-party module.
 
-- [ ] **Step 7: Run every gate**
+- [x] **Step 7: Run every gate**
 
 Run: `cd minecraft-simulation && devbox run -- task verify`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add geom/aim.go geom/aim_test.go
@@ -697,19 +724,19 @@ Expected: the version prints. If it does not, wait and retry; do not proceed to 
 
 `geom.Floor` returns a `geom.BlockPos` whose fields are `int32`, while the example's `BlockPos` uses `int`. That difference will surface at every call site and is the reason this is its own task rather than a step in another.
 
-- [ ] **Step 1: Bump the dependency**
+- [x] **Step 1: Bump the dependency**
 
 ```bash
 cd headless-minecraft/examples
 devbox run -- go get github.com/go-theft-craft/minecraft-simulation@v0.2.0
 ```
 
-- [ ] **Step 2: Run the tests to see them pass before the change**
+- [x] **Step 2: Run the tests to see them pass before the change**
 
 Run: `cd headless-minecraft && devbox run -- task examples`
 Expected: PASS. This is the baseline the rewrite must not move.
 
-- [ ] **Step 3: Delete the duplicated declarations**
+- [x] **Step 3: Delete the duplicated declarations**
 
 From `examples/orbit/geometry.go`, delete `Vec3`, `BlockPos`, `Floor`, `Add`, `HorizontalDistance`, `Toward`, `Yaw`, and `Away`. Keep `Circle`, `NewCircle`, `At`, `angle`, `Nearest`, and `Deviation`: a waypoint ring is what that bot does, not a fact about the game.
 
@@ -726,21 +753,21 @@ import "github.com/go-theft-craft/minecraft-simulation/geom"
 type Vec3 = geom.Vec3
 ```
 
-- [ ] **Step 4: Fix the BlockPos width**
+- [x] **Step 4: Fix the BlockPos width**
 
 Every place the example compared or stored a `BlockPos` field as `int` now sees `int32`. Change the local declarations rather than converting at the call sites: a conversion at each use is where an off-by-one hides.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `cd headless-minecraft && devbox run -- task examples`
 Expected: PASS, with the same behaviour as step 2.
 
-- [ ] **Step 6: Verify the deletion**
+- [x] **Step 6: Verify the deletion**
 
 Run: `cd headless-minecraft && grep -n 'type Vec3\|func (v Vec3) Yaw\|func (v Vec3) Toward' examples/orbit/geometry.go`
 Expected: only the `type Vec3 =` alias line.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add examples/
@@ -759,7 +786,7 @@ git commit -m "refactor(orbit): use geom's vectors instead of a copy"
 - Consumes: `geom.Vec3.Look` from task 3.
 - Produces: a `Sender.Step` that sends a computed pitch.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestStepSendsAComputedPitch(t *testing.T) {
@@ -788,12 +815,12 @@ func TestStepSendsAComputedPitch(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd headless-minecraft && devbox run -- go test ./examples/orbit/ -run TestStepSendsAComputedPitch -v`
 Expected: FAIL, `Pitch = 0`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `Sender.Step`, replace the yaw-only call and the `Pitch: 0` literal:
 
@@ -809,22 +836,22 @@ In `Sender.Step`, replace the yaw-only call and the `Pitch: 0` literal:
 
 Replace the doc comment's paragraph about `Pitch: 0` with what is now true: the pitch is computed toward the target, and a bot walking a level circle sends zero because the target is level, not because nothing else could be sent.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd headless-minecraft && devbox run -- go test ./examples/orbit/ -run TestStepSendsAComputedPitch -v`
 Expected: PASS.
 
-- [ ] **Step 5: Confirm the orbit behaviour is unchanged**
+- [x] **Step 5: Confirm the orbit behaviour is unchanged**
 
 Run: `cd headless-minecraft && devbox run -- task examples`
 Expected: PASS. The circle is level, so every pitch on it is zero and the bot's observable behaviour is the same as before.
 
-- [ ] **Step 6: Run every gate in both repositories**
+- [x] **Step 6: Run every gate in both repositories**
 
 Run: `cd headless-minecraft && devbox run -- task verify`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add examples/orbit/send.go examples/orbit/send_test.go

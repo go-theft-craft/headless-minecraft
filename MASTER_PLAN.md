@@ -246,27 +246,38 @@ hundred after, with the same load in the same session.
   `Fish` is written and is not claimed to work. It refuses to construct without
   a bite detector the caller supplies, and its gate is skipped with the reason
   recorded; see the open item below.
-- [ ] **The pillar's releases.** The pillar spans three repositories and every
-  consumer resolves the others through a released tag, so the code is complete
-  and the version bumps are not. Nothing is pushed. In order:
+- [ ] **The pillar's releases, and `main` is red until one of them is cut.**
+  The pillar spans three repositories and every consumer resolves the others
+  through a released tag, so the code is complete and the version bumps are not.
+  Half the chain is now done:
 
   1. `minecraft-reference` — `e78ac4f` carries the two extended jar dumpers.
-  2. `minecraft-protocol` v0.7.0 — the `BlockMovementRegistry` accessors, plus
-     the 775 acceptor already in `Unreleased`. Both break implementers outside
-     the module, which is what makes it 0.7.0 rather than 0.6.1.
-  3. `minecraft-simulation` — navigation and geom.
-  4. `headless-minecraft` `go.mod` and `examples/go.mod` bumps to both.
+     Pushed; no new tag cut, and nothing yet needs one.
+  2. ~~`minecraft-protocol` v0.7.0~~ — **done 2026-08-18.** Tagged, pushed, and
+     served by the proxy. Every consumer in its `RELEASING.md` table now
+     requires it: `minecraft-simulation` `84d882e`, `server` `74a865b`, `relay`
+     examples `6f51cae`, and this repository `4cdd79e`.
+  3. `minecraft-simulation` — navigation and geom. **This is the one that
+     hurts.** Its only tag is `v0.1.0`.
+  4. `headless-minecraft` `go.mod` and `examples/go.mod` bumps to it.
 
-  Until those exist the cross-repository work resolves through a gitignored
-  `go.work` on this machine, which is exactly the arrangement P4 records as able
-  to hide a stale pin. The bumps are what make these gates mean in CI what they
-  mean locally.
+  **Until 3 and 4 land, this repository does not compile under its own gates.**
+  Every target in `Taskfile.yml` runs `GOWORK=off`, deliberately, so a stale pin
+  cannot hide behind the gitignored `go.work` — and it is not hiding: `task
+  test`, `task verify`, and `task build` all fail on `main` with `undefined:
+  navigation.EdgePlace`, `EdgePillar`, `EdgeJumpGap`, `EdgeWaterDrop`,
+  `EdgeClimb`, `EdgeDoor`, and `Vec3.HorizontalDistance` and `Toward` undefined
+  in `behaviour/`. The aiming plan told task 6 not to start before the tag
+  existed, for this reason, in these words: `headless-minecraft` is public and a
+  `replace` in it is not acceptable. A `go.work` was used instead, which is the
+  same hazard under another name.
 - [ ] **`Fish` has no measured bite detector.** No packet in either protocol
   says a fish bit; what a client reads is the bobber's motion, and how much
   motion counts as a dip is a measurement. The behaviour ships with the detector
   behind an interface, refuses to construct without one, and its gate is skipped
-  with the reason recorded. It needs a captured trace per version, which needs
-  M9.1's live check and M9.1b.
+  with the reason recorded. It needs a captured trace per version. Both capture
+  lanes have run, on 2026-08-17, so what is missing is a recorded session with a
+  rod in it rather than an instrument to record it with.
 - [ ] **Make the end-to-end lane drive `examples/observe`.** The convention is
   that examples are the integration surface; `client/world_e2e_test.go` mimics
   what `examples/observe` subscribes to rather than driving it. Assigned to

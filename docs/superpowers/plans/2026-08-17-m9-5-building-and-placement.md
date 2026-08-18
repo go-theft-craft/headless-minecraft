@@ -211,6 +211,11 @@ git commit -m "docs(plan): reconcile M9.5 against the profiles, the action path,
 
 ## Task 1: Resolving the target cell
 
+**Done 2026-08-18** (`minecraft-simulation` `fbe0009`), with Task 2, in one
+package and one commit: the two questions are one file's, and a Resolve with no
+Check has no caller to shape it. The face is `mining.Face` rather than a fourth
+spelling of the same six wire numbers.
+
 **Files:**
 - Create: `minecraft-simulation/placement/placement.go`
 - Test: `minecraft-simulation/placement/placement_test.go`
@@ -244,7 +249,7 @@ type Target struct {
 func Resolve(clicked geom.BlockPos, face Face, replaceable bool) Target
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestClickingASolidFacePlacesAgainstIt(t *testing.T) {
@@ -287,18 +292,18 @@ func TestClickingAReplaceableBlockPlacesIntoIt(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./placement/ -v`
 Expected: FAIL — the package does not exist.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
-- [ ] **Step 4: Run the tests and gates**
+- [x] **Step 4: Run the tests and gates**
 
 Run: `cd minecraft-simulation && devbox run -- task verify`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd minecraft-simulation
@@ -313,6 +318,23 @@ puts every placement one cell off."
 ---
 
 ## Task 2: Legality
+
+**Done 2026-08-18** (`minecraft-simulation` `fbe0009`). Two things differ from
+the interface below, each because the tree says so:
+
+- **`Check` takes a `Replaceable` predicate.** The signature here had no way to
+  ask the version whether the block in the target cell is placed into or placed
+  against, and that is the whole question `ReasonOccupied` answers: air, water,
+  and tall grass are all replaced, and none of the three is a question about a
+  collision shape. The predicate is the version's, supplied by the profile.
+- **`ReasonOutOfWorld` and `ReasonUnsupported` are not built.** The first needs
+  a world height this package is not told, and the second needs the support
+  rules no stage owns yet. Constants nothing produces read as coverage, so they
+  are left out until something can return them.
+
+Reach is measured from the eye to the nearest point of the placed cell rather
+than to its centre, because the game measures to the block; a centre measurement
+is a reach half a block short everywhere.
 
 **Files:**
 - Modify: `minecraft-simulation/placement/placement.go`
@@ -351,7 +373,7 @@ const (
 func Check(view world.View, entities entity.View, t Target, shape geom.Shape, eye geom.Vec3, reach float64) (Legality, sim.Completeness)
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestPlacingIntoASolidBlockIsRefused(t *testing.T) {
@@ -428,15 +450,15 @@ func TestPlacingAgainstAnUnknownBlockIsIncompleteNotRefused(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./placement/ -run Legal -v`
 
-- [ ] **Step 3: Implement, reusing `collision`**
+- [x] **Step 3: Implement, reusing `collision`**
 
-- [ ] **Step 4: Run the tests and gates**
+- [x] **Step 4: Run the tests and gates**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd minecraft-simulation
@@ -494,7 +516,7 @@ var _ placement.Placer = (*profile)(nil)
 
 `newProfile(t)` in the tests below returns the asserted `placement.Placer`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Write the same behavioural cases in both profiles, asserting on observable
 consequences rather than on raw state numbers, so the test reads the same on
@@ -596,11 +618,11 @@ func TestEveryPlaceableItemResolvesAState(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./profile/java/... -run Placed -v`
 
-- [ ] **Step 3: Implement each version**
+- [x] **Step 3: Implement each version**
 
 1.8.9: compute the metadata bits and combine with the block ID. The `Variations`
 in the generated data name what each metadata value means; use them rather than
@@ -614,9 +636,9 @@ before writing a guess: a state offset computed from an assumed property order
 is wrong for every block whose properties are ordered differently, and it looks
 right for the ones that happen to match.
 
-- [ ] **Step 4: Run the tests and gates**
+- [x] **Step 4: Run the tests and gates**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd minecraft-simulation

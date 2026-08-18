@@ -460,13 +460,14 @@ func TestFishRefusesWithoutAMeasuredBiteDetector(t *testing.T) {
 //
 // The behaviour is written and its waiting, its termination, and its refusals
 // are all asserted above. What is not asserted is that a real bite is detected,
-// because that needs a captured trace per version and the M9.1 live check has
-// not run. This test exists so the absence is recorded rather than looking like
-// an oversight.
+// because that needs a captured trace per version and no recorded session has a
+// rod in it. This test exists so the absence is recorded rather than looking
+// like an oversight.
 func TestFishIsNotGatedOnAMeasuredTrace(t *testing.T) {
 	t.Skip("no fishing trace has been captured on either version; " +
-		"M9.1's live check and M9.1b are what supply one, and neither has run. " +
-		"Until then Fish is not claimed to work and no threshold here is measured.")
+		"the capture lanes both ran on 2026-08-17, and no session through them " +
+		"involved a fishing rod. Until one does, Fish is not claimed to work " +
+		"and no threshold here is measured.")
 }
 
 // TestASequenceStopsAtAStageThatGaveUp pins that composition does not paper

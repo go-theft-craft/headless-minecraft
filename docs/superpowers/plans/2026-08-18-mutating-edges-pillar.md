@@ -1,22 +1,24 @@
 # Mutating edges and pillar Implementation Plan
 
-> **Status: tasks 1 and 3 complete; 2 half done; 4 and 5 in progress,
-> 2026-08-18.** Falling and climbable are measured out of the pinned jars into
-> `BlockMovementRegistry.FallsByState` and `ClimbableByState`
-> (`minecraft-protocol` `c6557d1`), and both designs are corrected to say so.
-> The overlay landed as `navigation/overlay.go` (`a1304fd`) with the constructor,
-> `Place`, `Remove`, `Reset`, `Len`, and both `world.View` methods.
+> **Status: complete, 2026-08-18.** Falling and climbable are measured out of
+> the pinned jars into `BlockMovementRegistry.FallsByState` and
+> `ClimbableByState` (`minecraft-protocol` `c6557d1`), and both designs are
+> corrected to say so. The overlay landed as `navigation/overlay.go`
+> (`a1304fd`), and `EdgePlace` and `EdgePillar` with their bounds and resource
+> accounting as `774fb6f`.
 >
-> Task 2 is half done. The changelog entry is written and the release is not
-> cut, so `minecraft-simulation` still requires `minecraft-protocol` v0.6.0 and
-> no profile can answer the two new registries. That is what task 5 of the
-> [edge completion plan](2026-08-18-navigation-edge-completion.md) turned out to
-> need too, and it shipped without it by taking the answer from its caller.
+> Task 2 closed the same afternoon: `minecraft-protocol` v0.7.0 is tagged and
+> pushed, and `minecraft-simulation` requires it (`84d882e`), so a profile can
+> answer both registries from measured data instead of a caller carrying its own
+> ladder list.
 >
-> Tasks 4 and 5 are being written now: `navigation/place.go` and
-> `navigation/pillar.go` are in the working tree, uncommitted, and `edge.go`
-> already carries `EdgePlace` and `EdgePillar`. Their boxes stay open until
-> those commits land. Task 6 has not started.
+> Task 6 is the one worth reading before adding an edge. `perBlockFloor` now
+> counts a placement at `PlaceTicks + BlockTicks` and says in its own comment why
+> every new edge has to enter it: the moment placing is cheaper per block than
+> walking, a floor that ignored it overestimates, and the symptom is a route that
+> is merely suboptimal, which is the hardest kind of wrongness to notice.
+> `TestTheHeuristicNeverOverestimates` holds it against the per-block rate of
+> every enabled edge.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -205,7 +207,7 @@ git commit -m "feat(data): extract whether a block falls and whether it is climb
   `blocksMovement`. A version nobody has measured publishes no registry.
 ```
 
-- [ ] **Step 2: Release**
+- [x] **Step 2: Release**
 
 The entry is already in `Unreleased`, written when task 1 landed. It sits
 beside the protocol 775 acceptor, which is a breaking change for anything
@@ -222,7 +224,7 @@ git tag v0.7.0
 git push origin main --tags
 ```
 
-- [ ] **Step 3: Consume it**
+- [x] **Step 3: Consume it**
 
 ```bash
 cd minecraft-simulation
@@ -230,7 +232,7 @@ devbox run -- go get github.com/go-theft-craft/minecraft-protocol@v0.7.0
 devbox run -- task verify
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add go.mod go.sum
@@ -362,7 +364,7 @@ git commit -m "feat(navigation): plan against an overlay of pending placements"
 
 `Place` is the smallest edge that exercises the overlay, which is why it comes before `Pillar`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestABodyBridgesAGapItCannotJump(t *testing.T) {
@@ -450,12 +452,12 @@ func TestTheValidationLoopTerminates(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./navigation/ -run 'TestABodyBridges|TestAPathWhose' -v`
 Expected: FAIL, `EdgePlace` undefined.
 
-- [ ] **Step 3: Write the edge, the resource accounting, and the loop**
+- [x] **Step 3: Write the edge, the resource accounting, and the loop**
 
 Append `EdgePlace` after the read-only kinds. `Capability` gains:
 
@@ -479,12 +481,12 @@ Append `EdgePlace` after the read-only kinds. `Capability` gains:
 
 `Find` gains the re-run-and-ban loop the parent design specifies: run the overlay over the winning path from the start, and on a conflict ban that edge and search again. Each iteration bans one edge, so it terminates.
 
-- [ ] **Step 4: Run the tests and the determinism gate**
+- [x] **Step 4: Run the tests and the determinism gate**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./navigation/ -v && devbox run -- task determinism`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add navigation/
@@ -506,7 +508,7 @@ git commit -m "feat(navigation): bridge a gap by placing blocks"
 
 This is the edge the parent design's list has no member for. `Place` bridges horizontally and `Support` holds a column; nothing gains height, so a bot with a stack of blocks is capped by `StepHeight` and a jump arc exactly as a bot with nothing is.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestABodyPillarsOutOfAShaft(t *testing.T) {
@@ -610,12 +612,12 @@ func TestAGoalOutsideTheVerticalEnvelopeIsUnreachable(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./navigation/ -run TestABodyPillars -v`
 Expected: FAIL, `EdgePillar` undefined.
 
-- [ ] **Step 3: Write the expansion**
+- [x] **Step 3: Write the expansion**
 
 ```go
 // pillars returns the single upward edge that places a block under the body.
@@ -653,12 +655,12 @@ func (c Capability) pillars(o oracle, overlay *Overlay, from node) (Edge, bool, 
 
 The per-column limit and the vertical envelope are checked in `expand` before `pillars` is called, so a bounded search never builds the node at all.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./navigation/ -run 'TestABodyPillars|TestPillaring|TestNoPath|TestThePerColumn|TestAGoalOutside' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add navigation/pillar.go navigation/pillar_test.go navigation/edge.go navigation/navigation.go
@@ -678,7 +680,7 @@ git commit -m "feat(navigation): pillar up by placing beneath the body"
 
 `perBlockFloor`'s own comment records the care already taken: a step closes two blocks for one step's cost, and the floor is deliberately not the cheapest edge because "an overestimating heuristic lets the search settle a goal on a route that is not shortest." `Pillar` closes a block of vertical distance for one placement's cost, so it enters that calculation. If it does not, the floor overestimates the moment a placement is cheaper than walking, and the failure surfaces as the determinism gate disagreeing about routes that are merely suboptimal — the worst kind to diagnose.
 
-- [ ] **Step 1: Write the admissibility property test**
+- [x] **Step 1: Write the admissibility property test**
 
 ```go
 func TestTheHeuristicNeverExceedsTheTrueCost(t *testing.T) {
@@ -714,21 +716,21 @@ func TestTheHeuristicNeverExceedsTheTrueCost(t *testing.T) {
 
 `randomCapability` must enable random subsets of the edges, including the pillar and place edges with random costs, because the floor is only wrong for some subsets.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./navigation/ -run TestTheHeuristicNever -v`
 Expected: FAIL, with a capability whose pillar is cheaper than its walk.
 
-- [ ] **Step 3: Recompute the floor over the enabled edge set**
+- [x] **Step 3: Recompute the floor over the enabled edge set**
 
 Extend `perBlockFloor` to consider every enabled edge's cost per block of Manhattan distance closed, keeping the existing reasoning about the step edge closing two blocks. Update its doc comment to say that the floor is computed over the enabled set and why.
 
-- [ ] **Step 4: Run the property test and the determinism gate**
+- [x] **Step 4: Run the property test and the determinism gate**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./navigation/ -run TestTheHeuristicNever -v && devbox run -- task determinism`
 Expected: PASS.
 
-- [ ] **Step 5: Confirm the existing behaviour is unchanged**
+- [x] **Step 5: Confirm the existing behaviour is unchanged**
 
 ```go
 func TestACapabilityWithOnlyMovementEdgesRoutesAsItDidBefore(t *testing.T) {
@@ -754,12 +756,12 @@ func TestACapabilityWithOnlyMovementEdgesRoutesAsItDidBefore(t *testing.T) {
 }
 ```
 
-- [ ] **Step 6: Run every gate**
+- [x] **Step 6: Run every gate**
 
 Run: `cd minecraft-simulation && devbox run -- task verify && devbox run -- task determinism`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add navigation/

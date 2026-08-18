@@ -1,5 +1,27 @@
 # Composed behaviours Implementation Plan
 
+> **Status: complete, 2026-08-18.** The `behaviour` package shipped in
+> `headless-minecraft` (`893b99e`): the one-tick `Behaviour` shape and `Outcome`,
+> `Follow` and `Flee`, `Eat` and `Block`, `Sequence` and `Dig`, `Build` over the
+> place and pillar edges, and `Fish`. Scopes are checked at construction through
+> `RequireScopes`, and both cross-cutting gates exist —
+> `TestEveryBehaviourTerminates` and `TestEveryBehaviourRefusesWithoutItsScopes`.
+>
+> `Fish` ships without a measured bite detector, which is what task 6 planned
+> for: the detector is behind an interface, construction refuses without one,
+> and the trace-gated test skips with its reason recorded. Both capture lanes
+> have since run, so what is missing is a recorded session with a rod in it, not
+> the instrument.
+>
+> **This package does not compile under the repository's own gates.** It imports
+> `navigation.EdgePlace`, `EdgePillar`, `EdgeJumpGap`, `EdgeWaterDrop`,
+> `EdgeClimb`, `EdgeDoor`, and `geom.Vec3.Toward`, none of which is in
+> `minecraft-simulation` v0.1.0, which is what `go.mod` pins. Every task target
+> runs `GOWORK=off`, so `task test` fails on `main` and the local `go.work` is
+> the only reason the work looked finished. The fix is the
+> [aiming plan](2026-08-18-aiming-and-reach-geometry.md)'s task 5 and the bumps
+> after it, not anything in this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Give `headless-minecraft` one shape for a multi-tick behaviour — follow, flee, eat, block, fish, bridge, pillar, strip-mine — so a bot that fishes is composed from primitives rather than hand-written per caller.
@@ -62,7 +84,7 @@ All paths relative to the `headless-minecraft` repository root.
 **Interfaces:**
 - Produces: `type Behaviour interface { Tick(context.Context, world.Snapshot) (Outcome, error) }`, `type Outcome struct { Actions []version.Action; Status Status; Reason Reason }`, `type Status uint8` with `Running`, `Complete`, `Stopped`, `type Reason uint8` with `ReasonNone`, `ReasonBlocked`, `ReasonStuck`, `ReasonWorldChanged`, `ReasonFailed`, `ReasonUnauthorized`, `ReasonOutOfResources`, and `func RequireScopes(safety.Authorization, string, ...safety.Scope) error`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestAWaitingBehaviourReturnsRunningWithNoActions(t *testing.T) {
@@ -119,12 +141,12 @@ func TestRequireScopesAcceptsWhatIsAuthorized(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./behaviour/ -v`
 Expected: FAIL, package does not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```go
 // Package behaviour composes the outbound primitives into multi-tick tasks.
@@ -151,12 +173,12 @@ package behaviour
 
 `RequireScopes` consults `safety.Authorization.Allows` for each scope and returns an error naming every missing one at once, rather than the first: a caller fixing an authorization wants the whole list.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `devbox run -- go test ./behaviour/ -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add behaviour/
@@ -177,7 +199,7 @@ git commit -m "feat(behaviour): add the tick shape and the scope check"
 
 These two first because they need only movement, which is the one thing that already works end to end.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestFollowReplansWhenTheTargetMovesPastTheThreshold(t *testing.T) {
@@ -267,21 +289,21 @@ func TestFleeGoesAwayFromTheThreat(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./behaviour/ -run 'TestFollow|TestFlee' -v`
 Expected: FAIL, undefined.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `Follow` holds a planner, a path, and the target position it last planned against. `Tick` replans when the target has moved further than `ReplanDistance` from that position, then advances the path by one edge and returns the movement actions for it. `Flee` is `Follow` with a goal from `geom.Away` and no target tracking.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `devbox run -- go test ./behaviour/ -run 'TestFollow|TestFlee' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add behaviour/follow.go behaviour/follow_test.go
@@ -300,7 +322,7 @@ git commit -m "feat(behaviour): add follow and flee"
 - Consumes: `version.ActionHeldSlot`, `ActionUseItem`, `ActionReleaseUse` from the interaction primitives plan.
 - Produces: `func NewEat(Deps, EatConfig) (*Eat, error)`, `func NewBlock(Deps, BlockConfig) (*Block, error)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestEatSelectsTheSlotBeforeUsingIt(t *testing.T) {
@@ -390,21 +412,21 @@ func TestBlockConstructsOnProtocol775(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./behaviour/ -run 'TestEat|TestBlock' -v`
 Expected: FAIL, undefined.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `Eat` is a three-state machine: idle above the threshold, using below it, releasing once the observed food level recovers. `Block` is the same shape with the shield slot and no threshold, and its constructor probes the adapter with an `ActionUseItem{Hand: version.OffHand}` to learn whether the protocol carries an offhand at all.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `devbox run -- go test ./behaviour/ -run 'TestEat|TestBlock' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add behaviour/consume.go behaviour/consume_test.go
@@ -423,7 +445,7 @@ git commit -m "feat(behaviour): add eat and shield-block"
 
 These run over the whole set, so a behaviour added later cannot skip them.
 
-- [ ] **Step 1: Write the termination gate**
+- [x] **Step 1: Write the termination gate**
 
 ```go
 func TestEveryBehaviourTerminatesAgainstAnUnhelpfulWorld(t *testing.T) {
@@ -502,7 +524,7 @@ func TestEveryBehaviourDeclaresItsScopes(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Write the linkage gate**
+- [x] **Step 2: Write the linkage gate**
 
 ```go
 func TestTheClientDoesNotImportBehaviour(t *testing.T) {
@@ -521,12 +543,12 @@ func TestTheClientDoesNotImportBehaviour(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run every gate**
+- [x] **Step 3: Run every gate**
 
 Run: `devbox run -- task verify`
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add behaviour/behaviour_test.go
@@ -547,7 +569,7 @@ git commit -m "test(behaviour): gate termination, waiting, scopes, and linkage"
 
 **Blocked** until those edges exist. `StripMine` is additionally blocked on M9.4's break times and stays out of this plan's definition of done until they land.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestBridgeExecutesAPlaceEdgeAndWaitsForItToSettle(t *testing.T) {
@@ -617,21 +639,21 @@ func TestPillarPlacesBeneathTheBodyAndRises(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `devbox run -- go test ./behaviour/ -run 'TestBridge|TestPillar' -v`
 Expected: FAIL, undefined.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Each executor is a two-state machine per edge: emit the actions, then wait until the snapshot shows the block. `StripMine` holds a follower and a digging behaviour and forwards its tick to whichever is active.
 
-- [ ] **Step 4: Run the tests and every gate**
+- [x] **Step 4: Run the tests and every gate**
 
 Run: `devbox run -- task verify`
 Expected: PASS, including the cross-cutting gates from task 4, which now cover the new behaviours.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add behaviour/build.go behaviour/mine.go behaviour/build_test.go behaviour/mine_test.go
@@ -658,7 +680,7 @@ signal stays unmeasured until one is taken.
 
 **No packet in either protocol says a fish bit.** What a client observes is the bobber entity's motion changing as it dips, and a splash sound at its position. Which of those is reliable, how much motion counts as a dip, and whether 26.1.2 signals it differently are measurements. M8.4 found that two of eight careful prose readings of vanilla behaviour were wrong, and replaced prose with fixtures the game generates. This follows that.
 
-- [ ] **Step 1: Write the structure test, which runs today**
+- [x] **Step 1: Write the structure test, which runs today**
 
 ```go
 func TestFishCastsSelectsTheRodFirst(t *testing.T) {
@@ -701,7 +723,7 @@ func TestFishReelsOnlyWhenTheDetectorSaysSo(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Write the trace-gated test, skipped until the traces exist**
+- [x] **Step 2: Write the trace-gated test, skipped until the traces exist**
 
 ```go
 func TestTheBiteDetectorAgreesWithACapturedTrace(t *testing.T) {
@@ -735,16 +757,16 @@ func TestTheBiteDetectorAgreesWithACapturedTrace(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run the tests**
+- [x] **Step 3: Run the tests**
 
 Run: `devbox run -- go test ./behaviour/ -run TestFish -v`
 Expected: the structure tests PASS; the trace test SKIPs with its reason printed.
 
-- [ ] **Step 4: Record the state in the package doc**
+- [x] **Step 4: Record the state in the package doc**
 
 State in `fish.go`'s doc comment that `Fish` is not claimed to work, name the two milestones the traces wait on, and say that `defaultDipThreshold` is a starting value with no measurement behind it.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add behaviour/fish.go behaviour/fish_test.go
