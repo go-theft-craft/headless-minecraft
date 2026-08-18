@@ -126,6 +126,22 @@ func (c Circle) Deviation() float64 {
 	return c.Radius * (1 - math.Cos(math.Pi/float64(c.Waypoints)))
 }
 
+// RotatedAbout turns a point around a centre by an angle in degrees.
+//
+// It is horizontal only, like everything else here: the bot walks a flat world
+// and turning a position through the vertical would aim it at the sky.
+func (v Vec3) RotatedAbout(centre Vec3, degrees float64) Vec3 {
+	radians := degrees * math.Pi / 180
+	sin, cos := math.Sin(radians), math.Cos(radians)
+	dx, dz := v.X-centre.X, v.Z-centre.Z
+
+	return Vec3{
+		X: centre.X + dx*cos - dz*sin,
+		Y: v.Y,
+		Z: centre.Z + dx*sin + dz*cos,
+	}
+}
+
 // Away returns a point distance blocks from here, directly away from threat.
 //
 // It aims at a point rather than returning a direction because that is what

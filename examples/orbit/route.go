@@ -87,25 +87,108 @@ func (n Navigator) Plan(ctx context.Context, chunks world.ChunksView, from, to V
 		return Route{}, false
 	}
 
-	// The first step is the centre of the cell the bot is already in.
+	// Start from where the bot is, then the centre of the cell it stands in,
+	// then a centre per edge.
 	//
-	// The planner emits no diagonals on purpose -- the comment on its step
-	// table says a corner-cutting rule got wrong walks a body through the gap
-	// between two blocks -- and that guarantee only holds between cell
-	// centres. A bot standing off-centre and heading for the next centre moves
-	// diagonally whatever the planner said, and clips exactly the corner the
-	// planner refused to route through. Getting on the grid first is what
-	// makes every later leg the axis-aligned move the search actually checked.
-	steps := make([]Vec3, 0, len(path.Edges)+1)
-	steps = append(steps, centreOf(from))
+	// The centre matters because the planner emits no diagonals on purpose --
+	// the comment on its step table says a corner-cutting rule got wrong walks
+	// a body through the gap between two blocks -- and that guarantee only
+	// holds between cell centres. A bot standing off-centre and heading for
+	// the next centre moves diagonally whatever the planner said.
+	steps := make([]Vec3, 0, len(path.Edges)+2)
+	steps = append(steps, from, centreOf(from))
 
 	for _, edge := range path.Edges {
 		feet := terrain.FeetOf(edge.To)
 		steps = append(steps, Vec3{X: feet.X, Y: feet.Y, Z: feet.Z})
 	}
 
-	return Route{Steps: steps, Complete: path.Complete}, true
+	// Then pull the string taut. The search walks a grid four directions at a
+	// time, so its route is a staircase and a bot following it turns ninety
+	// degrees a dozen times crossing an open field -- which is exactly what it
+	// looks like: a machine indexing along a lattice, not somebody walking. A
+	// shortcut is only taken where the body has been checked along the whole
+	// straight line of it, so the corners this cuts are corners it has looked
+	// at, which is the difference between smoothing and guessing.
+	steps = n.taut(terrain.Query{
+		View:  view,
+		Body:  n.capability.Body,
+		Limit: n.capability.CandidateLimit,
+	}, steps)
+
+	// The bot is standing on the first point, so it is not a step.
+	return Route{Steps: steps[1:], Complete: path.Complete}, true
 }
+
+// taut removes every point the body can walk straight past.
+//
+// Greedy from each kept point: take the furthest later point the body can
+// reach in a straight line, and drop everything between. Points at a different
+// height are never merged through -- a rise or a drop is a place the bot has
+// to arrive at before the next move makes sense, and this example has no body
+// that could jump the difference anyway.
+func (n Navigator) taut(query terrain.Query, steps []Vec3) []Vec3 {
+	if len(steps) < 3 {
+		return steps
+	}
+
+	taut := make([]Vec3, 0, len(steps))
+	taut = append(taut, steps[0])
+
+	for i := 0; i < len(steps)-1; {
+		furthest := i + 1
+		for j := len(steps) - 1; j > i+1; j-- {
+			if steps[j].Y == steps[i].Y && n.clearLine(query, steps[i], steps[j]) {
+				furthest = j
+
+				break
+			}
+		}
+
+		taut = append(taut, steps[furthest])
+		i = furthest
+	}
+
+	return taut
+}
+
+// clearLine reports whether the body can walk the straight line between two
+// points.
+//
+// Sampled rather than swept. A sweep of a box along a line is what collision
+// does properly and it is not this example's to write; sampling every fifth of
+// a block is finer than the body is wide, so nothing one block across fits
+// between two samples unnoticed.
+func (n Navigator) clearLine(query terrain.Query, from, to Vec3) bool {
+	distance := from.HorizontalDistance(to)
+
+	for travelled := 0.0; travelled <= distance; travelled += lineProbe {
+		if !n.standable(query, from.Toward(to, travelled)) {
+			return false
+		}
+	}
+
+	return n.standable(query, to)
+}
+
+// standable reports whether the body fits at a position with something holding
+// it up.
+func (n Navigator) standable(query terrain.Query, at Vec3) bool {
+	feet := simgeom.Vec3{X: at.X, Y: at.Y, Z: at.Z}
+
+	fit, err := query.Fits(feet)
+	if err != nil || fit != terrain.FitClear {
+		return false
+	}
+
+	ground, err := query.Ground(feet)
+
+	return err == nil && ground == terrain.GroundSolid
+}
+
+// lineProbe is how finely a straight line is sampled, in blocks. A fifth of a
+// block is one movement update and well under the body's width.
+const lineProbe = 0.2
 
 // centreOf is the middle of the cell a position stands in, at the position's
 // own height.

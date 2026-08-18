@@ -125,6 +125,10 @@ type Bot struct {
 
 	// target is the entity being fought.
 	target int32
+	// escapeTo is the goal the current flight is running to. It is kept so
+	// that a flight follows one chosen way out instead of choosing a new one
+	// every tick as the threat moves.
+	escapeTo Vec3
 	// fledAt is when the current flight started.
 	fledAt time.Time
 
@@ -331,6 +335,12 @@ func (b *Bot) follow(t Tick, w World, goal Vec3, key int) (Action, bool) {
 	return b.step(b.route.Steps[b.leg]), true
 }
 
+// fleeTurns are the escape headings to try, in order: straight away first,
+// then wider either side, and behind the threat last. Turning by thirty
+// degrees is finer than the planner's own four directions, so a bot that can
+// leave at all finds a heading it can leave on.
+var fleeTurns = []float64{0, 30, -30, 60, -60, 90, -90, 120, -120, 150, -150, 180}
+
 // fleeRoute is the route key for a flight. Waypoint indices only ever grow
 // from zero, so a negative one cannot collide with them.
 const fleeRoute = -1
@@ -384,20 +394,37 @@ func (b *Bot) flee(t Tick, w World) Action {
 		return b.disengage(t, "ran far enough from the circle")
 	}
 
-	// Routed, like the rest. This was the last leg that was not, and it was the
-	// last one that walked the bot into a wall: everything else stopped doing
-	// that and the flight went on doing it, because running away is chosen by
-	// where the threat is rather than by where the ground goes.
-	away := Away(t.Self.Position, threat.Position, b.bounds.SafeDistance)
-	if action, routed := b.follow(t, w, away, fleeRoute); routed {
-		return action
+	// Keep walking the way out already chosen. Re-choosing every tick as the
+	// threat moves would have the bot pivot on the spot instead of leaving.
+	if b.routedFor == fleeRoute && len(b.route.Steps) > 0 {
+		if action, routed := b.follow(t, w, b.escapeTo, fleeRoute); routed {
+			return action
+		}
 	}
 
-	// Nothing routes away. Run at it anyway rather than stand still while
-	// something hits the bot -- the server refuses the steps that do not fit
-	// and the breaker ends the run, which is a better answer than being eaten
-	// in place.
-	return b.step(away)
+	// Choose one. Directly away if the ground allows it, and otherwise at
+	// progressively wider angles either side, because "away" is a direction
+	// the threat picks and the ground has no obligation to agree with it. A
+	// bot cornered against a wall has to run along the wall, and the straight
+	// answer is the one that walks into it.
+	direct := Away(t.Self.Position, threat.Position, b.bounds.SafeDistance)
+	for _, turn := range fleeTurns {
+		goal := direct.RotatedAbout(t.Self.Position, turn)
+
+		route, found := w.Route(t.Self.Position, goal)
+		if !found {
+			continue
+		}
+
+		b.route, b.leg, b.routedFor, b.escapeTo = route, 0, fleeRoute, goal
+
+		return b.step(b.route.Steps[0])
+	}
+
+	// Nowhere to run. Standing still while something hits the bot is bad; it
+	// is still better than walking into a wall, which the server refuses and
+	// the breaker ends the run over. The escape clock is running either way.
+	return Action{Kind: Stand, Reason: "cornered, nowhere to run"}
 }
 
 // disengage returns to the circle at the nearest waypoint by angle.
