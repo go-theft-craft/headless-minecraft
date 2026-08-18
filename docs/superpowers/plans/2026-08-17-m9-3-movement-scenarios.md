@@ -4,33 +4,104 @@
 
 **Goal:** Prove the kernel's player movement against captured vanilla behaviour on both 1.8.9 and 26.1.2, including the three cases a fixture suite cannot reach — a server correction, a server teleport, and a disconnect in the middle of an action.
 
-**Architecture:** M8.4 and M8.8 prove movement forwards: scripted input runs through the kernel and a real server accepts it without correcting. This stage proves it backwards: a captured vanilla session is replayed through the kernel and the trajectories must match. The two directions fail differently, which is why both exist. The comparison crosses a repository boundary, and it crosses it as a **file** — `mcrelay trace --format json` — not a Go import, because the oracle must not depend on the thing it verifies and `minecraft-simulation` must not depend on an examples module.
+**Architecture:** M8.4 and M8.8 prove movement forwards: scripted input runs through the kernel and a real server accepts it without correcting. This stage proves it backwards: a captured vanilla session is replayed through the kernel and the trajectories must match. The two directions fail differently, which is why both exist. The comparison crosses a repository boundary, and it crosses it as a **file** — what `mcrelay trace -out` writes — not a Go import, because the oracle must not depend on the thing it verifies and `minecraft-simulation` must not depend on an examples module.
 
 **Tech Stack:** Go 1.26.6 from `openserbia/go-flake`, Devbox, Task, `minecraft-simulation`'s `sim`, `runtime`, `movement`, and `profile/java/*`, `relay`'s capture oracle and `conform` harness, `headless-minecraft`'s client, and pinned vanilla 1.8.9 and 26.1.2 servers.
 
 ## Before executing this plan: reconcile it
 
-Every `minecraft-simulation` and `headless-minecraft` symbol this plan names is
-**specified but not yet built**. Each is cited to the plan that specifies it:
+**Reconciled 2026-08-18, by Task 0.** The table below is what is built today,
+not what was specified. Where this plan said something that turned out to be
+false, the task now says the true thing and the difference is recorded under
+"What reconciliation changed" beneath the table.
 
-| Symbol | Specified in |
-| --- | --- |
-| `sim.TickInput`, `sim.TickResult`, `sim.ChangeSet`, `sim.Digest`, `sim.Profile` | M8.3 plan, Tasks 5, 8, 9 |
-| `runtime.Store`, `runtime.Runner`, `runtime.Memory` | M8.3 plan, Tasks 10, 11 |
-| `movement.Input`, `movement.Locomotion`, `movement.LocomotionView` | M8.4 plan, Task 1 |
-| `profile/java/v1_8.New`, `profile/java/v26_1.New` | M8.4 Task 7, M8.7 Task 5 |
-| `client.Do`, `client.Action`, `ActionMove`, `ActionLook`, `ActionGround` | M8.8 plan, Task 1 |
-| `adapter.Drive`, `adapter.Source`, `adapter.Sink` | M8.8 plan, Task 2 |
-| `predict.Loop`, `predict.Correction` | M8.8 plan, Task 4 |
-| `vanilla.Start`, `vanilla.Options` | M8.8 plan, Task 5 |
-| `trace.Trace`, `trace.Sample`, `trace.ToleranceFor`, `conform.Scenario`, `conform.Run` | M9.1 (built), M9.1b plan |
+| Symbol | Where it is | State |
+| --- | --- | --- |
+| `sim.TickInput`, `sim.TickResult`, `sim.ChangeSet`, `sim.Digest`, `sim.Profile` | `minecraft-simulation/sim` | built, names unchanged |
+| `runtime.Store`, `runtime.NewRunner`, `runtime.NewMemory` | `minecraft-simulation/runtime` | built; the constructors are `NewRunner` and `NewMemory`, not bare types |
+| `movement.Input`, `movement.Locomotion`, `movement.LocomotionView` | `minecraft-simulation/movement` | built, names unchanged |
+| `profile/java/v1_8.New`, `profile/java/v26_1.New` | `minecraft-simulation/profile/java/*` | built, `New(*data.Set) (sim.Profile, error)` |
+| `adapter.Drive`, `adapter.Source`, `adapter.Sink` | `minecraft-simulation/adapter` | built — in the simulation, not in this repository |
+| `client.Do`, `ActionMove`, `ActionLook`, `ActionGround` | `headless-minecraft/client` | built |
+| `predict.Loop`, `predict.Correction` | `headless-minecraft/predict` | built, and **a correction is a callback, not an event** |
+| `vanilla.Start`, `vanilla.Options` | `headless-minecraft/internal/vanilla` | built; the server exposes `Lines`, `Log`, `Matching`, `Stop` |
+| `trace.Trace`, `trace.Sample`, `trace.Tolerance`, `trace.ToleranceFor` | `relay/examples/minecraft/trace` | built (M9.1, M9.1b) |
+| `conform.Scenario`, `conform.Lane`, `conform.Run`, `conform.Comparer`, `conform.Loader` | `relay/examples/minecraft/conform` | built (M9.1b) |
+| `mctest.Captured`, `mctest.ReplayCaptured` | `minecraft-simulation/mctest` | built by M9.2, and it is the comparator this plan proposed to write |
+| `trace.Document`, `trace.Schema`, `trace.WriteDocument`, `trace.ReadDocument` | — | this plan, Task 1 |
+| `conformance.Compare` | — | this plan, Task 2, **and see the finding about `mctest.Captured`** |
 
-**Task 0, before anything else:** read what actually landed and correct the
-names, signatures, and file paths in this plan to match. Where a symbol landed
-with a different shape, change this plan; where it did not land at all, that is
-a blocker to report, not a thing to stub. This project has already paid once for
-a plan that named a directory nobody could find, and a plan that names a
-function nobody wrote fails the same way.
+### What reconciliation changed
+
+Seven things this plan asserted are not true of the tree it now runs against.
+
+- **`predict.Correction` is delivered by a callback, and `Predicted` is not on
+  the client.** `predict.Options.OnCorrection func(Correction)` is how a
+  correction reaches a caller, and the predicted state is
+  `predict.Loop.Predicted() (entity.State, bool)`. Tasks 5 and 6 were written
+  against `c.Predicted()` and a `event.DomainPlayer` correction event, and
+  neither exists. The tests are rewritten against the loop. The risk section at
+  the foot of this plan called this out in advance — "if `Correction` is not
+  published as an event, those tasks need reworking" — and this is that
+  rework.
+- **The 775 teleport confirmation is already implemented.** It is in
+  `internal/adapter/v26_1/handlers.go`, and it fires on every server-initiated
+  position rather than only on the placing one. Task 6 is therefore a test
+  against a claim, not a feature: if it passes first time, that is the correct
+  outcome and not a sign the test is wrong. What is unverified is the *count* —
+  exactly one confirmation per teleport — and that a real server stops
+  resending.
+- **The live lane is `//go:build vanilla` and `-run TestVanilla`.** `task
+  test:vanilla` runs `go test ./client/ -run TestVanilla -tags vanilla`. A live
+  test named anything else is a test nothing runs, and a live test without the
+  tag breaks `task verify`, which must stay offline. Tasks 5 to 7 land in
+  `client/vanilla_e2e_test.go`'s lane and are named `TestVanilla…`, not in the
+  three new files this plan invented.
+- **`vanilla.Server` has no `LogLines` and no `Kill`.** It has `Matching(sub)
+  []string`, `Lines()`, `Log()`, and `Stop()`. Task 7 wanted a server killed
+  under a live client; `Stop()` is a clean shutdown, so the disconnect has to
+  be provoked at the connection rather than at the process.
+- **`mcrelay`'s flags are not what Task 3 wrote.** It is `-listen`,
+  `-upstream`, `-record <directory>` — `-capture` is a bool that records raw
+  bytes, not a path — and extraction is `mcrelay trace -in <file> -out <file>`,
+  with no `--format json`. The commands in Task 3 are corrected.
+- **`traceDocument` is at `cmd/mcrelay/main.go:496`, not `:380`, and carries a
+  `Note`.** Its fields today are `Recording`, `Protocol`, `Note`, `Traces`.
+  Task 1 keeps `Note`: dropping a field to match a plan written before it
+  existed would lose what the recorder had to say about the session.
+- **M9.2 already built a captured-trajectory comparator, and it is not this
+  one.** `mctest.Captured` and `mctest.ReplayCaptured` replay a captured
+  trajectory against a profile at the version's own tolerance, out of a
+  hand-built JSON form with per-sample tick offsets. Task 2 proposed a second
+  comparator in a new `conformance` package reading the trace document
+  directly. Two comparators for one job is the thing to avoid, so Task 2 is
+  re-scoped: extend `mctest` rather than fork it, and make the trace document a
+  *source* the corpus is generated from rather than a second runtime format.
+
+### The blocker this plan did not see
+
+**Task 3 cannot be run for 26.1.2 by anyone without a real Minecraft client,
+and Task 4 depends on Task 3.**
+
+The bodies M9.2 captured — an item, an arrow — are simulated by the server, so
+a capture of them is an oracle no matter which client was connected. A player
+is not. The server does not narrate a player's walking back to it; the player
+trace is built from what the *client* reported, as `trace.Trace`'s own doc
+comment says. So a movement corpus captured through this repository's headless
+client is this repository's own physics played back to itself, and comparing
+the kernel against it would pass by construction.
+
+The oracle for a player trace is a real vanilla client behind the proxy. For
+1.8.9 those recordings exist and are archived — `oracle-evidence/2026-08-17-relay-capture/fixed/20260817-132217-003.mccap`,
+5304 records from a real 1.8.9 client, is the largest. For **26.1.2 there is
+no such recording**: every 775 capture in `oracle-evidence` was taken with the
+headless client, and the verification document says so outright.
+
+This is a two-version stage, so Tasks 3 and 4 are blocked on a human playing
+26.1.2 through the proxy. They are not startable by an agent and must not be
+faked with a headless capture. Tasks 5 to 7 — the correction, the teleport, and
+the disconnect, which are the master plan's stated gate for M9.3 — do not
+depend on the corpus and are unblocked.
 
 ## Global Constraints
 
@@ -101,6 +172,35 @@ apply a change set computed against a revision the server will never confirm.
 - `client/action_test.go` — modify. Add the correction, teleport, and
   disconnect cases against a pinned server.
 - `examples/scenario/` — new. The runnable surface CI drives.
+
+---
+
+## Task 0: Reconcile this plan against what is built
+
+- [x] **Step 1: Check every symbol the table names**
+
+Done. The table above now says where each one is and what shape it landed in,
+and "What reconciliation changed" lists the seven places this plan was wrong.
+
+- [x] **Step 2: Check the commands, not only the symbols**
+
+A plan that names a flag nobody implemented fails the same way as one that
+names a function nobody wrote. `mcrelay`'s flags and `task test:vanilla`'s
+selector were both wrong here, and both would have been found at the worst
+moment — with a server running and a client connected.
+
+- [x] **Step 3: Report what is blocked rather than stubbing it**
+
+Tasks 3 and 4 need a real 26.1.2 client and are blocked on a person. That is
+written above as a blocker, not worked around: a movement corpus captured with
+our own client is our own physics played back to itself.
+
+- [x] **Step 4: Commit the reconciliation**
+
+```bash
+git add docs/superpowers/plans/2026-08-17-m9-3-movement-scenarios.md
+git commit -m "docs(plan): reconcile M9.3 against what M8.8 and M9.2 landed"
+```
 
 ---
 
