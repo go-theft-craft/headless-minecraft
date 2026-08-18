@@ -38,7 +38,7 @@ here.
 | M6 | Finish the server migration and connect the headless client | `server`, `headless-minecraft` | Complete except **M6.4** (Microsoft device-code), postponed |
 | M7 | Immutable observed world state, wire-ordered reducers | `headless-minecraft` | Complete |
 | M8 | Deterministic 1.8.9 and 26.1.2 movement kernel, replay, consumer integration | `minecraft-simulation` | Complete (M8.1–M8.8) |
-| M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **In progress**: M9.1 client check pending; M9.1b and M9.2 complete; M9.3 and M9.4 part-done; M9.5–M9.8 not started |
+| M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **In progress**: M9.1 complete, live check run 2026-08-17; M9.1b and M9.2 complete; M9.3 and M9.4 part-done; M9.5–M9.8 not started |
 | M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **In progress**: reconciled 2026-08-18, six tasks drafted and none executed |
 | M11 | Turn `server` into a framework | `server` | Complete (M11.1–M11.7) |
 | — | Navigation and behaviour pillar | `minecraft-simulation`, `headless-minecraft` | **In progress**: terrain, search, heuristic, memo and interaction primitives landed; four plans open |
@@ -51,21 +51,35 @@ Each item names the plan that owns it and the evidence its state was read from.
 
 ### `relay`
 
-- [ ] **Run M9.1's live check.** One real 1.8.9 client through the proxy to a
-  pinned offline vanilla server, verified and traced. Procedure in
-  `../relay/docs/verification/2026-08-17-capture-oracle.md`. Until it runs, the
-  capture oracle is only known to agree with our own encoder.
-- [ ] **Decide what the capture sink does when storage is slow.**
-  `../relay/docs/2026-08-17-after-the-plan.md` establishes that the `Sink`
-  no-blocking contract is stated and unenforced, and that the repository's own
-  `examples/minecraft/capture` breaks it: `Message` writes to the file
-  synchronously on the read pump, and `MultiSink` fans out serially, so the
-  capture sink stalling also starves the SQLite sink beside it. Enqueue-and-drop
-  is the wrong repair — a recording with a frame missing is not evidence — so
-  the doc names three options and picks none. Picking one is the open work.
-  The doc's other parked question, whether `Transform` needs un-swapping, is
-  **answered and closed**: it does not, and the reversible case (compression)
-  is deliberately routed to the `Framer`.
+Both questions this repository was carrying are **closed**, and the two lines
+below are what is left of them.
+
+- [ ] **Record one online-mode session against a real server.** Step 8 of
+  `../relay/docs/verification/2026-08-17-capture-oracle.md`, added after the
+  2026-08-17 run and optional: every other step has a result. It needs a paid
+  account, which is the same thing M6.4 and M10's online-mode lane need, so it
+  is cheapest to do all three in one sitting.
+- Closed, 2026-08-17: **M9.1's live check ran.** A real vanilla 1.8.9 server and
+  a real client, and it earned its keep — a capture from a server with
+  compression on did not replay, because the frame enabling compression was
+  withheld as though it were key material. Fixed, and the fix confirmed on the
+  wire. Recordings that predate the fix cannot be repaired and are the only
+  artifact of the defect.
+- Closed, 2026-08-18: **the `Sink` contract is enforced rather than stated.**
+  `sinkpump.go` gives every session one bounded queue and one goroutine, with
+  `SinkOverflowBlock`, `Drop`, and `EndSession` policies, and the choice between
+  the core's queue and the recorder's own was settled by running both in front
+  of a real server onto a deliberately slow disk
+  (`../relay/docs/verification/2026-08-18-sink-policy-live.md`): the recorder
+  keeps its queue, and the core's stays out of the capture path.
+  `../relay/docs/2026-08-17-after-the-plan.md` is the record of the problem, not
+  of the state.
+
+  **The limit that run found is worth carrying:** `mcrelay verify` digests what
+  was written rather than what crossed the wire, so a recording missing 16% of
+  its records passed the gate. Dropping is therefore never the policy in front
+  of a recorder — but nothing in the format can say a frame is missing, and no
+  milestone owns changing that.
 
 ### `headless-minecraft`
 
@@ -129,8 +143,9 @@ Each item names the plan that owns it and the evidence its state was read from.
   ([plan](docs/superpowers/plans/2026-08-18-composed-behaviours.md),
   6 tasks). No `behaviour` package exists. Tasks 1–4 unblock once the
   interaction primitives land (they have); task 5 needs the mutating edges;
-  task 6 (`Fish`) needs a captured fishing trace per version, which needs
-  M9.1's live check.
+  task 6 (`Fish`) needs a captured fishing trace per version, and neither oracle
+  session captured one — the plan's own dependency table says "neither has
+  run", which is now wrong about the sessions and still right about the trace.
 - [ ] **Make the end-to-end lane drive `examples/observe`.** The convention is
   that examples are the integration surface; `client/world_e2e_test.go` mimics
   what `examples/observe` subscribes to rather than driving it. Assigned to
@@ -226,8 +241,10 @@ through 26.2, and the repository is released at `v1.0.1`.
 
 ## Plans whose checkboxes are stale
 
-These plans have unticked steps and shipped anyway. Read the code, not the
-boxes; do not re-run them.
+These plans have unticked steps and shipped anyway. Each one now opens with a
+status header saying what shipped and where, added 2026-08-18 in its own
+repository, so the correction survives without this file. Read the header and
+the code, not the boxes; do not re-run them.
 
 | Plan | Boxes | Why it is done |
 | --- | --- | --- |
