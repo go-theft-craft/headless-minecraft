@@ -10,24 +10,75 @@
 
 ## Before executing this plan: reconcile it
 
-Depends on M9.5. Symbols specified but not built:
+**Reconciled 2026-08-18, by Task 0.** The table is what is built today, not what
+was specified. Task 1 still comes before everything else: it decides whether the
+26.1.2 window data is usable at all, and reconciliation does not answer that.
 
-| Symbol | Specified in |
-| --- | --- |
-| `client.Do`, `client.Action` | M8.8 plan, Task 1 |
-| `conform.Scenario`, `conform.Lane` | M9.1b plan, Task 5 |
-| `conformance` corpus loading | M9.3 plan, Task 2 |
+| Symbol | Where it is | State |
+| --- | --- | --- |
+| `client.Do` | `headless-minecraft/client` | built as `Do(ctx, version.Action) error` |
+| `world.Containers` with `Opened`, `Closed`, `SlotsChanged`, `PropertyChanged`, `PlayerSlotChanged`, `CursorChanged`, `RecipesChanged`, `TradesChanged`, `CraftResponse` | `headless-minecraft/world/containers.go` | built, and it also carries `RecipesDeclared` |
+| `world.ContainerView`, `world.ContainersView` | `headless-minecraft/world/containers.go` | built |
+| the seven `container.*` event names | `headless-minecraft/event/taxonomy.go` | built |
+| `data.Window`, `data.WindowSlot`, `data.WindowRegistry` | `minecraft-protocol/data` | built. `WindowRegistry` is the interface in `data/registry.go` |
+| `conform.Scenario`, `conform.Lane`, `conform.Run` | `relay/examples/minecraft/conform` | built (M9.1b) |
+| the 26.1 window registry's alias comment | `minecraft-protocol/generated/java/v26_1/windows.go` | **verbatim as this plan quotes it.** Task 1's premise holds |
+| `conformance` corpus loading | — | **never built.** M9.3's proposal became `mctest`, which holds trajectories and has nothing to say about windows |
+| `client.ActionClickSlot`, `client.ActionCloseWindow` | — | **not this plan's, and they live in `version`.** See below |
+| the pre-click snapshot and rollback, the confirmation paths, the gate | — | this plan, Tasks 2 to 4 |
 
-Symbols that exist today and were read before writing this plan:
-`world.Containers` with `Opened`, `Closed`, `SlotsChanged`, `PropertyChanged`,
-`PlayerSlotChanged`, `CursorChanged`, `RecipesChanged`, `TradesChanged`,
-`CraftResponse`; `world.ContainerView`, `world.ContainersView.Get`;
-`event.NameContainerOpened`, `Closed`, `SlotsChanged`, `CursorChanged`,
-`RecipesChanged`, `TradesChanged`, `CraftResponse`;
-`data.Window`, `data.WindowSlot`, `data.WindowRegistry`.
+### What reconciliation changed
 
-**Task 0:** reconcile before touching anything. Then do Task 1, which may
-change the shape of this whole stage.
+Three things this plan asserted are not true of the tree it now runs against.
+
+- **The window actions are not this plan's.** The [interaction primitives
+  plan](2026-08-18-interaction-primitives.md) ships `version.ActionClickSlot`,
+  `version.ActionDrop`, and `version.ActionCloseWindow` in
+  `version/action_window.go`, together with the click-mode vocabulary. What M9.7
+  owns is everything those packets do not carry: the pre-click snapshot, the
+  rollback, the two versions' confirmation mechanisms, and the gate. Task 3 is
+  rewritten against that boundary, and `client/window.go` becomes the sequencing
+  and confirmation code rather than a second home for action types.
+
+  `client` re-exports the eight actions that existed at M8.8 as type aliases, so
+  a `client.ActionX` name is not impossible in principle — but the primitives
+  plan adds no alias for the new ones, so name them `version.X`.
+- **The gate does not belong in `minecraft-simulation` at all.** Task 4 put it in
+  `minecraft-simulation/conformance/`, and that repository has no container
+  model, no inventory, and no `conformance` package — its packages are the
+  kernel, the world of blocks, and the movement rules. Containers are observed
+  client state, so the corpus and the gate live in `headless-minecraft`, beside
+  the code they gate.
+- **Every live test in this stage has a shape it must take.** See the block
+  below; Task 1's audit and Task 3's click tests both start a real server, and
+  both were written outside the lane that exists for that.
+
+### How the live tests in this plan must be written
+
+Every test here that starts a real server lands in the lane that already exists
+for that, and M9.3's reconciliation found the same thing before this one did. The
+rules, read off `client/vanilla_e2e_test.go` and `client/vanilla_scenario_test.go`
+on 2026-08-18:
+
+- The file carries `//go:build vanilla` and lives in `client/` (package
+  `client_test`). A live test without the tag breaks `task verify`, which must
+  stay offline; a live test outside `client/` is a test nothing runs, because the
+  task is `go test ./client/ -run TestVanilla -tags vanilla`.
+- The two versions are **two top-level tests**, not a loop over a version table:
+  `TestVanilla<Thing>` and `TestVanilla26<Thing>`, each one line, each calling a
+  shared scenario function with `lane1_8()` or `lane26()`. `-run TestVanilla`
+  selects both, and a failure names the version in the test name rather than in a
+  subtest the log has to be read for.
+- The server comes from `lane.start(t)`, which wraps `vanilla.Start(t,
+  vanilla.Options{…})`. 26.1.2's lane sets `Jar`, `Libraries`, `LevelType`, and a
+  longer `Ready`; a test that calls `vanilla.Start` with bare options gets a
+  1.8.9 server whatever it meant.
+- `vanilla.Server` exposes `Lines`, `Log`, `Matching`, and `Stop`. There is no
+  `LogLines` and no `Kill`.
+
+The snippets below show scenario bodies. Wrap each in that pair before running
+it, and do not invent a `vanillaVersions(t)` table — there is none, and a loop
+variable named `version` would shadow the `version` package the bodies now name.
 
 ## Global Constraints
 
@@ -82,16 +133,58 @@ here because this is the stage that owns click modes.
 **`headless-minecraft/`**
 
 - `world/containers.go` — modify. Pre-click snapshot and rollback.
-- `client/window.go` — new. `ActionClickSlot`, `ActionCloseWindow`, and the
-  click-mode vocabulary.
-- `client/window_test.go`
+- `client/window.go` — new. The click sequence, the pre-click snapshot, and the
+  wait for confirmation. **Not the action types** — `version.ActionClickSlot`,
+  `version.ActionDrop`, and `version.ActionCloseWindow` are the interaction
+  primitives plan's, along with the `ClickMode` type they carry.
+- `client/window_test.go` — the offline half.
+- `client/vanilla_window_test.go` — the live half, `//go:build vanilla`,
+  `TestVanillaX` and `TestVanilla26X`.
 - `internal/adapter/v1_8/window.go` — the transaction confirmation path.
 - `internal/adapter/v26_1/window.go` — the state-ID path.
-- `internal/conformance/windows_test.go` — Task 1's audit.
+- `internal/conformance/windows_test.go` — Task 1's audit, offline: it reads the
+  recording Step 1 captured rather than starting a server itself.
+- `internal/conformance/testdata/windows/26_1_2.json` — that recording.
+- `client/testdata/containers/` — the click corpus, one file per version. It is
+  here and not in `minecraft-simulation`, which has no container model at all.
 
-**`minecraft-simulation/conformance/`**
+---
 
-- `containers_test.go`, `testdata/containers/`
+## Task 0: Reconcile this plan against what is built
+
+- [x] **Step 1: Check every symbol the table names**
+
+Done. M7's observation half is built exactly as this plan described it, down to
+the seven event names. What moved is the action half: it belongs to the
+interaction primitives plan, and it lives in `version`.
+
+- [x] **Step 2: Check the premise Task 1 rests on**
+
+This stage opens with a feasibility question, and a feasibility question written
+against a comment that has since changed would send the audit after the wrong
+thing:
+
+```bash
+cd minecraft-protocol
+sed -n '1,20p' generated/java/v26_1/windows.go
+```
+
+The alias comment is still there, word for word. Task 1's premise holds and its
+audit is still the right first move.
+
+- [x] **Step 3: Check where the gate can physically live**
+
+`minecraft-simulation` has no container model — its packages are the kernel, the
+block world, movement, collision, and the profiles. A containers corpus there
+would have had nothing to compare against. The gate moves to
+`headless-minecraft`, which is where the state is.
+
+- [x] **Step 4: Commit the reconciliation**
+
+```bash
+git add docs/superpowers/plans/2026-08-17-m9-7-containers-and-inventory.md
+git commit -m "docs(plan): reconcile M9.7 — the window actions moved, and so does the gate"
+```
 
 ---
 
@@ -122,7 +215,13 @@ func TestTheWindowRegistryMatchesTheServer(t *testing.T) {
 	// have drifted, and it is expected to fail on its first run. The failure
 	// is the deliverable.
 	observed := loadObservedWindows(t, "testdata/windows/26_1_2.json")
-	registry := v26_1.Data().Windows()
+
+	// Data returns a set and an error; the registry is an accessor on the set.
+	set, err := v26_1.Data()
+	if err != nil {
+		t.Fatalf("load the 26.1 data set: %v", err)
+	}
+	registry := set.Windows()
 
 	var drift []string
 	for _, window := range observed {
@@ -327,6 +426,14 @@ rolls back everything predicted on top of it."
 **Interfaces:**
 - Produces:
 
+`version.ActionClickSlot{Window uint8, Slot int16, Button uint8, Mode ClickMode,
+Transaction int16}`, `version.ActionDrop`, and `version.ActionCloseWindow` are
+built by the [interaction primitives
+plan](2026-08-18-interaction-primitives.md), Task 6. That plan names the
+`ClickMode` type and does not enumerate it; **this is the enumeration it should
+use**, and it lands in `version/action_window.go` beside the action rather than
+in `client`:
+
 ```go
 // ClickMode is what a click does, named rather than numbered.
 //
@@ -371,8 +478,8 @@ func TestAClickIsConfirmedOnBothVersions(t *testing.T) {
 			openChest(t, c, server)
 
 			slots := subscribe(t, c, event.DomainContainers)
-			if err := c.Do(t.Context(), client.ActionClickSlot{
-				Window: openWindowID(t, c), Slot: 0, Mode: client.ClickPickup,
+			if err := c.Do(t.Context(), version.ActionClickSlot{
+				Window: openWindowID(t, c), Slot: 0, Mode: version.ClickPickup,
 			}); err != nil {
 				t.Fatalf("Do: %v", err)
 			}
@@ -420,8 +527,8 @@ func TestShiftClickDrainsRatherThanActingOnce(t *testing.T) {
 	c := connected(t, server)
 	openChestWith(t, c, server, stack("stone", 64))
 
-	if err := c.Do(t.Context(), client.ActionClickSlot{
-		Window: openWindowID(t, c), Slot: 0, Mode: client.ClickQuickMove,
+	if err := c.Do(t.Context(), version.ActionClickSlot{
+		Window: openWindowID(t, c), Slot: 0, Mode: version.ClickQuickMove,
 	}); err != nil {
 		t.Fatalf("Do: %v", err)
 	}
@@ -443,7 +550,7 @@ func TestClosingAWindowDropsTheCursorStack(t *testing.T) {
 	openChest(t, c, server)
 	pickUpInto(t, c, "cursor")
 
-	if err := c.Do(t.Context(), client.ActionCloseWindow{Window: openWindowID(t, c)}); err != nil {
+	if err := c.Do(t.Context(), version.ActionCloseWindow{Window: openWindowID(t, c)}); err != nil {
 		t.Fatalf("Do close: %v", err)
 	}
 	settle(t, c)
@@ -481,8 +588,13 @@ sees only whether the click landed."
 ## Task 4: The gate and the milestone record
 
 **Files:**
-- Create: `minecraft-simulation/conformance/containers_test.go`
-- Create: `minecraft-simulation/conformance/testdata/containers/`
+- Create: `headless-minecraft/client/vanilla_window_test.go` (the gate; the
+  audit and click tests above extend the same file)
+- Create: `headless-minecraft/client/testdata/containers/1_8_9.json`,
+  `26_1_2.json`
+
+Not `minecraft-simulation`: that repository models blocks, bodies, and movement,
+and has no container or inventory state for a corpus to be compared against.
 - Modify: `headless-minecraft/MASTER_PLAN.md`
 
 - [ ] **Step 1: Capture the corpus on both versions**
