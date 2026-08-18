@@ -120,8 +120,8 @@ func TestATautRouteWillNotCutThroughFire(t *testing.T) {
 		{X: 3.5, Y: 64, Z: 3.5},
 	}
 
-	for _, point := range navigator.taut(query, staircase) {
-		if cell := floorOf(point); view.harmful[cell] {
+	for _, step := range navigator.taut(query, walked(staircase...)) {
+		if cell := floorOf(step.At); view.harmful[cell] {
 			t.Errorf("the taut route stands in fire at %+v", cell)
 		}
 	}

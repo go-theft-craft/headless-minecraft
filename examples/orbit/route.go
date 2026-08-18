@@ -46,10 +46,27 @@ var (
 // core does with it. Keeping navigation.Path out of the core is what lets the
 // decision tests run without a world: a scripted router returns three points
 // and the state machine cannot tell the difference.
+// Step is one waypoint on a route, and whether arriving needs a jump.
+//
+// A path is a list of edges and this bot walks a list of positions, and two of
+// the planner's edges are not walkable. EdgeStep rises a whole block, which a
+// player clears by jumping because the game steps up six tenths of one on its
+// own, and EdgeJumpGap reaches across a hole. Flattening a path to bare
+// positions dropped that distinction, so the bot walked horizontally into the
+// block it had been routed over and off the edge of the gap it had been routed
+// across — a route the planner called sound, refused by the world one tick at a
+// time.
+type Step struct {
+	// At is the position to walk to.
+	At simgeom.Vec3
+	// Jump reports that reaching At needs the body off the ground.
+	Jump bool
+}
+
 type Route struct {
-	// Steps are the positions to walk through, in order, each at the centre of
+	// Steps are the waypoints to walk through, in order, each at the centre of
 	// the cell the planner routed into.
-	Steps []simgeom.Vec3
+	Steps []Step
 	// Complete reports that the steps reach the goal. An incomplete route is
 	// still worth walking -- the planner returns one on purpose, because a bot
 	// that covers most of the ground and searches again beats one that refuses
@@ -114,7 +131,7 @@ func (n Navigator) Physics() Physics {
 // is the one thing in this tick that can take unbounded time, and the budget
 // below bounds it by nodes as well.
 func (n Navigator) Plan(ctx context.Context, chunks world.ChunksView, from, to simgeom.Vec3) (Route, bool) {
-	view := predict.NewTerrain(chunks, n.blocks, n.profile)
+	view := n.planningView(chunks)
 
 	path, err := navigation.Find(
 		ctx, view, n.facts, n.capability, floorOf(from), floorOf(to), n.budget,
@@ -145,12 +162,15 @@ func (n Navigator) Plan(ctx context.Context, chunks world.ChunksView, from, to s
 	// a body through the gap between two blocks -- and that guarantee only
 	// holds between cell centres. A bot standing off-centre and heading for
 	// the next centre moves diagonally whatever the planner said.
-	steps := make([]simgeom.Vec3, 0, len(path.Edges)+2)
-	steps = append(steps, from, centreOf(from))
+	steps := make([]Step, 0, len(path.Edges)+2)
+	steps = append(steps, Step{At: from}, Step{At: centreOf(from)})
 
 	for _, edge := range path.Edges {
 		feet := terrain.FeetOf(edge.To)
-		steps = append(steps, simgeom.Vec3{X: feet.X, Y: feet.Y, Z: feet.Z})
+		steps = append(steps, Step{
+			At:   simgeom.Vec3{X: feet.X, Y: feet.Y, Z: feet.Z},
+			Jump: leavesTheGround(edge.Kind),
+		})
 	}
 
 	// Then pull the string taut. The search walks a grid four directions at a
@@ -182,18 +202,26 @@ func (n Navigator) Plan(ctx context.Context, chunks world.ChunksView, from, to s
 // height are never merged through -- a rise or a drop is a place the bot has
 // to arrive at before the next move makes sense, and this example has no body
 // that could jump the difference anyway.
-func (n Navigator) taut(query terrain.Query, steps []simgeom.Vec3) []simgeom.Vec3 {
+func (n Navigator) taut(query terrain.Query, steps []Step) []Step {
 	if len(steps) < 3 {
 		return steps
 	}
 
-	taut := make([]simgeom.Vec3, 0, len(steps))
+	taut := make([]Step, 0, len(steps))
 	taut = append(taut, steps[0])
 
 	for i := 0; i < len(steps)-1; {
 		furthest := i + 1
 		for j := len(steps) - 1; j > i+1; j-- {
-			if steps[j].Y == steps[i].Y && n.clearLine(query, steps[i], steps[j]) {
+			// A step that needs a jump is never shortcut to and never dropped.
+			// The line check asks whether the body can walk the straight line,
+			// and the whole point of those two edges is that it cannot: a gap
+			// has no floor and a rise has a block in the way, so a shortcut
+			// taking one would be a walk across the thing the jump clears.
+			if jumpBetween(steps[i+1 : j+1]) {
+				continue
+			}
+			if steps[j].At.Y == steps[i].At.Y && n.clearLine(query, steps[i].At, steps[j].At) {
 				furthest = j
 
 				break
@@ -205,6 +233,41 @@ func (n Navigator) taut(query terrain.Query, steps []simgeom.Vec3) []simgeom.Vec
 	}
 
 	return taut
+}
+
+// jumpBetween reports whether any of these steps needs the body off the ground.
+func jumpBetween(steps []Step) bool {
+	for _, step := range steps {
+		if step.Jump {
+			return true
+		}
+	}
+
+	return false
+}
+
+// leavesTheGround reports whether an edge needs the body off the ground.
+//
+// Every kind is named rather than defaulted, so an edge added to the vocabulary
+// is a thing to decide about here rather than one that silently arrives as a
+// walk.
+func leavesTheGround(kind navigation.EdgeKind) bool {
+	switch kind {
+	case navigation.EdgeStep, navigation.EdgeJumpGap:
+		return true
+	case navigation.EdgeWalk, navigation.EdgeFall, navigation.EdgeSwim,
+		navigation.EdgeWaterDrop, navigation.EdgeClimb, navigation.EdgeDoor:
+		return false
+	case navigation.EdgePlace, navigation.EdgePillar:
+		// Both rise or bridge by putting a block somewhere, which this bot has
+		// no inventory and no placement action for, so its capability leaves
+		// them off and neither reaches here. A jump on its own is not how
+		// either is done, so setting the flag would be the wrong half of the
+		// move.
+		return false
+	}
+
+	return false
 }
 
 // clearLine reports whether the body can walk the straight line between two
@@ -247,7 +310,8 @@ func (n Navigator) standable(query terrain.Query, at simgeom.Vec3) bool {
 		return false
 	}
 
-	// Every cell the body covers, not the one its centre falls in.
+	// Every cell the body covers, with a margin, and not the one its centre
+	// falls in.
 	//
 	// A body 0.6 wide standing on a cell centre stays inside that cell, which
 	// is why the search gets away with asking about one: it moves centre to
@@ -257,6 +321,13 @@ func (n Navigator) standable(query terrain.Query, at simgeom.Vec3) bool {
 	// corner of a cell it would never have been allowed to stand in. Lava does
 	// not care that the bot's centre was somewhere safe -- this is a bot that
 	// caught fire walking past the corner of a lava pool.
+	//
+	// The body's true width, and no margin on top. A margin here is what broke
+	// this once: widening the box on one side of the comparison and not the
+	// other reproduces the very disagreement it was meant to close, one layer
+	// further out. The clearance belongs in the world both sides read — see
+	// buffered — so that the planner and every check validating its routes are
+	// measuring the same thing.
 	for _, cell := range n.bodyCells(at) {
 		hazard, lookup, err := query.HazardAt(cell)
 		if err != nil || lookup == simworld.LookupUnknown || hazard != terrain.HazardNone {
@@ -285,7 +356,12 @@ func (n Navigator) standable(query terrain.Query, at simgeom.Vec3) bool {
 // blocks tall stands in two of them, so a check that looked only underfoot
 // would walk the bot upright through a fire burning at chest height.
 func (n Navigator) bodyCells(at simgeom.Vec3) []simgeom.BlockPos {
-	half := n.capability.Body.HalfWidth
+	return n.cellsWithin(at, n.capability.Body.HalfWidth)
+}
+
+// cellsWithin returns the cells a box of a given half-width covers at a
+// position.
+func (n Navigator) cellsWithin(at simgeom.Vec3, half float64) []simgeom.BlockPos {
 	feet := floorOf(at)
 
 	// One or two per axis, depending on whether the box straddles a boundary.
@@ -341,7 +417,22 @@ func centreOf(p simgeom.Vec3) simgeom.Vec3 {
 // the ground it planned across. Lava poured in front of a walking bot changes
 // nothing about the route it already holds.
 func (n Navigator) Walkable(chunks world.ChunksView, from, to simgeom.Vec3) bool {
-	view := predict.NewTerrain(chunks, n.blocks, n.profile)
+	// The true world, not the buffered one, and this is the pairing that makes
+	// the whole arrangement stable.
+	//
+	// The planner reads a world where harm is a cell wider than it is, so a
+	// route it returns keeps a cell clear of anything that hurts. This validates
+	// that route against what is really there. The body can lean at most three
+	// tenths of a block into a neighbouring cell, so a route with a whole cell
+	// of clearance cannot reach real harm, and the two agree.
+	//
+	// Reading the buffered world here instead is what does not work, and it was
+	// tried: the check then refuses cells two away from the lava, the planner
+	// only avoids cells one away, and the pair argue exactly as they did before
+	// — the disagreement moved outward by a cell rather than closing. A margin
+	// applied to one side of a comparison and not the other reproduces itself
+	// wherever it is put.
+	view := n.terrainView(chunks)
 
 	return n.clearLine(terrain.Query{
 		View:  view,
@@ -359,7 +450,11 @@ func (n Navigator) Walkable(chunks world.ChunksView, from, to simgeom.Vec3) bool
 // that hurts, and a bot that treated the two alike would decide it was on fire
 // every time it walked to the edge of what the server has sent it.
 func (n Navigator) Hurting(chunks world.ChunksView, at simgeom.Vec3) bool {
-	view := predict.NewTerrain(chunks, n.blocks, n.profile)
+	// The true world, not the buffered one. This is the guard, and its job is to
+	// refuse what actually harms the body — a bot that would not stand beside
+	// lava could not walk out of a pool it was already in, which is the mistake
+	// that burned this example once already.
+	view := n.terrainView(chunks)
 	query := terrain.Query{View: view, Facts: n.facts, Body: n.capability.Body}
 
 	for _, cell := range n.bodyCells(at) {
@@ -387,7 +482,10 @@ func (n Navigator) Hurting(chunks world.ChunksView, at simgeom.Vec3) bool {
 // into a chunk nobody has described has swapped a known problem for one it
 // cannot see.
 func (n Navigator) Safe(chunks world.ChunksView, from simgeom.Vec3, within int) (simgeom.Vec3, bool) {
-	view := predict.NewTerrain(chunks, n.blocks, n.profile)
+	// The true world. Somewhere to escape to must be judged by what is really
+	// there: a bot fleeing a pool has no use for a rule that keeps it a polite
+	// distance from one.
+	view := n.terrainView(chunks)
 	query := terrain.Query{View: view, Facts: n.facts, Body: n.capability.Body}
 	centre := floorOf(from)
 
@@ -451,7 +549,8 @@ func (n Navigator) restful(query terrain.Query, cell simgeom.BlockPos) bool {
 // step into is water at its feet; water further down is a hole to fall into,
 // which this bot has no business with -- it cannot fall.
 func (n Navigator) Water(chunks world.ChunksView, from simgeom.Vec3, within int) (simgeom.Vec3, bool) {
-	view := predict.NewTerrain(chunks, n.blocks, n.profile)
+	// The true world: this is looking for water to stand in on purpose.
+	view := n.terrainView(chunks)
 	query := terrain.Query{View: view, Facts: n.facts, Body: n.capability.Body}
 	centre := floorOf(from)
 
@@ -682,6 +781,12 @@ func NewNavigator(legacy bool, bounds Bounds) (Navigator, error) {
 			// rather than on a movement kernel.
 		},
 	}, nil
+}
+
+// terrainView is the observed world as the server described it, with nothing
+// added.
+func (n Navigator) terrainView(chunks world.ChunksView) simworld.View {
+	return predict.NewTerrain(chunks, n.blocks, n.profile)
 }
 
 // ticksPerBlock is how long this bot takes to cross one block, in ticks.

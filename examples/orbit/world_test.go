@@ -46,20 +46,20 @@ func (s *scripted) Spawn() (simgeom.Vec3, bool) { return s.spawn, s.hasSpawn }
 // package instead of this state machine. This is just enough routing that a
 // test can wall something off and say what the bot should decide.
 func (s *scripted) Route(from, to simgeom.Vec3) (Route, bool) {
-	steps := make([]simgeom.Vec3, 0, 8)
+	steps := make([]Step, 0, 8)
 
 	for d := 1.0; d < from.HorizontalDistance(to); d++ {
 		point := from.Toward(to, d)
 		if s.blocked(point) {
 			return Route{}, false
 		}
-		steps = append(steps, point)
+		steps = append(steps, Step{At: point})
 	}
 	if s.blocked(to) {
 		return Route{}, false
 	}
 
-	return Route{Steps: append(steps, to), Complete: true}, true
+	return Route{Steps: append(steps, Step{At: to}), Complete: true}, true
 }
 
 // Safe returns the nearest cell a test has not declared harmful.

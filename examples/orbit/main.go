@@ -395,7 +395,7 @@ func apply(
 	// breaker then leaves the plan on the ground to be looked at.
 	if trail {
 		for _, step := range core.Route().Steps {
-			if err := actuator.Mark(ctx, step); err != nil {
+			if err := actuator.Mark(ctx, step.At); err != nil {
 				return moved, 70, true, fmt.Errorf("mark: %w", err)
 			}
 		}

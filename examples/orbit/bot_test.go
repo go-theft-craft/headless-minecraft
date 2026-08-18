@@ -310,7 +310,7 @@ func TestDeathSendsOneRespawnAndReturnsToTheCircle(t *testing.T) {
 	if len(route.Steps) == 0 {
 		t.Fatal("returning without a route")
 	}
-	if got := route.Steps[len(route.Steps)-1].HorizontalDistance(circle.Centre); got < 24 || got > 26 {
+	if got := route.Steps[len(route.Steps)-1].At.HorizontalDistance(circle.Centre); got < 24 || got > 26 {
 		t.Errorf("the route ends %.1f from spawn, want the circle at 25", got)
 	}
 	if action.Target.HorizontalDistance(circle.Centre) >= far.HorizontalDistance(circle.Centre) {
@@ -427,7 +427,7 @@ func TestLavaPouredInFrontOfACommittedRouteIsNoticed(t *testing.T) {
 
 	// The pour: wall the ground a stride ahead, and bump the revision, which is
 	// how the world reports that a block changed.
-	blocked := position.Toward(bot.Route().Steps[0], 1)
+	blocked := position.Toward(bot.Route().Steps[0].At, 1)
 	p := floorOf(blocked)
 	w.wall(p.X, p.Z, 3)
 
@@ -944,5 +944,30 @@ func TestAskingToDieReachesTheServer(t *testing.T) {
 	}
 	if actuator.kills != 1 {
 		t.Errorf("sent %d kill requests, want 1", actuator.kills)
+	}
+}
+
+// TestAJumpingStepIsSentAsAJump pins the last handover in the chain.
+//
+// The route knows a waypoint needs a jump and the actuator honours the flag; the
+// action between them used to set it to false unconditionally, which is where a
+// jumped route became a walk into a wall.
+func TestAJumpingStepIsSentAsAJump(t *testing.T) {
+	t.Parallel()
+
+	var bot Bot
+	target := simgeom.Vec3{X: 4.5, Y: 65, Z: 0.5}
+
+	jumped := bot.step(Step{At: target, Jump: true})
+	if !jumped.Jump {
+		t.Errorf("a jumping step produced %+v, which tells the body to walk", jumped)
+	}
+	if jumped.Target != target {
+		t.Errorf("target is %+v, want %+v", jumped.Target, target)
+	}
+
+	walked := bot.step(Step{At: target})
+	if walked.Jump {
+		t.Errorf("a walking step produced %+v, which jumps for no reason", walked)
 	}
 }

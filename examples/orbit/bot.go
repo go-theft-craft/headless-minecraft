@@ -382,7 +382,7 @@ func (b *Bot) follow(t Tick, w World, goal simgeom.Vec3, key int) (Action, bool)
 	// Consume every leg already arrived at. More than one lands at a time when
 	// the planner routes through cells closer together than the arrival radius.
 	for b.leg < len(b.route.Steps) &&
-		t.Self.Position.HorizontalDistance(b.route.Steps[b.leg]) <= b.bounds.LegRadius {
+		t.Self.Position.HorizontalDistance(b.route.Steps[b.leg].At) <= b.bounds.LegRadius {
 		b.leg++
 		b.progressAt = t.Now
 	}
@@ -401,8 +401,20 @@ func (b *Bot) follow(t Tick, w World, goal simgeom.Vec3, key int) (Action, bool)
 	if b.leg < len(b.route.Steps) && t.Revision != b.checkedAt {
 		b.checkedAt = t.Revision
 
-		ahead := t.Self.Position.Toward(b.route.Steps[b.leg], lookahead)
-		if !w.Walkable(t.Self.Position, ahead) {
+		// At the route's own height, not the body's.
+		//
+		// The question is whether the ground ahead is still walkable, and the
+		// body is not always standing on it: it jumps now, and mid-arc it is a
+		// block or two above the floor. Asking from up there fails on "nothing
+		// is holding it up" every airborne tick, which drops the route, plans
+		// the same one again, and drops it again — the bot spent a run doing
+		// that. A leg is a place on the ground, so the probe belongs at a leg's
+		// height.
+		leg := b.route.Steps[b.leg]
+		here := simgeom.Vec3{X: t.Self.Position.X, Y: leg.At.Y, Z: t.Self.Position.Z}
+
+		ahead := here.Toward(leg.At, lookahead)
+		if !w.Walkable(here, ahead) {
 			// Plan again from here rather than walk on. The next tick finds no
 			// route and asks for one, over a world that now has the lava in it.
 			b.route = Route{}
@@ -436,7 +448,7 @@ func (b *Bot) follow(t Tick, w World, goal simgeom.Vec3, key int) (Action, bool)
 // Dropping the route with it: a step refused here is a route that has stopped
 // describing the world, and walking the rest of it would be walking the same
 // prediction again.
-func (b *Bot) guardedStep(t Tick, w World, target simgeom.Vec3) Action {
+func (b *Bot) guardedStep(t Tick, w World, step Step) Action {
 	// A bot already standing in something may step anywhere. The guard exists
 	// to keep a body out of harm, and a body in harm has nothing left to
 	// protect: every way out of a lava pool starts with a step whose landing
@@ -444,17 +456,17 @@ func (b *Bot) guardedStep(t Tick, w World, target simgeom.Vec3) Action {
 	// mistake that killed the bot in the trace -- it stood in a spreading pool
 	// for a second and a half at a time, declining to move, and burned.
 	if w.Hurting(t.Self.Position) {
-		return b.step(target)
+		return b.step(step)
 	}
 
-	next := t.Self.Position.Toward(target, b.bounds.Step())
+	next := t.Self.Position.Toward(step.At, b.bounds.Step())
 	if w.Hurting(next) {
 		b.route = Route{}
 
 		return Action{Kind: Stand, Reason: "not stepping into that"}
 	}
 
-	return b.step(target)
+	return b.step(step)
 }
 
 // lookahead is how far along the current leg the bot re-examines when the
@@ -610,7 +622,7 @@ func (b *Bot) escape(t Tick, w World) Action {
 		if !w.Hurting(t.Self.Position.Toward(aim, b.bounds.Step())) {
 			b.route = Route{}
 
-			return b.step(aim)
+			return b.step(Step{At: aim})
 		}
 	}
 
@@ -643,7 +655,7 @@ func (b *Bot) escape(t Tick, w World) Action {
 		return action
 	}
 
-	return b.step(b.escapeTo)
+	return b.step(Step{At: b.escapeTo})
 }
 
 // escapeHeadings are the directions tried for the one step out, straight ahead
@@ -864,16 +876,18 @@ func threatName(threat Entity) string {
 	return "an entity this client cannot name"
 }
 
-// step is a movement update toward a target.
+// step is a movement update toward a waypoint.
 //
-// It does not jump. It used to claim it did, on the grounds that jumping in a
-// circle is the point, and nothing honoured the claim -- the actuator has no
-// body to jump with and discarded the flag. That was harmless while the flag
-// stayed inside this program. It stopped being harmless once the bot began
-// declaring what it is doing on the wire, because then the claim is a
-// statement to the server about a jump that never happens.
-func (b *Bot) step(target simgeom.Vec3) Action {
-	return Action{Kind: StepTo, Target: target, Jump: false}
+// It jumps when the waypoint says to, which is when the planner crossed a gap or
+// rose a block to reach it. The flag used to be a hard false, and why is worth
+// keeping: for a while this bot claimed a jump nothing honoured, because the
+// actuator had no body to jump with and discarded it — and a claim like that
+// becomes a lie to the server the moment the bot reports what it is doing on the
+// wire. The actuator has a body now and honours the flag, so the flag describes
+// something again, and the route is what knows: the planner routed over the
+// hole, and only the edge that crossed it can say so.
+func (b *Bot) step(step Step) Action {
+	return Action{Kind: StepTo, Target: step.At, Jump: step.Jump}
 }
 
 // exit ends the run.

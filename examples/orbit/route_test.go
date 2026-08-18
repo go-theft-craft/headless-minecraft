@@ -45,6 +45,18 @@ func query(view *slab) terrain.Query {
 // ground is a staircase and a bot following it turns ninety degrees a dozen
 // times to cross a field. Nothing is in the way of the diagonal, and a bot that
 // takes the staircase anyway does not look like it is walking.
+// walked turns bare positions into steps none of which needs a jump, which is
+// what a smoothing test is about: the flags are what taut must not lose, and a
+// test that is about the line itself sets none.
+func walked(points ...simgeom.Vec3) []Step {
+	steps := make([]Step, 0, len(points))
+	for _, point := range points {
+		steps = append(steps, Step{At: point})
+	}
+
+	return steps
+}
+
 func TestATautRouteCrossesOpenGroundInOneStep(t *testing.T) {
 	t.Parallel()
 
@@ -59,12 +71,12 @@ func TestATautRouteCrossesOpenGroundInOneStep(t *testing.T) {
 		{X: 3.5, Y: 64, Z: 3.5},
 	}
 
-	taut := navigator.taut(query(newSlab()), staircase)
+	taut := navigator.taut(query(newSlab()), walked(staircase...))
 
 	if len(taut) != 2 {
 		t.Fatalf("pulled %d points taut, want the two ends: %+v", len(taut), taut)
 	}
-	if taut[0] != staircase[0] || taut[1] != staircase[len(staircase)-1] {
+	if taut[0].At != staircase[0] || taut[1].At != staircase[len(staircase)-1] {
 		t.Errorf("taut route is %+v, want the two ends of %+v", taut, staircase)
 	}
 }
@@ -92,19 +104,20 @@ func TestATautRouteKeepsTheCornerItHasToWalkRound(t *testing.T) {
 		{X: 2.5, Y: 64, Z: 2.5},
 	}
 
-	taut := navigator.taut(query(view), corner)
+	taut := navigator.taut(query(view), walked(corner...))
 
 	if len(taut) < 3 {
 		t.Fatalf("smoothed a corner the body cannot cut: %+v", taut)
 	}
-	if taut[len(taut)-1] != corner[len(corner)-1] {
+	if taut[len(taut)-1].At != corner[len(corner)-1] {
 		t.Errorf("taut route ends at %+v, want %+v", taut[len(taut)-1], corner[len(corner)-1])
 	}
 }
 
 // TestARiseIsNeverSmoothedThrough pins that a change of height stays a point
-// the bot arrives at. This example has no body that jumps, so a shortcut over
-// a step is a shortcut through the block making it.
+// the bot arrives at. The body jumps a rise now, and a shortcut over one is
+// still a shortcut through the block making it: the jump is a move to the
+// waypoint, not a way past it.
 func TestARiseIsNeverSmoothedThrough(t *testing.T) {
 	t.Parallel()
 
@@ -116,10 +129,10 @@ func TestARiseIsNeverSmoothedThrough(t *testing.T) {
 		{X: 3.5, Y: 65, Z: 0.5},
 	}
 
-	taut := navigator.taut(query(newSlab()), rise)
+	taut := navigator.taut(query(newSlab()), walked(rise...))
 
 	for _, point := range taut {
-		if point.Y == 65 {
+		if point.At.Y == 65 {
 			return
 		}
 	}
@@ -396,5 +409,82 @@ func TestAPuddleIsCrossedRatherThanCircled(t *testing.T) {
 		if edge.To.Z != 0 {
 			t.Fatalf("left the direct line to avoid a one-cell puddle: %v", path.Edges)
 		}
+	}
+}
+
+// TestAJumpEdgeBecomesAJumpingStep pins the flag every edge kind carries into a
+// route.
+//
+// The bot walks positions and the planner routes edges, and two of those edges
+// are not walkable: a rise is a whole block where the game steps up six tenths
+// of one on its own, and a gap has no floor between its ends. Flattening a path
+// to bare positions lost that, so the bot walked into the block it was routed
+// over and off the edge of the hole it was routed across.
+func TestAJumpEdgeBecomesAJumpingStep(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		kind navigation.EdgeKind
+		name string
+		want bool
+	}{
+		{navigation.EdgeWalk, "walk", false},
+		{navigation.EdgeStep, "step up a block", true},
+		{navigation.EdgeFall, "fall", false},
+		{navigation.EdgeSwim, "swim", false},
+		{navigation.EdgeJumpGap, "jump a gap", true},
+		{navigation.EdgeWaterDrop, "drop into water", false},
+		{navigation.EdgeClimb, "climb", false},
+		{navigation.EdgeDoor, "through a door", false},
+		{navigation.EdgePlace, "bridge by placing", false},
+		{navigation.EdgePillar, "pillar up", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := leavesTheGround(tc.kind); got != tc.want {
+				t.Errorf("leavesTheGround(%s) = %v, want %v", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSmoothingKeepsAJumpItWouldOtherwiseWalkThrough pins that a step needing a
+// jump survives the string-pulling.
+//
+// Smoothing asks whether the body can walk the straight line between two
+// points, and the whole point of a jump edge is that it cannot. A shortcut that
+// took one would put the bot back where it started: walking at the hole the
+// planner told it to jump.
+func TestSmoothingKeepsAJumpItWouldOtherwiseWalkThrough(t *testing.T) {
+	t.Parallel()
+
+	var navigator Navigator
+
+	// Four points in a line on solid ground, so the line check would happily
+	// merge all of them. The third is reached by a jump.
+	steps := []Step{
+		{At: simgeom.Vec3{X: 0.5, Y: 64, Z: 0.5}},
+		{At: simgeom.Vec3{X: 1.5, Y: 64, Z: 0.5}},
+		{At: simgeom.Vec3{X: 2.5, Y: 64, Z: 0.5}, Jump: true},
+		{At: simgeom.Vec3{X: 3.5, Y: 64, Z: 0.5}},
+	}
+
+	taut := navigator.taut(query(newSlab()), steps)
+
+	var jumped bool
+	for _, step := range taut {
+		if step.Jump {
+			jumped = true
+
+			if step.At != steps[2].At {
+				t.Errorf("the jumping step is at %+v, want %+v", step.At, steps[2].At)
+			}
+		}
+	}
+	if !jumped {
+		t.Errorf("smoothed the jump away: %+v", taut)
 	}
 }
