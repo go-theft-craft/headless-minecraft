@@ -10,26 +10,96 @@
 
 ## Before executing this plan: reconcile it
 
-Depends on M9.4 and, through it, on the M8 contracts. Symbols specified but not
-built:
+**Reconciled 2026-08-18, by Task 0.** The table is what is built today, not what
+was specified. Where this plan said something false, the task now says the true
+thing, and the difference is under "What reconciliation changed".
 
-| Symbol | Specified in |
-| --- | --- |
-| `sim.Phase`, `sim.TickState`, `sim.Command`, `sim.CommandOutcome`, `sim.Op`, `sim.OpSetBlock` | M8.3 plan, Tasks 5, 6, 9 |
-| `world.BlockRef`, `world.View`, `world.Blocks.SetBlock` | M8.3 plan, Task 2 |
-| `collision.Result`, the swept AABB path | M8.2 (built) |
-| `profile/java/v1_8`, `profile/java/v26_1` block tables | M8.4 Task 6, M8.7 Task 4 |
-| `client.Do`, `client.Action` | M8.8 plan, Task 1 |
-| `conformance.Compare`, `conform.Scenario` | M9.3 plan, M9.1b plan |
-| `mining.Face` | M9.4 plan, Task 3 |
+| Symbol | Where it is | State |
+| --- | --- | --- |
+| `sim.Phase`, `sim.TickState`, `sim.Command`, `sim.CommandOutcome` | `minecraft-simulation/sim` | built, names unchanged |
+| `sim.Op{Kind, …}`, `sim.OpSetBlock` | `minecraft-simulation/sim/change.go` | built. `OpSetBlock` is an `OpKind` constant, not a struct type |
+| `world.BlockRef`, `world.View`, `world.Blocks.SetBlock` | `minecraft-simulation/world` | built, names unchanged |
+| `collision.Result`, `collision.Resolve`, `collision.Gather` | `minecraft-simulation/collision` | built (M8.2) |
+| `profile/java/v1_8.New`, `profile/java/v26_1.New` | `minecraft-simulation/profile/java/*` | built as `New(*data.Set) (sim.Profile, error)` — **the interface, not an exported struct** |
+| `data.Block.Variations`, `.DefaultState`, `.MinStateID`, `.MaxStateID`, `.BoundingBox` | `minecraft-protocol/data/block.go` | built, and read again on 2026-08-18 |
+| `data.CollisionShapes.Blocks`, `data.BlockShapeIndex`, `data.ShapeIDs` | `minecraft-protocol/data/collision_shape.go` | built. `BlockShapeIndex` is `map[string]ShapeIDs` |
+| `client.Do` | `headless-minecraft/client` | built as `Do(ctx, version.Action) error` |
+| `conform.Scenario`, `conform.Lane`, `conform.Run` | `relay/examples/minecraft/conform` | built (M9.1b), and unreachable from `minecraft-simulation` |
+| `conformance.Compare` | — | **never built and not planned.** M9.3's proposal for it became `mctest` |
+| `client.Action`, `client.ActionPlace`, `client.FaceTop` | — | **actions live in `version`, not in `client`** |
+| `mining.Face`, `mining.FaceTop` | — | M9.4, Task 3. Still M9.4's, and still separate from `version.Face` |
+| `version.ActionUseOn{Block, Face, Cursor, Hand}` | — | the [interaction primitives plan](2026-08-18-interaction-primitives.md), Task 3. **Not this plan's to build** |
+| `placement.Target`, `placement.Resolve`, `placement.Legality`, `placement.Place`, `placement.Phase` | — | this plan, Tasks 1, 2, 4 |
+| `placement.Placer` (the optional profile interface) | — | this plan, Task 3 |
 
-Symbols that exist today and were read before writing this plan:
-`data.Block.Variations` (1.8.9, keyed by metadata), `data.Block.DefaultState`,
-`MinStateID`, `MaxStateID` (26.1.2), `data.CollisionShapes.Blocks`
-(`BlockShapeIndex`, block name to a `ShapeIDs` array indexed by state offset),
-and `data.Block.BoundingBox`.
+### What reconciliation changed
 
-**Task 0:** reconcile before touching anything.
+Four things this plan asserted are not true of the tree it now runs against.
+
+- **A profile is an interface, so `PlacedState` cannot be a method on an
+  exported `*Profile`.** `New` returns `sim.Profile`, whose five methods are
+  `ID`, `Slipperiness`, `Motion`, `Shape`, and `Phases`. Task 3 now lands
+  `placement.Placer` as an optional interface a caller type-asserts for, the way
+  `sim.BlockNames` and `sim.DataDigest` already do, declared in `placement`
+  rather than in `sim` because `placement` imports `sim` and the reverse would be
+  a cycle. M9.4 does the same thing for `mining.Classifier`; the two stages should
+  read alike.
+- **The placement action is not this plan's, and it is not called `ActionPlace`.**
+  Actions live in `version`, and the [interaction primitives
+  plan](2026-08-18-interaction-primitives.md) ships
+  `version.ActionUseOn{Block BlockPos, Face Face, Cursor Cursor, Hand Hand}` —
+  named for the packet's meaning, which is "use the held item on this block", and
+  which is placement only because the held item is a block. What M9.5 owns is the
+  legality and the resulting state; Task 5 is rewritten against that boundary.
+
+  A nuance worth having exactly right: `client` does re-export the eight actions
+  that existed at M8.8 as **type aliases** — `client.ActionMove` and
+  `version.ActionMove` are the same type. What it does not do is invent one. The
+  interaction primitives plan declares its new actions in `version` and adds no
+  alias, so name them `version.X` here.
+- **There is no `conformance` package.** Task 6's gate moves into
+  `minecraft-simulation/placement/`, beside the rules it gates, for the reason
+  M9.4's did: the simulation cannot import `relay`'s examples module to register a
+  `conform.Scenario`, so the two-version rule is carried by a test that fails when
+  a version has no corpus.
+- **`world.BlockPosition` and `client.FaceTop` do not exist.** They are
+  `world.BlockPos{X, Y, Z int32}` in `headless-minecraft/world` and
+  `version.FaceTop`. Applied in place below, along with renaming the `version`
+  loop variable in Task 5's tests — it shadowed the package the retyped code
+  needs.
+
+### How the live tests in this plan must be written
+
+Every test here that starts a real server lands in the lane that already exists
+for that, and M9.3's reconciliation found the same thing before this one did. The
+rules, read off `client/vanilla_e2e_test.go` and `client/vanilla_scenario_test.go`
+on 2026-08-18:
+
+- The file carries `//go:build vanilla` and lives in `client/` (package
+  `client_test`). A live test without the tag breaks `task verify`, which must
+  stay offline; a live test outside `client/` is a test nothing runs, because the
+  task is `go test ./client/ -run TestVanilla -tags vanilla`.
+- The two versions are **two top-level tests**, not a loop over a version table:
+  `TestVanilla<Thing>` and `TestVanilla26<Thing>`, each one line, each calling a
+  shared scenario function with `lane1_8()` or `lane26()`. `-run TestVanilla`
+  selects both, and a failure names the version in the test name rather than in a
+  subtest the log has to be read for.
+- The server comes from `lane.start(t)`, which wraps `vanilla.Start(t,
+  vanilla.Options{…})`. 26.1.2's lane sets `Jar`, `Libraries`, `LevelType`, and a
+  longer `Ready`; a test that calls `vanilla.Start` with bare options gets a
+  1.8.9 server whatever it meant.
+- `vanilla.Server` exposes `Lines`, `Log`, `Matching`, and `Stop`. There is no
+  `LogLines` and no `Kill`.
+
+The snippets below show scenario bodies. Wrap each in that pair before running
+it, and do not invent a `vanillaVersions(t)` table — there is none, and a loop
+variable named `version` would shadow the `version` package the bodies now name.
+
+**Two `Face` types is correct, and neither is a mistake.** `mining.Face` is the
+simulation's, `version.Face` is the client's, and the simulation must not import
+the client. A later reader who unifies them will have made the simulation depend
+on a protocol package. Both number the faces the way both protocols do, and the
+adapter is where one becomes the other.
 
 ## Global Constraints
 
@@ -92,9 +162,50 @@ produces a placement one cell off, which reads as an aim bug.
 
 - `client/place.go`, `client/place_test.go`
 
-**`minecraft-simulation/conformance/`**
+**`minecraft-simulation/placement/`** — the gate lives with the rules it gates,
+because there is no `conformance` package and the simulation cannot import
+`relay`'s `conform` from an examples module.
 
-- `placement_test.go`, `testdata/placement/`
+- `vanilla_test.go`, `testdata/vanilla/`
+
+---
+
+## Task 0: Reconcile this plan against what is built
+
+- [x] **Step 1: Check every symbol the table names**
+
+Done. Everything M8 was to deliver did land under the names this plan used. What
+did not hold is the *shape* of two of them: a profile is an interface, and the
+action path lives in `version` rather than in `client`.
+
+- [x] **Step 2: Check the packets, not only the Go names**
+
+This stage sends one packet per version, and the two disagree in ways that
+change what the task must own:
+
+```bash
+cd minecraft-protocol
+grep -n 'type PlayServerboundBlockPlace' -A 12 generated/java/v1_8/packets.go
+grep -n 'type PlayServerboundBlockPlace' -A 12 generated/java/v26_1/packets.go
+```
+
+775 carries `Sequence`, `InsideBlock`, and `WorldBorderHit`; 47 carries
+`HeldItem Slot` and no sequence. The first is why the counter belongs to the
+adapter, and the second is why this stage has a dependency on M9.7 that nobody
+had written down.
+
+- [x] **Step 3: Check what the neighbouring plans already claim**
+
+The interaction primitives plan ships `ActionUseOn`, and M9.4 ships
+`mining.Face`. Neither is this stage's to build, and both were about to be built
+here under other names.
+
+- [x] **Step 4: Commit the reconciliation**
+
+```bash
+git add docs/superpowers/plans/2026-08-17-m9-5-building-and-placement.md
+git commit -m "docs(plan): reconcile M9.5 against the profiles, the action path, and both place packets"
+```
 
 ---
 
@@ -349,18 +460,39 @@ full block is not. An unknown cell is incomplete, never a refusal."
 **Interfaces:**
 - Produces, in each profile:
 
+`New` returns `sim.Profile`, and that interface has five methods every profile
+must satisfy. Placement is not one of them: a profile built by hand in a test has
+no block table to place from. So it lands as an optional interface, declared in
+`placement` — `placement` imports `sim`, so an interface in `sim` returning a
+`placement.Target` would be a cycle — and asserted for at the call site:
+
 ```go
-// PlacedState returns the block state that results from placing item into
-// target, given how the player was standing and looking.
+// Placer is a profile that can say what block state results from a placement.
 //
-// This is version-owned because the addressing is. 1.8.9 names a state as a
+// It is version-owned because the addressing is. 1.8.9 names a state as a
 // block ID plus four bits of metadata, and the generated data carries
 // Variations keyed by that metadata. 26.1.2 names a state as a flat ID inside
 // the block's MinStateID..MaxStateID range, and collision_shapes.go indexes
 // shapes by the offset within that range. There is no shared representation
 // that is not a lie about one of them.
-func (p *Profile) PlacedState(item ItemRef, t placement.Target, face Face, yaw float32, eye geom.Vec3) (world.BlockRef, error)
+//
+// It is optional for the reason sim.BlockNames is: nothing inside a tick calls
+// it — the phase is handed a resolved state — and a profile with no block table
+// cannot answer. A caller asserts for it and reports a profile that cannot,
+// rather than every profile being obliged to carry placement rules.
+type Placer interface {
+	PlacedState(item data.ItemID, t Target, face mining.Face, yaw float32, eye geom.Vec3) (world.BlockRef, error)
+}
 ```
+
+Each version's `placement.go` implements it on the unexported profile struct
+`New` already returns, and each asserts the seam rather than assuming it:
+
+```go
+var _ placement.Placer = (*profile)(nil)
+```
+
+`newProfile(t)` in the tests below returns the asserted `placement.Placer`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -627,27 +759,55 @@ discouraged. Two placements in one tick see each other."
 - Create: `headless-minecraft/client/place.go`
 - Test: `headless-minecraft/client/place_test.go`
 
+**Interfaces:**
+- Consumes: `client.Do`, and `version.ActionUseOn{Block version.BlockPos, Face
+  version.Face, Cursor version.Cursor, Hand version.Hand}` from the
+  [interaction primitives plan](2026-08-18-interaction-primitives.md), Task 3.
+  **This task builds no action type.**
+- Produces: `client.Place(ctx, block version.BlockPos, face version.Face) error`
+  — the aiming, the cursor, and the wait for the server's answer. The packet is
+  the primitive's.
+
+Two things about the wire that this task must not get wrong, both checked
+against the generated packets on 2026-08-18:
+
+- **The sequence number belongs to the 775 adapter, not to the action.**
+  `v26_1.PlayServerboundBlockPlace` carries `Sequence int32` (as does its
+  `PlayServerboundBlockDig`) and `v1_8.PlayServerboundBlockPlace` has no such
+  field. `version.ActionUseOn` has four fields and a test that fails if it grows
+  a fifth, so the counter lives in `internal/adapter/v26_1` and increments per
+  connection. The test below asserts on what the adapter sent, which is the only
+  place the number exists.
+- **Protocol 47's placement packet carries the held item stack.**
+  `v1_8.PlayServerboundBlockPlace` has `HeldItem Slot`; 775's does not — it sends
+  a `Hand` instead. So a 47 placement needs to know what is in the player's hand,
+  and the observed inventory that answers that is M9.7's. Until M9.7 lands, the
+  47 lane fills `HeldItem` from the last `set_slot` the client observed for the
+  held index, and says so in a doc comment. If that turns out not to be enough
+  for a real server to accept the placement, this task is blocked on M9.7 rather
+  than free to invent an inventory model here.
+
 - [ ] **Step 1: Write the failing test**
 
 ```go
 func TestAPlacementReachesTheServerAndTheBlockAppears(t *testing.T) {
 	t.Parallel()
 
-	for _, version := range vanillaVersions(t) {
-		t.Run(version.Name, func(t *testing.T) {
-			server := vanilla.Start(t, version.Options)
+	// The loop variable is `lane`, not `version`: the body names the version
+	// package, and a variable of that name would shadow it.
+	for _, lane := range vanillaVersions(t) {
+		t.Run(lane.Name, func(t *testing.T) {
+			server := vanilla.Start(t, lane.Options)
 			c := connected(t, server)
 			blocks := subscribe(t, c, event.DomainWorld)
 
-			if err := c.Do(t.Context(), client.ActionPlace{
-				Clicked: world.BlockPosition{X: 0, Y: 63, Z: 0},
-				Face:    client.FaceTop,
-			}); err != nil {
-				t.Fatalf("Do: %v", err)
+			if err := c.Place(t.Context(),
+				version.BlockPos{X: 0, Y: 63, Z: 0}, version.FaceTop); err != nil {
+				t.Fatalf("Place: %v", err)
 			}
 
 			changed := awaitBlocksChanged(t, blocks)
-			if !changed.Includes(world.BlockPosition{X: 0, Y: 64, Z: 0}) {
+			if !changed.Includes(world.BlockPos{X: 0, Y: 64, Z: 0}) {
 				t.Fatalf("the server changed %v, want the cell above the clicked face",
 					changed.Positions())
 			}
@@ -665,19 +825,13 @@ func TestARefusedPlacementDoesNotDesynchronise(t *testing.T) {
 	server := vanilla.Start(t, defaultOptions(t))
 	c := connected(t, server)
 
-	_ = c.Do(t.Context(), client.ActionPlace{
-		Clicked: world.BlockPosition{X: 0, Y: 63, Z: 0},
-		Face:    client.FaceTop,
-	})
-	_ = c.Do(t.Context(), client.ActionPlace{
-		Clicked: world.BlockPosition{X: 0, Y: 63, Z: 0},
-		Face:    client.FaceTop,
-	})
+	_ = c.Place(t.Context(), version.BlockPos{X: 0, Y: 63, Z: 0}, version.FaceTop)
+	_ = c.Place(t.Context(), version.BlockPos{X: 0, Y: 63, Z: 0}, version.FaceTop)
 
 	settle(t, c)
-	if got := c.World().BlockAt(world.BlockPosition{X: 0, Y: 65, Z: 0}); got.Known() {
+	if got := c.World().BlockAt(world.BlockPos{X: 0, Y: 65, Z: 0}); got.Known() {
 		t.Fatalf("the client believes %v holds %v after a refused placement",
-			world.BlockPosition{X: 0, Y: 65, Z: 0}, got)
+			world.BlockPos{X: 0, Y: 65, Z: 0}, got)
 	}
 }
 
@@ -685,15 +839,15 @@ func TestThe775PlacementCarriesASequenceNumber(t *testing.T) {
 	t.Parallel()
 
 	// 775 numbers block actions so the server can acknowledge and roll back a
-	// mispredicted one. 47 has no such field, and a shared encoder that sent
-	// one would be sending bytes the server reads as something else.
+	// mispredicted one: PlayServerboundBlockPlace carries Sequence int32 and
+	// 47's packet has no such field, so a shared encoder that sent one would be
+	// sending bytes the server reads as something else. The counter is the
+	// adapter's — the action type has no room for it — so this reads the wire.
 	server := vanilla.Start(t, options775(t))
 	c := connected(t, server)
 	sent := recordOutbound(t, c)
 
-	_ = c.Do(t.Context(), client.ActionPlace{
-		Clicked: world.BlockPosition{X: 0, Y: 63, Z: 0}, Face: client.FaceTop,
-	})
+	_ = c.Place(t.Context(), version.BlockPos{X: 0, Y: 63, Z: 0}, version.FaceTop)
 
 	if seq := placementSequences(t, sent); len(seq) == 0 {
 		t.Fatal("the 775 placement carried no sequence number")
@@ -725,8 +879,8 @@ correction does."
 ## Task 6: The gate and the milestone record
 
 **Files:**
-- Create: `minecraft-simulation/conformance/placement_test.go`
-- Create: `minecraft-simulation/conformance/testdata/placement/`
+- Create: `minecraft-simulation/placement/vanilla_test.go`
+- Create: `minecraft-simulation/placement/testdata/vanilla/1_8_9.json`, `26_1_2.json`
 - Modify: `headless-minecraft/MASTER_PLAN.md`
 
 - [ ] **Step 1: Capture the corpus on both versions**
