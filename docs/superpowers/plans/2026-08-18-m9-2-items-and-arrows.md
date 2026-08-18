@@ -125,13 +125,13 @@ list rather than a search.
 
 ### Task 0: Reconcile this plan against what is built
 
-- [ ] **Step 1: Check every symbol in the table above**
+- [x] **Step 1: Check every symbol in the table above**
 
 Confirm each one exists where it is named, and correct this plan where it does
 not. A plan that names a symbol nobody built is a plan that will be worked
 around rather than followed.
 
-- [ ] **Step 2: Confirm the two defects this plan rests on**
+- [x] **Step 2: Confirm the two defects this plan rests on**
 
 Both are claims about today's code and both are load-bearing:
 
@@ -157,19 +157,19 @@ recorded. This milestone is the player on land." This task records them, to the
 same standard as the player's — decompiled source and bytecode, with the widths
 settled by the instruction rather than by the decimal.
 
-- [ ] **Step 1: Read the item's constants**
+- [x] **Step 1: Read the item's constants**
 
 From `net/minecraft/world/entity/item/ItemEntity`: the gravity its
 `getDefaultGravity` returns, the friction it multiplies horizontal motion by,
 the vertical multiplier, and the bounce it applies on the ground.
 
-- [ ] **Step 2: Read the arrow's constants**
+- [x] **Step 2: Read the arrow's constants**
 
 From `net/minecraft/world/entity/projectile/arrow/AbstractArrow`: the gravity its
 `getDefaultGravity` returns, the inertia it applies when not in water, the water
 inertia, and what a tick does while the arrow is in the ground.
 
-- [ ] **Step 3: Confirm both in bytecode**
+- [x] **Step 3: Confirm both in bytecode**
 
 ```bash
 javap -p -c -cp <server jar> net.minecraft.world.entity.item.ItemEntity
@@ -180,13 +180,13 @@ Quote the instruction per constant. `ldc2_w double 0.04d` and
 `ldc float 0.04f` are different numbers, and the difference is exactly what
 1.8.9 and 26.1.2 disagree about here.
 
-- [ ] **Step 4: Write the sections, including the tick order**
+- [x] **Step 4: Write the sections, including the tick order**
 
 Constants alone do not reproduce a trajectory: the order gravity, the move, and
 the drags run in is part of the value. Record the order each class ticks in, and
 where it differs from 1.8.9's.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add reference/notes/physics-motion-26.1.2.md
@@ -202,21 +202,21 @@ git commit -m "docs(reference): record 26.1.2's item and arrow motion constants"
 - Regenerate: `generated/java/v26_1/physics.go`, `generated/java/v26_1/raw/physics.json`
 - Modify: `minecraft-protocol/CHANGELOG.md`
 
-- [ ] **Step 1: Add the two entries**
+- [x] **Step 1: Add the two entries**
 
 At the widths Task 1 settled, and to full `float64` precision. A `0.04F` is
 written `0.03999999910593033`; a `0.04` double is written `0.04`.
 
-- [ ] **Step 2: Regenerate and check the diff**
+- [x] **Step 2: Regenerate and check the diff**
 
 Run: `devbox run -- task generate` (or the repository's generation task).
 Expected: `physics.go` gains the two families and nothing else changes.
 
-- [ ] **Step 3: Run the gates**
+- [x] **Step 3: Run the gates**
 
 Run: `devbox run -- task verify`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add source/java/26.1/physics.json generated/java/v26_1 CHANGELOG.md
@@ -249,30 +249,30 @@ const (
 var ErrUnknownFamily = errors.New("sim: no motion constants for this family")
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Two tests. One in `entity`: the new families stringify and keep their numbers.
 One per profile: a body of each family gets that family's constants, and a body
 of an unset family produces `ErrUnknownFamily` from a tick rather than a
 trajectory.
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
-- [ ] **Step 3: Add the families and the constants**
+- [x] **Step 3: Add the families and the constants**
 
 Both profiles read `item` and `arrow` out of `physics.EntityMotion` the way they
 already read `player`, and refuse to build when the dataset lacks one — a
 profile that silently omits a family would move it at zero gravity.
 
-- [ ] **Step 4: Make every phase read the body's family**
+- [x] **Step 4: Make every phase read the body's family**
 
 Replace `p.Motion(entity.FamilyPlayer)` with a lookup per body. This is the
 defect the plan's architecture note names: today an item in the world falls at
 the player's gravity.
 
-- [ ] **Step 5: Run the tests, both profiles**
+- [x] **Step 5: Run the tests, both profiles**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -m "feat(entity): give items and arrows their own motion constants"
@@ -294,24 +294,24 @@ The 26.1.2 order, from `ItemEntity.tick`: `applyGravity`, move, then
 times `0.98F` on the ground, then on the ground **and only when `y < 0`**,
 `multiply(1.0, -0.5, 1.0)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 A dropped item on a flat floor: it falls, it lands, it bounces once at half its
 downward motion, and it comes to rest. Assert the first three ticks against
 numbers computed from the constants by hand, so a wrong order fails rather than
 a wrong constant only.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
-- [ ] **Step 3: Add the phases, guarded by family**
+- [x] **Step 3: Add the phases, guarded by family**
 
 `item-gravity` before the move, `item-friction` and `item-bounce` after it. The
 bounce condition differs between the versions and the difference is recorded in
 the phase's own comment.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -325,19 +325,19 @@ inertia to all three axes, applies gravity, and stops entirely once it is in the
 ground: a stuck arrow's tick produces no motion at all, which is why a capture
 of one is a long run of zero deltas.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 An arrow launched horizontally over a floor: it accelerates downward, its
 horizontal motion decays by the inertia each tick, it lands, and every tick
 after landing leaves it exactly where it was.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
-- [ ] **Step 3: Add the phases**
+- [x] **Step 3: Add the phases**
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -353,30 +353,30 @@ harness that constructs the game's own entity in a stub world, ticks it, and
 prints its state; a Go test that drives the same trajectory through the kernel
 and compares bit for bit. Nothing in either harness reimplements a rule.
 
-- [ ] **Step 1: Write the harnesses**
+- [x] **Step 1: Write the harnesses**
 
 One command to place blocks, one to spawn an item or an arrow with a position and
 a motion, one to tick. Print the position and motion after each tick at full
 precision.
 
-- [ ] **Step 2: Write the differential tests**
+- [x] **Step 2: Write the differential tests**
 
 Random floors of varying slipperiness, random initial motions, a hundred ticks.
 Compare bit for bit, the way the movement oracles do — a tolerance here would
 hide exactly the width errors this milestone exists to catch.
 
-- [ ] **Step 3: Run them, and record what disagrees**
+- [x] **Step 3: Run them, and record what disagrees**
 
 A disagreement is a finding about the rules, not a reason to loosen the
 comparison. Fix the rule, and write down what the game did that the reading of
 it missed.
 
-- [ ] **Step 4: Generate the fixtures**
+- [x] **Step 4: Generate the fixtures**
 
 So the gate runs without a jar, everywhere, forever — the same split
 `mctest` already carries for the player.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -405,29 +405,29 @@ type Captured struct {
 }
 ```
 
-- [ ] **Step 1: Capture, both versions**
+- [x] **Step 1: Capture, both versions**
 
 Through `mcrelay` in front of each pinned server, drop an item and shoot an
 arrow. Summon from a height that spans several tracker intervals: a fall of a
 dozen blocks is over before the first update.
 
-- [ ] **Step 2: Measure the sample cadence rather than assuming it**
+- [x] **Step 2: Measure the sample cadence rather than assuming it**
 
 Take the modal gap between samples and divide by fifty milliseconds. Refuse a
 capture whose gaps are not a consistent multiple: a batched or dropped update
 makes a checkpoint comparison meaningless, and it must be visible rather than
 absorbed.
 
-- [ ] **Step 3: Write the comparator**
+- [x] **Step 3: Write the comparator**
 
 Simulate `Interval` ticks between samples and compare at each one, at the
 version's own tolerance — `1/32` for 1.8.9, and 26.1.2's zero-at-absolute with
 `1/4096` per relative move. A lane with an `Absent` reason reports absent; a
 version with neither a lane nor a reason fails the suite.
 
-- [ ] **Step 4: Run the gate**
+- [x] **Step 4: Run the gate**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -437,17 +437,46 @@ version with neither a lane nor a reason fails the suite.
 - Modify: `headless-minecraft/MASTER_PLAN.md`
 - Modify: `headless-minecraft/docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md`
 
-- [ ] **Step 1: Mark M9.2 complete in both stage tables**
+- [x] **Step 1: Mark M9.2 complete in both stage tables**
 
-- [ ] **Step 2: Write what the work found**
+- [x] **Step 2: Write what the work found**
 
 What was budgeted and what was not: the hardcoded `FamilyPlayer`, the widths
 26.1.2 changed, the tracker interval that decides what a wire trace can prove,
 and anything the jar did that the source reading missed.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ---
+
+## What execution changed about this plan
+
+Written down because a plan that quietly disagrees with what happened is worse
+than no plan.
+
+- **Task 3 does not refuse to build a profile whose dataset lacks a family.** It
+  takes the families the dataset carries and leaves out the ones it does not,
+  and the tick refuses the missing one at the point of use. Refusing at
+  construction would take a whole version down because one family is missing,
+  and the failure would name the profile rather than the body.
+- **Task 6 covers the item on 1.8.9 and no more.** The 1.8.9 harness ticks a
+  real `EntityItem` and 440 ticks agree bit for bit. The arrow's tick is
+  dominated by a ray cast and an entity sweep the stub world cannot answer, and
+  26.1's `ItemEntity.tick` reaches for merging and block effects that its stub
+  level cannot either. Both are recorded here rather than attempted and left
+  half-working; the wire gate covers those three lanes.
+- **Task 7's fixtures carry per-sample tick offsets rather than one interval.**
+  A tracker's first update does not fall on its own period: the 1.8.9 arrow's
+  first sample is one tick after the spawn and every one after it is twenty.
+- **Two defects in the 26.1 profile were found by the gate rather than by the
+  tasks that were meant to find them**, because only a non-player body reaches
+  them: the move rebuilt every body's box at the player's dimensions, and the
+  gravity and drag phases were unguarded by family.
+- **The 26.1 lanes skip.** This module pins `minecraft-protocol` v0.5.0, which
+  predates the constants Task 2 landed. Every 26.1 check is written, skips with
+  that reason, and was run against the new dataset locally. The bump must
+  regenerate `replay/testdata/26_1` in the same commit: a profile that gains two
+  families gains a data digest.
 
 ## Stage summary
 
