@@ -5,8 +5,8 @@ go 1.26.6
 require github.com/go-theft-craft/headless-minecraft v0.0.0
 
 require (
-	github.com/go-theft-craft/minecraft-protocol v0.7.0
-	github.com/go-theft-craft/minecraft-simulation v0.1.0
+	github.com/go-theft-craft/minecraft-protocol v0.7.1
+	github.com/go-theft-craft/minecraft-simulation v0.2.0
 )
 
 // The examples track the working tree, not a release. They are the repository's

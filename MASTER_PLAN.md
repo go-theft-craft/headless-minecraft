@@ -259,31 +259,32 @@ hundred after, with the same load in the same session.
   `Fish` is written and is not claimed to work. It refuses to construct without
   a bite detector the caller supplies, and its gate is skipped with the reason
   recorded; see the open item below.
-- [ ] **The pillar's releases, and `main` is red until one of them is cut.**
-  The pillar spans three repositories and every consumer resolves the others
-  through a released tag, so the code is complete and the version bumps are not.
-  Half the chain is now done:
+- [x] **The pillar's releases.** Done 2026-08-18. The pillar spans three
+  repositories and every consumer resolves the others through a released tag, so
+  the code being complete was never the same thing as the pillar being usable.
+  The whole chain:
 
   1. `minecraft-reference` — `e78ac4f` carries the two extended jar dumpers.
      Pushed; no new tag cut, and nothing yet needs one.
-  2. ~~`minecraft-protocol` v0.7.0~~ — **done 2026-08-18.** Tagged, pushed, and
-     served by the proxy. Every consumer in its `RELEASING.md` table now
-     requires it: `minecraft-simulation` `84d882e`, `server` `74a865b`, `relay`
-     examples `6f51cae`, and this repository `4cdd79e`.
-  3. `minecraft-simulation` — navigation and geom. **This is the one that
-     hurts.** Its only tag is `v0.1.0`.
+  2. `minecraft-protocol` v0.7.0 — tagged, pushed, and served by the proxy.
+     Every consumer in its `RELEASING.md` table requires it:
+     `minecraft-simulation` `84d882e`, `server` `74a865b`, `relay` examples
+     `6f51cae`, and this repository `4cdd79e`.
+  3. `minecraft-simulation` v0.2.0 — navigation, geom, and placement. Minor
+     rather than patch because a 1.8.9 handle now names a block state instead of
+     a block.
   4. `headless-minecraft` `go.mod` and `examples/go.mod` bumps to it.
 
-  **Until 3 and 4 land, this repository does not compile under its own gates.**
-  Every target in `Taskfile.yml` runs `GOWORK=off`, deliberately, so a stale pin
-  cannot hide behind the gitignored `go.work` — and it is not hiding: `task
-  test`, `task verify`, and `task build` all fail on `main` with `undefined:
-  navigation.EdgePlace`, `EdgePillar`, `EdgeJumpGap`, `EdgeWaterDrop`,
-  `EdgeClimb`, `EdgeDoor`, and `Vec3.HorizontalDistance` and `Toward` undefined
-  in `behaviour/`. The aiming plan told task 6 not to start before the tag
-  existed, for this reason, in these words: `headless-minecraft` is public and a
-  `replace` in it is not acceptable. A `go.work` was used instead, which is the
-  same hazard under another name.
+  **What this closed was a red `main`, not a formality.** Every target in
+  `Taskfile.yml` runs `GOWORK=off`, deliberately, so a stale pin cannot hide
+  behind the gitignored `go.work` — and it was not hiding: `task test`, `task
+  verify`, and `task build` failed from the moment `behaviour` landed, with
+  `undefined: navigation.EdgePlace`, `EdgePillar`, `EdgeJumpGap`,
+  `EdgeWaterDrop`, `EdgeClimb`, `EdgeDoor`, and `Vec3.HorizontalDistance` and
+  `Toward` undefined. The aiming plan told task 6 not to start before the tag
+  existed, in these words: `headless-minecraft` is public and a `replace` in it
+  is not acceptable. A `go.work` was used instead, which is the same hazard
+  under another name. `task verify` passes whole again.
 - [ ] **`Fish` has no measured bite detector.** No packet in either protocol
   says a fish bit; what a client reads is the bobber's motion, and how much
   motion counts as a dip is a measurement. The behaviour ships with the detector
