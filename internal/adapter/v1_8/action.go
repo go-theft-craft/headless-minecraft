@@ -35,6 +35,13 @@ func (adapter) EncodeAction(action version.Action) (protocol.Packet, error) {
 	case version.ActionGround:
 		return play47("flying", &gen.PlayServerboundFlying{OnGround: value.OnGround}), nil
 
+	case version.ActionCommand:
+		// A slash and the command, on the chat packet. This version has no
+		// command packet: the server tells chat and commands apart by the
+		// leading slash, which is why the intent carries the command without
+		// one and each version spells it the way its own protocol expects.
+		return play47("chat", &gen.PlayServerboundChat{Message: "/" + value.Command}), nil
+
 	case version.ActionRespawn:
 		// Protocol 47 numbers the client commands and respawn is zero. The
 		// same packet asks for statistics at one, which nothing here sends.

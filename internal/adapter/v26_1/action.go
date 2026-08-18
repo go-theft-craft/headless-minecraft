@@ -61,6 +61,11 @@ func (adapter) EncodeAction(action version.Action) (protocol.Packet, error) {
 			ActionID: sprintCommand775(value.Sprinting),
 		}), nil
 
+	case version.ActionCommand:
+		return play775("chat_command", &gen.PlayServerboundChatCommand{
+			Command: value.Command,
+		}), nil
+
 	case version.ActionRespawn:
 		// 775 names its client commands where 47 numbers them, so the action
 		// is the string the protocol declares rather than a zero.

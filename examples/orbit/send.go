@@ -48,6 +48,8 @@ type Sender struct {
 	// mute records that this protocol does not carry locomotion, so the
 	// refusal is asked for once rather than twenty times a second.
 	mute bool
+	// marked is every floor cell the trail has already painted.
+	marked map[BlockPos]bool
 }
 
 // NewSender returns the actuator for a client, walking at the bounds' speed.
@@ -59,6 +61,7 @@ func NewSender(client sender, bounds Bounds) *Sender {
 	return &Sender{
 		client: client,
 		step:   bounds.Step(),
+		marked: map[BlockPos]bool{},
 	}
 }
 
@@ -143,6 +146,36 @@ func (s *Sender) Step(ctx context.Context, from, target Vec3, _ bool) (Vec3, err
 // Attack swings at an entity.
 func (*Sender) Attack(context.Context, int32) error {
 	return fmt.Errorf("%w: attack is M9.6", ErrNotYet)
+}
+
+// Mark paints the floor under a position with stone.
+//
+// The floor, one block down, and never the cell the route runs through: a
+// marker in the path is a wall, the planner would route around its own trail,
+// and the bot would spend the run drawing a maze for itself. Stone under grass
+// is what makes a walked route legible from above.
+//
+// It runs a command rather than placing a block, because placing one needs an
+// item in a hand this bot has no inventory for, and because a trail is a thing
+// somebody switches on to look at rather than gameplay. The server has to be
+// willing: an unopped bot gets its command refused and the run carries on with
+// no trail and no error, which is the right failure for a debugging aid.
+//
+// Each cell is painted once. A route is replanned every waypoint and the legs
+// overlap, so without this the same command goes out every few ticks for the
+// length of the run.
+func (s *Sender) Mark(ctx context.Context, at Vec3) error {
+	floor := at.Floor()
+	floor.Y--
+
+	if s.marked[floor] {
+		return nil
+	}
+	s.marked[floor] = true
+
+	return s.client.Do(ctx, version.ActionCommand{
+		Command: fmt.Sprintf("setblock %d %d %d stone", floor.X, floor.Y, floor.Z),
+	})
 }
 
 // Respawn answers a death.

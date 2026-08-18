@@ -260,3 +260,61 @@ func TestLocomotionStopsAskingOnceTheProtocolRefuses(t *testing.T) {
 		}
 	}
 }
+
+// TestTheTrailPaintsTheFloorAndNotThePath pins where a marker goes.
+//
+// One block down. A marker in the cell the route runs through is a wall: the
+// planner would route around the bot's own trail, and the run would be spent
+// drawing a maze for itself.
+func TestTheTrailPaintsTheFloorAndNotThePath(t *testing.T) {
+	t.Parallel()
+
+	client := &spy{}
+	sender := NewSender(client, DefaultBounds())
+
+	if err := sender.Mark(t.Context(), Vec3{X: 10.5, Y: 64, Z: -3.5}); err != nil {
+		t.Fatalf("Mark: %v", err)
+	}
+	if len(client.actions) != 1 {
+		t.Fatalf("sent %d intents, want 1", len(client.actions))
+	}
+
+	command, ok := client.actions[0].(version.ActionCommand)
+	if !ok {
+		t.Fatalf("intent is %T, want version.ActionCommand", client.actions[0])
+	}
+	// Floored, not truncated: z=-3.5 is in cell -4. Truncation would fold
+	// -3.5 and 3.5 onto cells of opposite sign and paint the trail one block
+	// out on the negative half of the circle, which is the bug Vec3.Floor
+	// exists to avoid.
+	if command.Command != "setblock 10 63 -4 stone" {
+		t.Errorf("ran %q, want the floor at y=63 under the step", command.Command)
+	}
+}
+
+// TestTheTrailPaintsEachCellOnce pins that the trail is not resent.
+//
+// A route is replanned at every waypoint and consecutive routes overlap, so a
+// trail that did not remember itself would run the same command every few
+// ticks for the length of the run.
+func TestTheTrailPaintsEachCellOnce(t *testing.T) {
+	t.Parallel()
+
+	client := &spy{}
+	sender := NewSender(client, DefaultBounds())
+
+	for _, at := range []Vec3{
+		{X: 10.1, Y: 64, Z: -3.9},
+		{X: 10.5, Y: 64, Z: -3.5},
+		{X: 10.9, Y: 64, Z: -3.1},
+		{X: 11.5, Y: 64, Z: -3.5},
+	} {
+		if err := sender.Mark(t.Context(), at); err != nil {
+			t.Fatalf("Mark(%+v): %v", at, err)
+		}
+	}
+
+	if len(client.actions) != 2 {
+		t.Errorf("painted %d cells, want 2", len(client.actions))
+	}
+}

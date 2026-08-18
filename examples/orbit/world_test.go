@@ -103,6 +103,8 @@ type recording struct {
 	// walking is every locomotion state it was told about, in order, so a test
 	// can assert that the bot announced the change and did not repeat itself.
 	walking []bool
+	// marks is every position the trail was asked to paint.
+	marks []Vec3
 }
 
 func (r *recording) Step(_ context.Context, from, target Vec3, _ bool) (Vec3, error) {
@@ -119,6 +121,12 @@ func (r *recording) Attack(_ context.Context, id int32) error {
 
 func (r *recording) Locomotion(_ context.Context, walking bool) error {
 	r.walking = append(r.walking, walking)
+
+	return nil
+}
+
+func (r *recording) Mark(_ context.Context, at Vec3) error {
+	r.marks = append(r.marks, at)
 
 	return nil
 }

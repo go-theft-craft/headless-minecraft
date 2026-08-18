@@ -28,7 +28,7 @@ func TestApplyDispatchesEveryActionKind(t *testing.T) {
 		{Kind: Strike, Entity: 42},
 		{Kind: SendRespawn},
 	} {
-		_, code, done, err := apply(t.Context(), quiet(), actuator, core, Vec3{}, action)
+		_, code, done, err := apply(t.Context(), quiet(), actuator, core, Vec3{}, action, false)
 		if err != nil || done || code != 0 {
 			t.Fatalf("%v produced code=%d done=%v err=%v, want a clean continue", action.Kind, code, done, err)
 		}
@@ -52,7 +52,7 @@ func TestApplyEndsTheLoopOnExit(t *testing.T) {
 		Kind:   Exit,
 		Reason: "sealed in",
 		Code:   1,
-	})
+	}, false)
 
 	if !done || code != 1 || err != nil {
 		t.Errorf("got code=%d done=%v err=%v, want 1, true, nil", code, done, err)
@@ -73,6 +73,10 @@ func (f failing) Respawn(context.Context) error                              { r
 // test something else.
 func (failing) Locomotion(context.Context, bool) error { return nil }
 
+// Mark succeeds for the same reason Locomotion does: it is not the action
+// under test, and failing it would move the failure a line earlier.
+func (failing) Mark(context.Context, Vec3) error { return nil }
+
 func TestAPendingPortStopsTheRunWithoutCrashing(t *testing.T) {
 	t.Parallel()
 
@@ -86,6 +90,7 @@ func TestAPendingPortStopsTheRunWithoutCrashing(t *testing.T) {
 		NewBot(DefaultBounds()),
 		Vec3{},
 		Action{Kind: StepTo},
+		false,
 	)
 
 	if !done {
@@ -111,6 +116,7 @@ func TestARealActuatorErrorIsNotSwallowed(t *testing.T) {
 		NewBot(DefaultBounds()),
 		Vec3{},
 		Action{Kind: Strike},
+		false,
 	)
 
 	if !done || code != 1 {
@@ -209,6 +215,7 @@ func (mute) Step(_ context.Context, from, _ Vec3, _ bool) (Vec3, error) { return
 func (mute) Attack(context.Context, int32) error                        { return nil }
 func (mute) Respawn(context.Context) error                              { return nil }
 func (m mute) Locomotion(context.Context, bool) error                   { return m.err }
+func (mute) Mark(context.Context, Vec3) error                           { return nil }
 
 // TestAProtocolThatCannotNarrateStillWalks pins that the decoration is
 // optional and the movement is not.
@@ -223,7 +230,7 @@ func TestAProtocolThatCannotNarrateStillWalks(t *testing.T) {
 	_, code, done, err := apply(
 		t.Context(), quiet(),
 		mute{err: version.UnsupportedAction("java/1.8.9", version.ActionInput{})},
-		NewBot(DefaultBounds()), Vec3{}, Action{Kind: StepTo},
+		NewBot(DefaultBounds()), Vec3{}, Action{Kind: StepTo}, false,
 	)
 	if err != nil || done || code != 0 {
 		t.Fatalf("apply returned (%d, %v, %v), want the run to carry on", code, done, err)
@@ -238,7 +245,7 @@ func TestLocomotionFailingForAnyOtherReasonStopsTheRun(t *testing.T) {
 	_, code, done, err := apply(
 		t.Context(), quiet(),
 		mute{err: errors.New("connection reset")},
-		NewBot(DefaultBounds()), Vec3{}, Action{Kind: StepTo},
+		NewBot(DefaultBounds()), Vec3{}, Action{Kind: StepTo}, false,
 	)
 	if err == nil || !done || code != 70 {
 		t.Fatalf("apply returned (%d, %v, %v), want a stopped run", code, done, err)

@@ -96,6 +96,13 @@ type Actuator interface {
 	// separate from Step because it is edge-triggered: the state changes far
 	// less often than the position does.
 	Locomotion(ctx context.Context, walking bool) error
+	// Mark paints the floor under a position, so a route can be seen from
+	// inside the game rather than inferred from a log.
+	//
+	// On the Actuator because it is something the bot does to the world, and
+	// separate from Step because it is a debugging aid: a run with it off must
+	// send nothing at all.
+	Mark(ctx context.Context, at Vec3) error
 	// Respawn answers a death.
 	Respawn(ctx context.Context) error
 }

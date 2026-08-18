@@ -25,18 +25,19 @@ func main() {
 	username := flag.String("username", "orbit", "offline-mode username")
 	legacy := flag.Bool("legacy", false, "use the protocol 47 profile instead of the current one")
 	dryRun := flag.Bool("dry-run", false, "report what the example needs and exit without connecting")
+	trail := flag.Bool("trail", false, "paint the floor under the planned route with stone; needs an opped bot")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	if code := run(logger, *address, *username, *legacy, *dryRun); code != 0 {
+	if code := run(logger, *address, *username, *legacy, *dryRun, *trail); code != 0 {
 		os.Exit(code)
 	}
 }
 
 // run returns the process exit status. main does nothing else, so every exit
 // path here is one a test can call.
-func run(logger *slog.Logger, address, username string, legacy, dryRun bool) int {
+func run(logger *slog.Logger, address, username string, legacy, dryRun, trail bool) int {
 	// Say what is missing before doing anything. A user who runs this against a
 	// server deserves to know it will not orbit before it connects, not after.
 	for _, missing := range Missing() {
@@ -105,7 +106,7 @@ func run(logger *slog.Logger, address, username string, legacy, dryRun bool) int
 
 	logger.Info("connected", slog.String("address", address))
 
-	code, err := drive(ctx, logger, bot, events, navigator, kinds)
+	code, err := drive(ctx, logger, bot, events, navigator, kinds, trail)
 	if err != nil {
 		logger.Error("run", slog.Any("error", err))
 	}
@@ -190,6 +191,7 @@ func drive(
 	events *client.Subscription,
 	navigator Navigator,
 	kinds Kinds,
+	trail bool,
 ) (int, error) {
 	bounds := DefaultBounds()
 	core := NewBot(bounds)
@@ -267,7 +269,7 @@ func drive(
 			// a death.
 			pending.Attacker, pending.Died, pending.Respawned, pending.Corrected = 0, false, false, false
 
-			moved, code, done, err := apply(ctx, logger, actuator, core, predicted, action)
+			moved, code, done, err := apply(ctx, logger, actuator, core, predicted, action, trail)
 			if done {
 				return code, err
 			}
@@ -354,12 +356,24 @@ func apply(
 	core *Bot,
 	from Vec3,
 	action Action,
+	trail bool,
 ) (Vec3, int, bool, error) {
 	var err error
 
 	// Where the bot is after this action. Only a step moves it, and a step
 	// that failed to send does not.
 	moved := from
+
+	// Paint the route before walking it, so the trail shows where the bot
+	// meant to go and not only where it got to. A run that ends on the
+	// breaker then leaves the plan on the ground to be looked at.
+	if trail {
+		for _, step := range core.Route().Steps {
+			if err := actuator.Mark(ctx, step); err != nil {
+				return moved, 70, true, fmt.Errorf("mark: %w", err)
+			}
+		}
+	}
 
 	// Say what the body is doing before saying where it is. A real client
 	// reports the keys it is holding and then the position they produced, and

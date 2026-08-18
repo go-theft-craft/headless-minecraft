@@ -35,6 +35,8 @@ type (
 	ActionInput = version.ActionInput
 	// ActionSprint starts or stops sprinting.
 	ActionSprint = version.ActionSprint
+	// ActionCommand runs a server command.
+	ActionCommand = version.ActionCommand
 )
 
 // Do sends one outbound intent.

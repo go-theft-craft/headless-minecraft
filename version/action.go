@@ -150,6 +150,26 @@ type ActionSprint struct {
 // ActionKind implements Action.
 func (ActionSprint) ActionKind() string { return "sprint" }
 
+// ActionCommand runs a server command.
+//
+// The command carries no leading slash. Protocol 775 sends commands on their
+// own packet whose field is the command without one, and 47 has no command
+// packet at all and sends chat with a slash in front -- so the slash is a
+// spelling one version uses and not part of what the caller is asking for.
+//
+// Unsigned. Both versions this speaks accept a command with no signature, and
+// the signed variant carries a timestamp, a salt and per-argument signatures
+// that only mean anything for an account this client is not: a headless client
+// in offline mode has nothing to sign with. A server that requires signatures
+// will refuse this, which is the honest outcome.
+type ActionCommand struct {
+	// Command is the command and its arguments, without a leading slash.
+	Command string
+}
+
+// ActionKind implements Action.
+func (ActionCommand) ActionKind() string { return "command" }
+
 // UnsupportedAction returns the error an adapter reports for an intent it cannot
 // encode. Adapters share it so that two protocols refuse the same way.
 func UnsupportedAction(protocolID string, action Action) error {

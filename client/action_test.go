@@ -69,6 +69,14 @@ func TestEachActionEncodesToItsProtocol47Packet(t *testing.T) {
 			packet: "client_command",
 			want:   &gen1_8.PlayServerboundClientCommand{Payload: 0},
 		},
+		// This protocol has no command packet. A command is chat with a
+		// leading slash, which is how its server tells the two apart, so the
+		// slash the intent does not carry is added here.
+		"command": {
+			action: ActionCommand{Command: "setblock 1 2 3 stone"},
+			packet: "chat",
+			want:   &gen1_8.PlayServerboundChat{Message: "/setblock 1 2 3 stone"},
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -150,6 +158,13 @@ func TestEachActionEncodesToItsProtocol775Packet(t *testing.T) {
 			action: ActionSprint{},
 			packet: "entity_action",
 			want:   &gen26_1.PlayServerboundEntityAction{ActionID: "stop_sprinting"},
+		},
+		// 775 carries a command on its own packet, whose field holds the
+		// command without the slash 47 needs.
+		"command": {
+			action: ActionCommand{Command: "setblock 1 2 3 stone"},
+			packet: "chat_command",
+			want:   &gen26_1.PlayServerboundChatCommand{Command: "setblock 1 2 3 stone"},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
