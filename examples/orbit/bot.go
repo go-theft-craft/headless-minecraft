@@ -410,7 +410,31 @@ func (b *Bot) follow(t Tick, w World, goal Vec3, key int) (Action, bool) {
 		return Action{Kind: Stand, Reason: "route walked out"}, true
 	}
 
-	return b.step(b.route.Steps[b.leg]), true
+	return b.guardedStep(t, w, b.route.Steps[b.leg]), true
+}
+
+// guardedStep refuses to walk into something that hurts, whatever the plan
+// said.
+//
+// The last line, and it exists because every line before it is a prediction.
+// The route was planned against a world that has since changed, the check on
+// the way ahead runs on the tick the world reports a change and lava spreads
+// between ticks, and any of it can be a moment behind. This looks at the one
+// position the bot is about to occupy, which is the only claim that has to be
+// right.
+//
+// Dropping the route with it: a step refused here is a route that has stopped
+// describing the world, and walking the rest of it would be walking the same
+// prediction again.
+func (b *Bot) guardedStep(t Tick, w World, target Vec3) Action {
+	next := t.Self.Position.Toward(target, b.bounds.Step())
+	if w.Hurting(next) {
+		b.route = Route{}
+
+		return Action{Kind: Stand, Reason: "not stepping into that"}
+	}
+
+	return b.step(target)
 }
 
 // fleeTurns are the escape headings to try, in order: straight away first, then

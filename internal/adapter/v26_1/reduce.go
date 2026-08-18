@@ -450,10 +450,54 @@ func reduceChunkPacket(
 			State: uint32(value.Type),
 		}})
 
+	case *gen.PlayClientboundMultiBlockChange:
+		chunks.BlocksChanged(c, sectionChanges775(value))
+
 	case *gen.PlayClientboundTileEntityData:
 		chunks.BlockEntityChanged(c, blockPos775(value.Location), value.NBTData)
 	}
 }
+
+// sectionChanges775 unpacks a section update into the changes it describes.
+//
+// This protocol sends a chunk section and a list of packed longs rather than a
+// list of positions and states. Each record carries the block state in every
+// bit above the twelfth and the position within the section in the twelve
+// below it, four bits per axis, ordered x then z then y -- which is not the
+// order the axes are written in anywhere else, and is why the shifts are
+// spelled out rather than looped.
+//
+// Missing this packet entirely is what a live server found. Single changes
+// arrived and were applied; anything the server batched into a section update
+// was dropped, so a client watching a lava pool spread across its path saw the
+// first block placed and none of the spreading. Fifty-six of these went
+// unread in one session.
+func sectionChanges775(value *gen.PlayClientboundMultiBlockChange) []world.BlockChange {
+	section := value.ChunkCoordinates
+	changes := make([]world.BlockChange, 0, len(value.Records))
+
+	for _, record := range value.Records {
+		relative := record & sectionPositionMask
+
+		changes = append(changes, world.BlockChange{
+			Pos: world.BlockPos{
+				X: section.X<<4 + (relative>>8)&15,
+				Y: section.Y<<4 + relative&15,
+				Z: section.Z<<4 + (relative>>4)&15,
+			},
+			State: uint32(record >> sectionStateShift),
+		})
+	}
+
+	return changes
+}
+
+// The record's two halves: the low twelve bits locate the block inside its
+// section and everything above them is the block state.
+const (
+	sectionPositionMask int32 = 0xFFF
+	sectionStateShift   int32 = 12
+)
 
 func blockPos775(p gen.Position) world.BlockPos {
 	return world.BlockPos{X: p.X, Y: int32(p.Y), Z: p.Z}

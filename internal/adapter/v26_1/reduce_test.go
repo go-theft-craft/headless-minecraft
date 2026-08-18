@@ -1307,3 +1307,50 @@ func TestTheSpawnPositionCarriesItsDimensionAndAngle(t *testing.T) {
 		t.Errorf("angle is %v at yaw %v, want an angled 90", environment.SpawnAngled, environment.SpawnYaw)
 	}
 }
+
+// TestASectionUpdateReachesTheChunks pins the packet that was missing.
+//
+// This protocol batches block changes into a section update, and the reducer
+// had no case for it: single changes were applied and everything batched was
+// dropped. A client watching lava spread across its path saw the first block
+// placed and none of the spreading, which on a live server is a bot walking
+// into a pool that was not there when it planned its route. Fifty-six of these
+// went unread in one session.
+//
+// The record's layout is the game's: the block state is every bit above the
+// twelfth, and the twelve below it hold the position inside the section, four
+// bits per axis in the order x, z, y.
+func TestASectionUpdateReachesTheChunks(t *testing.T) {
+	t.Parallel()
+
+	const state = 117
+
+	// Section (1, -4, 2) is blocks x 16..31, y -64..-49, z 32..47. Inside it,
+	// x=3 z=5 y=9.
+	packed := int32(state)<<12 | 3<<8 | 5<<4 | 9
+
+	_, events := script(
+		t,
+		[]protocol.Packet{
+			playLogin(1),
+			play(&gen.PlayClientboundMapChunk{X: 1, Z: 2, ChunkData: []byte{1}}),
+		},
+		[]protocol.Packet{
+			play(&gen.PlayClientboundMultiBlockChange{
+				ChunkCoordinates: gen.PlayClientboundMultiBlockChangeChunkCoordinatesBits{X: 1, Y: -4, Z: 2},
+				Records:          []int32{packed},
+			}),
+		},
+	)
+
+	// The chunk in this fixture cannot be decoded, so the change is counted
+	// rather than applied -- which is all this needs to show. Before the
+	// handler existed the packet produced no event at all, applied or counted.
+	last, ok := events[len(events)-1].(event.WorldBlocksChanged)
+	if !ok {
+		t.Fatalf("the section update produced %T, want a WorldBlocksChanged", events[len(events)-1])
+	}
+	if last.Dropped != 1 {
+		t.Errorf("counted %d changes, want the record to reach the chunks", last.Dropped)
+	}
+}

@@ -85,6 +85,20 @@ func (n Navigator) Plan(ctx context.Context, chunks world.ChunksView, from, to V
 		return Route{}, false
 	}
 
+	// An incomplete path is worth walking when the search ran out of room to
+	// look, and worthless when it looked everywhere and found no way. The
+	// planner tells the two apart and this used to ignore the difference: a
+	// waypoint behind a lava pool produced a stub of a route heading at the
+	// pool, the bot walked the stub, planned again, got another stub, and
+	// spent the run shuffling at the water's edge looking like it had stopped.
+	//
+	// Unreachable means skip the waypoint and try the next one. Budget and
+	// ceiling mean walk what there is and search again from further on, which
+	// is the case the planner returns partial paths for.
+	if !path.Complete && path.Reason == navigation.ReasonUnreachable {
+		return Route{}, false
+	}
+
 	// Start from where the bot is, then the centre of the cell it stands in,
 	// then a centre per edge.
 	//
