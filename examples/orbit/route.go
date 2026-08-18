@@ -13,6 +13,7 @@ import (
 	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
 	simmovement "github.com/go-theft-craft/minecraft-simulation/movement"
 	"github.com/go-theft-craft/minecraft-simulation/navigation"
+	"github.com/go-theft-craft/minecraft-simulation/navigation/reach"
 	simv1_8 "github.com/go-theft-craft/minecraft-simulation/profile/java/v1_8"
 	simv26_1 "github.com/go-theft-craft/minecraft-simulation/profile/java/v26_1"
 	simprofile "github.com/go-theft-craft/minecraft-simulation/sim"
@@ -68,6 +69,43 @@ type Navigator struct {
 	facts      Facts
 	capability navigation.Capability
 	budget     navigation.Budget
+	// legacy is kept so the physics handle below can spawn a body of the same
+	// version this navigator routes for. Predicting one version's movement
+	// against another version's server is the one mistake nothing downstream
+	// can detect.
+	legacy bool
+}
+
+// Physics is everything needed to simulate the body this bot reports.
+//
+// It exists so the actuator can run the same movement rules the planner routes
+// against, from the same profile, without either of them reaching into the
+// other. A route planned for a body with legs and walked by a body without them
+// is the failure the StepHeight note below records.
+type Physics struct {
+	Profile simprofile.Profile
+	Blocks  predict.Blocks
+	// Spawn builds a body at a position. It is the profile's own, passed as a
+	// function because this file already knows which version it is and the
+	// actuator does not need to.
+	Spawn func(pos simgeom.Vec3, yaw, pitch float32) (simentity.State, simmovement.Locomotion, bool)
+}
+
+// Physics returns the rules and the body builder for this navigator's version.
+func (n Navigator) Physics() Physics {
+	legacy := n.legacy
+
+	return Physics{
+		Profile: n.profile,
+		Blocks:  n.blocks,
+		Spawn: func(pos simgeom.Vec3, yaw, pitch float32) (simentity.State, simmovement.Locomotion, bool) {
+			if legacy {
+				return simv1_8.Spawn(n.profile, pos, yaw, pitch)
+			}
+
+			return simv26_1.Spawn(n.profile, pos, yaw, pitch)
+		},
+	}
 }
 
 // Plan searches a route between two positions over one snapshot.
@@ -504,7 +542,7 @@ func NewNavigator(legacy bool, bounds Bounds) (Navigator, error) {
 		return Navigator{}, err
 	}
 
-	state, _, ok := spawnState(legacy, profile)
+	state, loco, ok := spawnState(legacy, profile)
 	if !ok {
 		return Navigator{}, errNoBody
 	}
@@ -512,21 +550,36 @@ func NewNavigator(legacy bool, bounds Bounds) (Navigator, error) {
 	body := terrain.Body{
 		HalfWidth: (state.Box.MaxX - state.Box.MinX) / 2,
 		Height:    state.Box.MaxY - state.Box.MinY,
-		// Zero, and not the profile's own step height.
+		// The profile's own, now that there is something that rises.
 		//
-		// The box is measured off the game because the game is right about it.
-		// The step height is not a fact about the player, it is a claim about
-		// this bot, and the claim would be false: the example reports a
-		// position and simulates no body, so it has nothing that rises. Passing
-		// the profile's 0.6 told the planner it could route a one-block step,
-		// the planner did, and the bot walked horizontally into the raised
-		// block and was pushed back until the breaker ended the run -- a cell
-		// the planner called steppable and the server called a wall.
+		// This was zero, and the note it carried was the condition for changing
+		// it: "It goes back to the profile's value the day a movement kernel is
+		// attached, and not before." That day is this one. The step height is a
+		// claim about the body, and the claim used to be false — the bot
+		// reported a position and simulated nothing, so passing the profile's
+		// 0.6 told the planner it could route a one-block step, the planner did,
+		// and the bot walked horizontally into the raised block until the
+		// breaker ended the run.
 		//
-		// It goes back to the profile's value the day a movement kernel is
-		// attached, and not before. Describing a body with legs to a planner
-		// bolted to a bot without them is how a route becomes a lie.
-		StepHeight: 0,
+		// The actuator runs the version's own movement rules now, so the body
+		// that walks the route is the body the route was planned for, and the
+		// step-up is the game's arithmetic rather than a claim.
+		StepHeight: state.StepHeight,
+	}
+
+	// The jump's reach is measured by running this profile's own kernel, not
+	// guessed. A hand-written maximum gap is a number this repository cannot
+	// verify, which is why navigation/reach exists at all: the two supported
+	// versions clear different distances, and the number that matters is the
+	// one the rules the bot actually moves by produce.
+	//
+	// The body it measures is the same one spawned above, sprinting — a bot that
+	// jumps a gap runs at it, and the standing-start figure is the conservative
+	// one, which is the side to be wrong on when the number decides whether to
+	// leap a hole.
+	arc, err := reach.Measure(profile, reach.Body{State: state, Locomotion: loco, Sprint: true}, jumpArcTicks)
+	if err != nil {
+		return Navigator{}, fmt.Errorf("measure this version's jump: %w", err)
 	}
 
 	return Navigator{
@@ -534,13 +587,23 @@ func NewNavigator(legacy bool, bounds Bounds) (Navigator, error) {
 		profile: profile,
 		facts:   NewFacts(set, blocks),
 		budget:  navigation.Budget{Nodes: routeNodes},
+		legacy:  legacy,
 		capability: navigation.Capability{
 			Body: body,
-			// It cannot fall, for the same reason it cannot step: a drop is
-			// something a body does under gravity, and this one has none, so a
-			// route down a ledge would have it walking out over the edge and
-			// reporting itself still on the ground.
-			SafeFall: 0,
+			// It can fall, and survive what the game says it survives.
+			//
+			// This was zero while the bot had no gravity: a route down a ledge
+			// would have had it walking out over the edge and reporting itself
+			// still on the ground. The kernel drops it now, so a drop is a move
+			// the body actually makes.
+			//
+			// Four blocks is where vanilla starts doing damage, and it is the
+			// one number here this file states rather than measures — the fall
+			// damage threshold is M9.6's to establish, and until it does, four
+			// is the conservative reading of a rule everybody knows and nobody
+			// here has checked. It is deliberately below the jump's own rise, so
+			// the bot never plans a drop it would not walk away from.
+			SafeFall: safeFall,
 			// It can swim, and that is a fix rather than a flourish.
 			//
 			// With this off the planner refused every water cell, which is
@@ -590,19 +653,29 @@ func NewNavigator(legacy bool, bounds Bounds) (Navigator, error) {
 			// each one waits on the same thing: a body that moves under its own
 			// physics rather than a position this bot asserts.
 			//
-			//   JumpReach and JumpRise — an arc. The bot would report itself
-			//     walking level across the hole it was supposed to jump.
-			//   CanClimb — vertical movement. Nothing here changes its own Y.
+			//   CanClimb — the kernel has no ladder rules, so a climbed cell
+			//     is one the body would fall out of.
 			//   CrawlHeight — a posture. The bot has one shape.
 			//   CanPlace — an inventory, which this bot does not have, and the
 			//     placement actions to go with it.
 			//   WaterLandingDepth — a descent, which is gravity again.
 			//
-			// Turning any of them on without that is the mistake StepHeight
-			// above records: the planner was told the bot could route a
-			// one-block step, it routed one, and the bot walked horizontally
-			// into the raised block until the breaker ended the run. A route is
-			// only as true as the body it was planned for.
+			// The jump is on, and it is the measurement above rather than a
+			// guess: a body that can cross a gap is the largest reachability
+			// change in this list, and it is honest now only because the
+			// actuator arcs the body over the hole instead of asserting a line
+			// across it.
+			JumpReach: arc.HorizontalBlocks,
+			JumpRise:  arc.PeakRise,
+			// Jumping covers ground at least as fast as walking — a sprint jump
+			// faster — so pricing it as a walk never makes the search prefer a
+			// jump it should have walked, which is the direction that matters.
+			JumpTicks: ticksPerBlock(bounds),
+			// Turning any of the rest on without what it needs is the mistake
+			// StepHeight above used to record: the planner was told the bot
+			// could route a one-block step, it routed one, and the bot walked
+			// horizontally into the raised block until the breaker ended the
+			// run. A route is only as true as the body it was planned for.
 			//
 			// CanOpenDoors is the exception worth noting: a door needs no
 			// physics, only a right-click, so it waits on an actuator method
@@ -626,6 +699,18 @@ const (
 	// belongs to the movement kernel's fluid rules, and this bot runs none.
 	swimPenalty  = 2
 	sneakPenalty = 3
+)
+
+const (
+	// jumpArcTicks is long enough for either version's jump to land.
+	jumpArcTicks = 40
+	// safeFall is how far this bot will plan to drop, in blocks.
+	//
+	// It is four because that is where vanilla starts doing damage, and it is
+	// the one movement number this file states rather than measures — the fall
+	// threshold is M9.6's to establish. It is under the jump's own rise on
+	// purpose, so the bot never plans a descent it would not survive.
+	safeFall = 4
 )
 
 // routeNodes bounds one search. The circle's waypoints are about five blocks

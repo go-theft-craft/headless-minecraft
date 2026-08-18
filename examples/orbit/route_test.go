@@ -139,25 +139,51 @@ func TestARiseIsNeverSmoothedThrough(t *testing.T) {
 //
 // This goes back to the profile's values the day a movement kernel is attached,
 // and the test is what will say so.
-func TestThePlannerIsNotToldTheBotCanStepOrFall(t *testing.T) {
+func TestThePlannerIsToldWhatTheBodyCanActuallyDo(t *testing.T) {
 	t.Parallel()
 
+	// This test asserted the opposite, and the reason it did is the reason it
+	// changed. It guarded a bot whose actuator asserted positions and simulated
+	// nothing: telling that planner the body could step or fall produced routes
+	// the body could not walk, and the scar it left is in route.go's own notes.
+	//
+	// The actuator runs the version's movement kernel now, so the body that
+	// walks a route is the body it was planned for, and describing it truthfully
+	// is what makes the route true.
 	navigator, err := NewNavigator(false, DefaultBounds())
 	if err != nil {
 		t.Fatalf("NewNavigator: %v", err)
 	}
+	capability := navigator.capability
 
-	if got := navigator.capability.Body.StepHeight; got != 0 {
-		t.Errorf("step height is %v, want 0: this bot has nothing that rises", got)
+	if capability.Body.StepHeight <= 0 {
+		t.Error("step height is zero, so the planner will route around every slab the body could step onto")
 	}
-	if got := navigator.capability.SafeFall; got != 0 {
-		t.Errorf("safe fall is %v, want 0: this bot has nothing that falls", got)
+	if capability.SafeFall <= 0 {
+		t.Error("safe fall is zero, so the planner will route around every ledge the body could drop off")
 	}
-	// The box is the game's, though, and has to stay that way.
-	if got := navigator.capability.Body.HalfWidth; got <= 0.29 || got >= 0.31 {
+
+	// The jump is measured, not stated. Both supported versions clear a little
+	// over two blocks from a standing sprint start, so a reach outside that band
+	// means the measurement is reading something other than the kernel.
+	if capability.JumpReach < 2 || capability.JumpReach > 4 {
+		t.Errorf("jump reach is %v, which is not a measured player jump", capability.JumpReach)
+	}
+	if capability.JumpRise < 1 || capability.JumpRise > 2 {
+		t.Errorf("jump rise is %v, which is not a measured player jump", capability.JumpRise)
+	}
+	// A drop the bot plans has to be one it survives, and the jump's own rise is
+	// the cheapest thing it can always climb back up. A safe fall above it is a
+	// bot that will strand itself one ledge at a time.
+	if capability.SafeFall <= capability.JumpRise {
+		t.Errorf("safe fall %v is not above the jump's rise %v", capability.SafeFall, capability.JumpRise)
+	}
+
+	// The box is the game's, and has to stay that way.
+	if got := capability.Body.HalfWidth; got <= 0.29 || got >= 0.31 {
 		t.Errorf("half width is %v, want the player's 0.3", got)
 	}
-	if got := navigator.capability.Body.Height; got <= 1.79 || got >= 1.81 {
+	if got := capability.Body.Height; got <= 1.79 || got >= 1.81 {
 		t.Errorf("height is %v, want the player's 1.8", got)
 	}
 }
@@ -215,12 +241,15 @@ func TestABotInWaterFindsAWayOut(t *testing.T) {
 		t.Fatalf("NewNavigator: %v", err)
 	}
 
-	view := pool(2)
+	// Wide enough that the jump cannot clear it. A body that can leap two
+	// blocks would hop a narrow pool, which is correct and would make this test
+	// about the wrong thing.
+	view := pool(4)
 	facts := Facts{water: map[simworld.BlockRef]bool{waterRef: true}}
 
 	// The middle of the pool, out to dry ground past its edge.
 	from := simgeom.BlockPos{X: 0, Y: 64, Z: 0}
-	goal := simgeom.BlockPos{X: 4, Y: 64, Z: 0}
+	goal := simgeom.BlockPos{X: 6, Y: 64, Z: 0}
 	budget := navigation.Budget{Nodes: routeNodes}
 
 	swimmer := navigator.capability
@@ -332,6 +361,11 @@ func TestABotRoutesRoundAPoolItCouldWalkAround(t *testing.T) {
 // It is asserted rather than assumed because it is the half a reader doubts: the
 // point of pricing water above ground is not that the bot avoids water, it is
 // that it weighs it.
+//
+// How it crosses is the planner's business and deliberately not asserted here.
+// A body that can leap two blocks hops a one-cell puddle rather than wading it,
+// which is what a player does; before the jump was measured this same fixture
+// produced a swim. Either is a crossing. What would be wrong is a detour.
 func TestAPuddleIsCrossedRatherThanCircled(t *testing.T) {
 	t.Parallel()
 
@@ -357,13 +391,10 @@ func TestAPuddleIsCrossedRatherThanCircled(t *testing.T) {
 		t.Fatalf("no route across a one-cell puddle: %v", path.Reason)
 	}
 
-	var swum int
+	// Straight down the line it started on: no sidestep, no going round.
 	for _, edge := range path.Edges {
-		if edge.Kind == navigation.EdgeSwim {
-			swum++
+		if edge.To.Z != 0 {
+			t.Fatalf("left the direct line to avoid a one-cell puddle: %v", path.Edges)
 		}
-	}
-	if swum != 1 {
-		t.Fatalf("crossed a one-cell puddle with %d swim edges, want one: %v", swum, path.Edges)
 	}
 }

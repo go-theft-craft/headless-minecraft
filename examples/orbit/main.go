@@ -198,10 +198,18 @@ func drive(
 	bounds := DefaultBounds()
 	core := NewBot(bounds)
 
-	// Movement is real; attack and respawn are still Pending on Sender, which
-	// is what turns the first thing the core asks for that M9 owes into a clear
-	// error instead of silence.
-	var actuator Actuator = NewSender(source, bounds)
+	// Movement is real, and it is the version's own: the sender runs the same
+	// movement kernel the planner routes against, so the jump the core asks for
+	// is an arc the game would produce rather than a line through the air.
+	// Attack and respawn are still Pending on Sender, which is what turns the
+	// first thing the core asks for that M9 owes into a clear error instead of
+	// silence.
+	sender, err := NewSender(source, bounds, navigator.Physics())
+	if err != nil {
+		return 0, err
+	}
+
+	var actuator Actuator = sender
 
 	ticker := time.NewTicker(bounds.Tick)
 	defer ticker.Stop()

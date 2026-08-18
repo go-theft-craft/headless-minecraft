@@ -86,8 +86,15 @@ type Bounds struct {
 	// on a circle and anywhere within a block of it will do; a route leg is a
 	// cell centre the bot has to actually reach, because the next leg is only
 	// safe from there. Arriving at a leg a block early leaves the bot
-	// off-centre and cutting the corner the planner routed around. Smaller
-	// than one step, so the step that lands exactly on the leg also arrives.
+	// off-centre and cutting the corner the planner routed around.
+	//
+	// It used to be a twentieth of a block, which worked only while the bot
+	// asserted its own position and could stop exactly on a point. The body is
+	// simulated now: it accelerates, and it carries momentum a tick's input
+	// cannot cancel, so it cannot land within a twentieth of anything. A
+	// tolerance below one tick of travel is a leg the bot never arrives at, and
+	// a route it never finishes — so this is above one tick of a walk and well
+	// below the half-block that would let it cut a corner.
 	LegRadius float64
 	// WaypointRadius is how close counts as arrived. Smaller than this and the
 	// bot chases a point it overshoots every tick.
@@ -130,7 +137,7 @@ func DefaultBounds() Bounds {
 		BreakerBudget:  5,
 		Tick:           50 * time.Millisecond,
 		JoinTimeout:    30 * time.Second,
-		LegRadius:      0.05,
+		LegRadius:      0.3,
 		WaypointRadius: 1,
 		WalkSpeed:      4,
 	}
