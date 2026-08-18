@@ -654,6 +654,18 @@ numbers do not, which is why the rule is version-owned."
 
 ## Task 4: The placement command and phase
 
+**Done 2026-08-18** (`minecraft-simulation` `d9b6912`). `Place` carries three
+things the command below does not, and each is a thing the tick cannot know:
+the held item, the eye, and the reach. That is `mining.Dig`'s shape and its
+reasons — the tick models no inventory, and it holds a body's box but not the
+version's eye height.
+
+One test here asserted something the kernel does not do. "Two placements in one
+tick see each other" is not the contract: a tick reads the world it was given,
+and a phase that saw its own writes would be a phase holding state. The test now
+pins what does happen — two accepted outcomes and two writes to one cell, the
+last winning — and says why.
+
 **Files:**
 - Create: `minecraft-simulation/placement/phase.go`
 - Test: `minecraft-simulation/placement/phase_test.go`
@@ -678,7 +690,7 @@ func (Place) CommandKind() string { return "placement.place" }
 func Phase() sim.Phase
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestAnAcceptedPlacementEmitsExactlyOneSetBlock(t *testing.T) {
@@ -755,13 +767,13 @@ func TestTwoPlacementsInOneTickApplyInOrder(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
-- [ ] **Step 4: Run the tests and gates**
+- [x] **Step 4: Run the tests and gates**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd minecraft-simulation
@@ -776,6 +788,19 @@ discouraged. Two placements in one tick see each other."
 ---
 
 ## Task 5: The client placement action
+
+**Done 2026-08-18** (`headless-minecraft` `e325adf`). `Place(ctx, block, face)`
+computes the face's centre and sends the primitive. It does not aim and it does
+not wait, and the doc comment says why for both: the facing an orientable block
+takes comes from the yaw the *server* has, so aiming is a look the caller sends
+first — and turning two points into an angle is the aiming plan's — while a
+placement has no reply to wait for, so a Place that blocked would never return
+in the one case a caller cares about, which is a refusal.
+
+The 47 lane's `HeldItem` is the empty slot the interaction primitives plan
+already sends, unchanged by this task. Whether a real 1.8.9 server accepts a
+placement with it is what the live check would settle, and no live check has
+run.
 
 **Files:**
 - Create: `headless-minecraft/client/place.go`
@@ -809,7 +834,7 @@ against the generated packets on 2026-08-18:
   for a real server to accept the placement, this task is blocked on M9.7 rather
   than free to invent an inventory model here.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestAPlacementReachesTheServerAndTheBlockAppears(t *testing.T) {
@@ -879,13 +904,13 @@ func TestThe775PlacementCarriesASequenceNumber(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
-- [ ] **Step 4: Run the tests and gates**
+- [x] **Step 4: Run the tests and gates**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/place.go client/place_test.go internal/adapter/
@@ -900,40 +925,100 @@ correction does."
 
 ## Task 6: The gate and the milestone record
 
+**Done 2026-08-18** (`minecraft-simulation` `822e26a`), and built the way M9.4's
+was rather than the way this task specified: the corpus is asked of each
+version's own jar — 1.8.9's `Block.onBlockPlaced` and 26.1.2's
+`Block.getStateForPlacement` — rather than captured through the proxy. A capture
+would answer what the server did with a click, which for a placement is the same
+call with a world around it; the jar answers the rule itself, reproducibly, for
+24 clicks per version.
+
 **Files:**
 - Create: `minecraft-simulation/placement/vanilla_test.go`
 - Create: `minecraft-simulation/placement/testdata/vanilla/1_8_9.json`, `26_1_2.json`
 - Modify: `headless-minecraft/MASTER_PLAN.md`
 
-- [ ] **Step 1: Capture the corpus on both versions**
+- [x] **Step 1: Capture the corpus on both versions**
 
 Place, on each version: stairs from four yaws, a slab against a top face and an
 underside, a log against each of three axes, a torch on a wall, a door, a plain
 block, a placement into a mob, a placement out of reach, and a placement into a
 replaceable block. Record what the server said the resulting state was.
 
-- [ ] **Step 2: Write the failing gate**
+- [x] **Step 2: Write the failing gate**
 
 The comparison is exact on both legality and resulting state. A placement is a
 discrete decision with no wire quantisation, so there is nothing here a
 tolerance would legitimately absorb.
 
-- [ ] **Step 3: Declare the scenario, run it, fix what it names**
+- [x] **Step 3: Declare the scenario, run it, fix what it names**
 
-- [ ] **Step 4: Record the milestone**
+- [x] **Step 4: Record the milestone**
 
 Write what the work found. Candidates: whether the 26.1.2 state-offset ordering
 was derivable from generated data or needed a new dump; whether any block's
 `Variations` in the 1.8.9 data disagreed with what the server placed; and how
 many placeable items the sweep test found unhandled on the first run.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "docs(plan): close M9.5, and what the placement corpus found"
 ```
 
 ---
+
+---
+
+## What M9.5 found, 2026-08-18
+
+The stage is complete: the target arithmetic, the legality, the per-version
+state, the command and phase, the client action, and a gate on both jars.
+
+- **1.8.9's handle vocabulary had no room for the answer.** A `world.BlockRef`
+  was one handle per block, so a top slab, a stair facing west, and a log lying
+  along X were all the block's default handle. The table now mints sixteen
+  handles per block — four bits, which is what the wire carries and what
+  `getMetaFromState` produces — and a name still resolves metadata zero, so no
+  fixture, scene, or trace was rewritten. This was not foreseen by the plan and
+  it is the largest thing the stage did.
+- **It fixed a defect that was already there.** The dataset lists a stone slab's
+  collision shape per metadata — the bottom half for 0 through 7 and the top for
+  8 through 15 — and the old table took the first and answered it for every
+  metadata. A body walked through a top slab. Nothing about a trajectory changed
+  when the table grew: the five 1.8.9 replay recordings were regenerated and the
+  only line that moved in each is the data digest.
+- **26.1.2 needs no per-family bit layout.** A state offset is a mixed-radix
+  number over the block's own published property list, and decoding the block's
+  default state first is what keeps a property the placement does not set — a
+  stair's shape, a block's waterlogging — at the game's own default. 1.8.9 has
+  no such data anywhere, so its three layouts are transcribed from
+  `BlockStairs`, `BlockSlab`, and `BlockLog`, each naming its method. All 48
+  gate cases passed on the first run, which is what says both readings are right.
+- **The sweep caught a name-shaped rule.** Choosing the pillar family by name
+  suffix asked `mushroom_stem` for an axis it does not have — it is six booleans
+  for which sides carry skin. The rule selects on the property being present,
+  which is what the family actually is. A sweep over every placeable item is why
+  this was found and not shipped.
+- **Replaceability has no data behind it, on either version.** Air is
+  replaceable and the tri-state view answers that much; water, lava, tall grass,
+  snow layers, and fire are replaceable too, and no version's generated data
+  carries the flag. `placement.Replaceables` is the seam, nothing implements it,
+  and until something does a placement against tall grass lands one cell high.
+  Closing it means measuring the property out of the pinned jars into the
+  dataset — the way falling and climbable were measured on 2026-08-18 — rather
+  than typing a list of block names into a profile. **This is the one open item
+  M9.5 leaves.**
+- **What the gate covers is four families and it says so.** Every other
+  orientable block — doors, torches, beds, pistons, rails — resolves a default
+  state that is right for none of them, and so does anything 1.8.9 orients in
+  `onBlockPlacedBy`, which the harness does not call. The corpus carries both
+  lists and the gate prints them, so a green run cannot be read as more than it
+  is.
+- **No live check has run.** `client.Place` is unit tested and the states it
+  would place are gated against both jars, but nothing has sent a placement to a
+  real server. That is the same gap M9.4 left for digging, and it belongs to
+  M10's lane rather than to a stage of M9.
 
 ## Definition of done
 

@@ -38,7 +38,7 @@ here.
 | M6 | Finish the server migration and connect the headless client | `server`, `headless-minecraft` | Complete except **M6.4** (Microsoft device-code), postponed |
 | M7 | Immutable observed world state, wire-ordered reducers | `headless-minecraft` | Complete |
 | M8 | Deterministic 1.8.9 and 26.1.2 movement kernel, replay, consumer integration | `minecraft-simulation` | Complete (M8.1–M8.8) |
-| M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **In progress**: M9.1 complete, live check run 2026-08-17; M9.1b, M9.2 and M9.4 complete; M9.3 part-done; M9.5–M9.8 not started |
+| M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **In progress**: M9.1 complete, live check run 2026-08-17; M9.1b, M9.2, M9.4 and M9.5 complete; M9.3 blocked on a human capture; M9.6–M9.8 not started |
 | M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **In progress**: reconciled 2026-08-18, task 1 of six done |
 | P4 | Put every consumer on the released `minecraft-protocol` and keep them there | `minecraft-protocol` | Complete |
 | M11 | Turn `server` into a framework | `server` | Complete (M11.1–M11.7) |
@@ -89,12 +89,19 @@ below are what is left of them.
   ([plan](docs/superpowers/plans/2026-08-15-microsoft-authentication.md)).
   It gates M10's online-mode lane: every headless check since M3 has run
   offline.
-- [ ] **M9.3 — movement scenarios**
+- [ ] **M9.3 — movement scenarios: blocked on a person, not on an agent**
   ([plan](docs/superpowers/plans/2026-08-17-m9-3-movement-scenarios.md)).
-  Tasks 5–7 (correction, teleport, disconnect mid-action) are done. Open:
-  freeze the trace document, the reader and comparator in
-  `minecraft-simulation`, capture the corpus on both versions, and the six
-  ordinary scenarios (walk, sprint, sneak, jump, fall, collide).
+  Tasks 5–7 — the correction, the teleport, and the disconnect, which are this
+  file's stated gate for M9.3 — are done. What is open is Tasks 1–4, and Task 3
+  cannot be run by an agent: a player trace is built from what the *client*
+  reported, so a corpus captured with this repository's headless client is this
+  repository's own physics played back to itself and would pass by construction.
+  The oracle is a real vanilla client behind the proxy. For 1.8.9 those
+  recordings exist in `oracle-evidence`; for 26.1.2 none does, and taking one
+  needs a person playing 26.1.2 through the proxy with a paid account — the same
+  thing M6.4 and M10's online-mode lane need. Tasks 1 and 2 exist only to serve
+  3 and 4, and the plan says freezing a document format nobody reads yet would
+  pin whatever its one writer happens to do.
 - Closed, 2026-08-18: **M9.4 — digging and block breaking**
   ([plan](docs/superpowers/plans/2026-08-17-m9-4-digging-block-breaking.md)).
   The matrix gate runs on both versions from a corpus asked of each version's
@@ -105,9 +112,15 @@ below are what is left of them.
   against leaves and wool, pinned per version and reported below; and nothing
   in this repository has yet sent the three dig packets to a real server in
   order, which is M10's anti-cheat lane rather than a stage of M9.
-- [ ] **M9.5 — building and placement**
+- Closed, 2026-08-18: **M9.5 — building and placement**
   ([plan](docs/superpowers/plans/2026-08-17-m9-5-building-and-placement.md)).
-  Only the reconcile task is done; tasks 1–6 are open.
+  All six tasks, gated on both jars: 24 clicks per version answered by
+  `Block.onBlockPlaced` and `Block.getStateForPlacement`, compared on the handle.
+  The stage's own record says what it found; the two things that outlive it are
+  below, under `minecraft-simulation` and here:
+  **1.8.9's handles now name a block state rather than a block** (sixteen per
+  block, a name still resolving metadata zero), which is what gave a placement
+  somewhere to put its answer and fixed a top slab colliding as a bottom one.
 - [ ] **M9.6 — attack, damage, knockback**
   ([plan](docs/superpowers/plans/2026-08-17-m9-6-attack-damage-knockback.md)).
   Only the reconcile task is done. Damage attribution and the respawn
@@ -342,6 +355,14 @@ Still owned by M10 and outside that plan:
 
 ### `minecraft-simulation`
 
+- [ ] **Measure which blocks a placement replaces.** M9.5 needs it and no
+  version's generated data carries it: air is replaceable and the tri-state view
+  answers that much, while water, lava, tall grass, snow layers, and fire are
+  replaceable too and nothing says so. `placement.Replaceables` is the seam and
+  nothing implements it, so a placement against tall grass lands one cell high.
+  The route is the one `minecraft-protocol` took for falling and climbable on
+  2026-08-18 — measure it out of the pinned jars into the dataset — rather than
+  a list of block names typed into a profile.
 - [ ] **Get the shears tool speeds corrected upstream.** M9.4's matrix found
   that *both* versions' generated data gives shears the wrong speed against
   leaves and wool — 1.8.9 says 6 and 4.8, 26.1 says 1 and 1, and both jars say
