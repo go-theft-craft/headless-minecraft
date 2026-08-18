@@ -1,11 +1,18 @@
 package world
 
 import (
+	"errors"
 	"maps"
 	"slices"
 
 	"github.com/go-theft-craft/headless-minecraft/event"
 )
+
+// ErrUnknownSequence reports a confirmation or rejection for a click nobody
+// made. On protocol 47 it means the transaction sequence has drifted, and
+// every later confirmation would answer the wrong click; failing loudly beats
+// accumulating a silent offset.
+var ErrUnknownSequence = errors.New("world: no such pending click")
 
 // The container domain records the menu the server actually opened, and never
 // predicts one from the block a caller clicked.
@@ -28,6 +35,11 @@ const (
 	maxProperties = 64
 	// maxRecipes bounds the recipe book.
 	maxRecipes = 8192
+	// maxPending bounds the clicks awaiting confirmation. These are the
+	// client's own rather than the peer's, so the bound is a backstop against
+	// a confirmation path that stopped resolving them, not against a hostile
+	// server.
+	maxPending = 256
 )
 
 // playerContainerID is the menu every session always has: the player's own
@@ -84,6 +96,12 @@ type Containers struct {
 	cursorHeld bool
 	cursorSent bool
 
+	// pending are the clicks the server has not answered, oldest first. Each
+	// carries what the affected slots held before it, because that is the
+	// only way to roll back on protocol 47.
+	pending        []Pending
+	droppedPending int
+
 	dropped int
 
 	recipes        map[int32]bool
@@ -95,6 +113,11 @@ type Containers struct {
 // ContainersView is the container half of a snapshot.
 type ContainersView struct {
 	Open map[int32]ContainerView
+	// PendingClicks is how many clicks await the server's answer. A caller
+	// that reads slots while this is non-zero is reading predictions.
+	PendingClicks int
+	// DroppedPending counts clicks refused by the pending bound.
+	DroppedPending int
 	// Cursor is the stack held on the cursor. Held reports whether it holds
 	// anything, and Known reports whether the server has ever mentioned it.
 	Cursor       any
@@ -136,11 +159,13 @@ func (s *Containers) view() ContainersView {
 	}
 
 	return ContainersView{
-		Open:         open,
-		Cursor:       s.cursor,
-		CursorHeld:   s.cursorHeld,
-		CursorKnown:  s.cursorSent,
-		DroppedMenus: s.dropped,
+		Open:           open,
+		Cursor:         s.cursor,
+		CursorHeld:     s.cursorHeld,
+		CursorKnown:    s.cursorSent,
+		DroppedMenus:   s.dropped,
+		PendingClicks:  len(s.pending),
+		DroppedPending: s.droppedPending,
 
 		Recipes:        maps.Clone(s.recipes),
 		RecipesKnown:   s.recipesKnown,
@@ -202,6 +227,16 @@ func (s *Containers) Closed(c *event.Collector, id int32) {
 		return
 	}
 	delete(s.open, id)
+
+	// Its pending clicks go with it. Their windows no longer exist to roll
+	// back, and a confirmation for a closed window answers nothing.
+	kept := s.pending[:0]
+	for _, p := range s.pending {
+		if p.Window != id {
+			kept = append(kept, p)
+		}
+	}
+	s.pending = kept
 
 	event.Emit(c, event.ContainerClosed{ContainerID: id})
 }
