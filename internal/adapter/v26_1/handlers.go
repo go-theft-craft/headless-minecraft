@@ -29,6 +29,7 @@ func (a adapter) handlers() map[string]handlerFunc {
 	return map[string]handlerFunc{
 		"keep_alive":             a.keepAlive,
 		"position":               a.position,
+		"chunk_batch_finished":   a.chunkBatchFinished,
 		"custom_payload":         a.customPayload,
 		"kick_disconnect":        a.disconnect,
 		"disconnect":             a.disconnect,
@@ -103,6 +104,56 @@ func (a adapter) position(_ context.Context, p protocol.Packet) error {
 
 	answer := &gen.PlayServerboundTeleportConfirm{TeleportID: value.TeleportID}
 	a.outbox.Add(serverbound(gen.StatePlay, "teleport_confirm", answer.PacketID(), answer))
+
+	return nil
+}
+
+// chunksPerTick is the rate this client asks a server to send chunks at.
+//
+// It is a request, not a measurement. Vanilla's client times how long it spent
+// on the last batch and asks for a rate derived from it, so the number it sends
+// climbs as it warms up: a real 26.1.2 client against the same flat server
+// asked for 5.25 on its first batch and converged around 14.6. This client does
+// not time itself — it decodes a chunk into memory and renders nothing, which
+// is the work the rate exists to limit — so it names one number and keeps
+// naming it.
+//
+// Eight sits inside the range the reference client asked for: above the cold
+// start, so chunks do not trickle in, and below the ceiling it settled on, so a
+// slow machine is not flooded by a claim this client never checked. Measuring
+// it properly is worth doing, and is a different change from sending the packet
+// at all.
+const chunksPerTick = 8.0
+
+// chunkBatchFinished acknowledges a batch of chunks, which is what asks for the
+// next one.
+//
+// A 26.1 server streams chunks in batches under the client's control: it sends
+// chunk_batch_start, the chunks, then chunk_batch_finished, and then it stops
+// until the client answers with the rate it wants. The answer is the flow
+// control. A client that never sends it receives exactly one batch for the life
+// of the connection and no error, because from the server's side a client that
+// has not acknowledged is a client that is still busy.
+//
+// What that looks like from outside is a bot that walks confidently to the edge
+// of the chunks it was given and then stands still on open ground: everything
+// beyond them is not solid, it is unknown, and the navigator will not step into
+// a block it cannot classify. The orbit example did exactly this against a
+// vanilla 26.1.2 server — nine chunks, one batch, and a bot that stopped at the
+// boundary of the last one it had and reported itself blocked with nothing in
+// front of it.
+//
+// It is a handler for the same reason the teleport confirmation is one: it is
+// owed for the life of the connection, not settled once on the way in.
+func (a adapter) chunkBatchFinished(_ context.Context, p protocol.Packet) error {
+	if _, ok := p.Value.(*gen.PlayClientboundChunkBatchFinished); !ok {
+		return nil
+	}
+
+	answer := &gen.PlayServerboundChunkBatchReceived{ChunksPerTick: chunksPerTick}
+	a.outbox.Add(serverbound(
+		gen.StatePlay, "chunk_batch_received", answer.PacketID(), answer,
+	))
 
 	return nil
 }

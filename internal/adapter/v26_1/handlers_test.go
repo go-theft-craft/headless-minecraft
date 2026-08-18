@@ -561,3 +561,43 @@ func TestARelativeCorrectionIsStillConfirmed(t *testing.T) {
 		t.Fatalf("answer is %T, want a confirmation for teleport 4", queued[0].Value)
 	}
 }
+
+// TestEveryChunkBatchIsAcknowledged pins the packet that keeps chunks coming.
+//
+// A 26.1 server sends one batch and then waits for the client to say how fast
+// it wants the next one. Nothing about the silence looks like a failure from
+// either side, so the only thing that catches a client which stops answering is
+// a test that counts the answers — the live symptom is a bot standing on open
+// ground several chunks away, and that is a long way from this packet.
+func TestEveryChunkBatchIsAcknowledged(t *testing.T) {
+	t.Parallel()
+
+	for _, size := range []int32{1, 9, 64} {
+		queued := answers(t, clientbound(
+			"chunk_batch_finished",
+			&gen.PlayClientboundChunkBatchFinished{BatchSize: size},
+		))
+		if len(queued) != 1 {
+			t.Fatalf("batch of %d queued %d answers, want 1", size, len(queued))
+		}
+
+		ack, ok := queued[0].Value.(*gen.PlayServerboundChunkBatchReceived)
+		if !ok {
+			t.Fatalf("answer is %T, want *PlayServerboundChunkBatchReceived", queued[0].Value)
+		}
+		// The server clamps this and a client that asks for nothing is a
+		// client that never receives another chunk, which is the bug.
+		if ack.ChunksPerTick <= 0 {
+			t.Errorf("asked for %v chunks per tick, want more than none", ack.ChunksPerTick)
+		}
+		if queued[0].Name != "chunk_batch_received" {
+			t.Errorf("answer is named %q, want chunk_batch_received", queued[0].Name)
+		}
+		if queued[0].State != gen.StatePlay {
+			t.Errorf("answer is addressed to %q, want play", queued[0].State)
+		}
+		if queued[0].Direction != protocol.DirectionServerbound {
+			t.Errorf("answer is %v, want serverbound", queued[0].Direction)
+		}
+	}
+}
