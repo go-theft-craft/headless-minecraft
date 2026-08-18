@@ -198,13 +198,13 @@ Java 1.16.1.
 - Create: `headless-minecraft/internal/conformance/windows_test.go`
 - Create: `headless-minecraft/docs/verification/2026-08-17-window-data-audit.md`
 
-- [ ] **Step 1: Open a window of every type against the pinned 26.1.2 server**
+- [x] **Step 1: Open a window of every type against the pinned 26.1.2 server**
 
 For each window the registry names, open it against the real server through the
 proxy and record what the server actually sent: the window type identifier, the
 slot count, and the property count.
 
-- [ ] **Step 2: Write the audit test**
+- [x] **Step 2: Write the audit test**
 
 ```go
 func TestTheWindowRegistryMatchesTheServer(t *testing.T) {
@@ -245,7 +245,7 @@ func TestTheWindowRegistryMatchesTheServer(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Write down what you found, and decide**
+- [x] **Step 3: Write down what you found, and decide**
 
 Three outcomes, and the plan branches on which one holds:
 
@@ -266,7 +266,15 @@ Three outcomes, and the plan branches on which one holds:
   exists, and for the same reason: a gate that records a belief and does not say
   so is what makes a later failure hard to diagnose.
 
-- [ ] **Step 4: Commit the audit**
+**Answered 2026-08-18: the alias is unusable — the third outcome.** The wire
+carries menu registry indices no pinned data can resolve, the aliased records
+are keyed by 1.8-era identifiers no packet mentions and are missing most of
+the modern menus, and the two hand-pairable records disagree on their property
+counts. The record is
+[the window data audit](../../verification/2026-08-18-window-data-audit.md);
+the finding is pinned by `internal/conformance/windows_test.go`, which fails
+the day corrected data lands. The audit file is dated 2026-08-18, when it ran,
+rather than the 2026-08-17 this plan guessed.
 
 ```bash
 git add internal/conformance/windows_test.go docs/verification/2026-08-17-window-data-audit.md

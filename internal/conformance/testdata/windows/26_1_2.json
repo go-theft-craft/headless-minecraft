@@ -1,0 +1,133 @@
+{
+  "version": "26.1.2",
+  "source": "observed from a pinned vanilla 26.1.2 server on 2026-08-18 through the headless client and its protocol 775 adapter",
+  "unchecked": [
+    "generic_9x1, 9x2, 9x4, 9x5: no vanilla block opens them; they are plugin territory",
+    "generic_9x6: a double chest; forming one needs two directed chest halves and adds nothing the 9x3 case does not show",
+    "lectern: needs a placed book to open at all",
+    "merchant: needs a villager",
+    "the horse window: needs a tamed horse, and travels on its own packet"
+  ],
+  "windows": [
+    {
+      "block": "minecraft:chest",
+      "menu": "java/26.1:menu/2",
+      "slots": 63,
+      "properties": 0
+    },
+    {
+      "block": "minecraft:barrel",
+      "menu": "java/26.1:menu/2",
+      "slots": 63,
+      "properties": 0
+    },
+    {
+      "block": "minecraft:crafting_table",
+      "menu": "java/26.1:menu/12",
+      "slots": 46,
+      "properties": 0
+    },
+    {
+      "block": "minecraft:furnace",
+      "menu": "java/26.1:menu/14",
+      "slots": 39,
+      "properties": 4
+    },
+    {
+      "block": "minecraft:blast_furnace",
+      "menu": "java/26.1:menu/10",
+      "slots": 39,
+      "properties": 4
+    },
+    {
+      "block": "minecraft:smoker",
+      "menu": "java/26.1:menu/22",
+      "slots": 39,
+      "properties": 4
+    },
+    {
+      "block": "minecraft:hopper",
+      "menu": "java/26.1:menu/16",
+      "slots": 41,
+      "properties": 0
+    },
+    {
+      "block": "minecraft:dispenser",
+      "menu": "java/26.1:menu/6",
+      "slots": 45,
+      "properties": 0
+    },
+    {
+      "block": "minecraft:dropper",
+      "menu": "java/26.1:menu/6",
+      "slots": 45,
+      "properties": 0
+    },
+    {
+      "block": "minecraft:enchanting_table",
+      "menu": "java/26.1:menu/13",
+      "slots": 38,
+      "properties": 10
+    },
+    {
+      "block": "minecraft:brewing_stand",
+      "menu": "java/26.1:menu/11",
+      "slots": 41,
+      "properties": 2
+    },
+    {
+      "block": "minecraft:anvil",
+      "menu": "java/26.1:menu/8",
+      "slots": 39,
+      "properties": 1
+    },
+    {
+      "block": "minecraft:grindstone",
+      "menu": "java/26.1:menu/15",
+      "slots": 39,
+      "properties": 0
+    },
+    {
+      "block": "minecraft:stonecutter",
+      "menu": "java/26.1:menu/24",
+      "slots": 38,
+      "properties": 1
+    },
+    {
+      "block": "minecraft:cartography_table",
+      "menu": "java/26.1:menu/23",
+      "slots": 39,
+      "properties": 0
+    },
+    {
+      "block": "minecraft:loom",
+      "menu": "java/26.1:menu/18",
+      "slots": 40,
+      "properties": 1
+    },
+    {
+      "block": "minecraft:smithing_table",
+      "menu": "java/26.1:menu/21",
+      "slots": 40,
+      "properties": 1
+    },
+    {
+      "block": "minecraft:shulker_box",
+      "menu": "java/26.1:menu/20",
+      "slots": 63,
+      "properties": 0
+    },
+    {
+      "block": "minecraft:crafter",
+      "menu": "java/26.1:menu/7",
+      "slots": 46,
+      "properties": 10
+    },
+    {
+      "block": "minecraft:beacon",
+      "menu": "java/26.1:menu/9",
+      "slots": 37,
+      "properties": 3
+    }
+  ]
+}
