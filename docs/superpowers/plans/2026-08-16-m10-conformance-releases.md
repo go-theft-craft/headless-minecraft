@@ -47,8 +47,17 @@
 ```go
 // Artifact is one external implementation a conformance lane runs against.
 type Artifact struct {
-    Name    string `json:"name"`    // "paper", "node-minecraft-protocol", "vanilla-client"
-    Version string `json:"version"` // "1.8.9-build-445"
+    // Name is the kind of artifact: "paper", "vanilla-server",
+    // "vanilla-client", or "node-minecraft-protocol". Every kind is pinned
+    // once per game version, and a kind present for one version and missing
+    // for the other is a failure rather than a smaller matrix.
+    Name string `json:"name"`
+    // Version is the game build: "1.8.9-build-445", "26.1.2-build-74". M4
+    // settled that "26.1" names the dataset and a patch version appears only
+    // where a specific build is meant; a pinned artifact is one of the places
+    // it is meant, so this carries the patch version and gameVersion parses
+    // the leading segment back out.
+    Version string `json:"version"`
     URL     string `json:"url"`
     SHA256  string `json:"sha256"`
     License string `json:"license"` // SPDX identifier, or "proprietary"
@@ -60,6 +69,14 @@ func Load(path string) ([]Artifact, error)
 // Fetch downloads an artifact to a cache directory and verifies its digest.
 // It never returns a file whose digest did not match.
 func Fetch(ctx context.Context, a Artifact, cacheDir string) (string, error)
+
+// gameVersion returns the game build's version segment: "1.8.9" from
+// "1.8.9-build-445", "26.1.2" from "26.1.2-build-74". It exists because the
+// manifest pins builds and the completeness check compares versions.
+func gameVersion(artifactVersion string) string
+
+// keys returns a set's members, sorted, for error messages.
+func keys(set map[string]bool) []string
 ```
 
 - [ ] **Step 1: Write the failing test**
@@ -100,7 +117,38 @@ func TestEveryManifestEntryDeclaresALicense(t *testing.T) {
         }
     }
 }
+
+func TestTheManifestPinsBothGameVersions(t *testing.T) {
+    t.Parallel()
+
+    artifacts, err := conformance.Load("../../testdata/conformance/manifest.json")
+    if err != nil {
+        t.Fatalf("Load: %v", err)
+    }
+
+    // Every artifact kind that exists for one version must exist for the
+    // other. A manifest with a 1.8.9 server and no 26.1.2 server produces a
+    // conformance run that looks complete and covers half the surface.
+    byKind := map[string]map[string]bool{}
+    for _, a := range artifacts {
+        if byKind[a.Name] == nil {
+            byKind[a.Name] = map[string]bool{}
+        }
+        byKind[a.Name][gameVersion(a.Version)] = true
+    }
+    for name, versions := range byKind {
+        if !versions["1.8.9"] || !versions["26.1.2"] {
+            t.Fatalf("%s is pinned for %v; both 1.8.9 and 26.1.2 are required",
+                name, keys(versions))
+        }
+    }
+}
 ```
+
+**Both game versions, everywhere.** M9.1b made every M9 gate a two-version gate,
+and a release is evidence about both versions or about neither. The manifest is
+where that stops being a convention: a kind pinned for 1.8.9 and not for 26.1.2
+fails the test above rather than quietly halving the matrix.
 
 - [ ] **Step 2: Run it to verify it fails**
 
@@ -134,19 +182,68 @@ git commit -m "feat(conformance): pin external artifacts by digest"
 
 **Interfaces:**
 - Consumes: `conformance.Load`, `conformance.Fetch`.
-- Produces: `task test:conformance`, running every pairing below.
+- Produces: `task test:conformance`, running every pairing below, and the lanes
+  as data so the matrix can be checked for completeness by a test rather than by
+  a reviewer reading a table:
+
+```go
+// Lane is one row of the conformance matrix, declared as data so a test can
+// check the matrix for completeness rather than a reviewer checking a table.
+type Lane struct {
+    Name           string
+    Versions       []string // game versions this lane covers
+    VersionNeutral bool     // true when the lane is not version-specific
+    Reason         string   // required when VersionNeutral, says why
+}
+
+// Lanes returns every declared lane.
+func Lanes() []Lane
+
+// Covers reports whether this lane runs against one game version.
+func (l Lane) Covers(gameVersion string) bool
+```
 
 | Under test | Driven against | Proves |
 | --- | --- | --- |
-| `minecraft-protocol` | Pinned Node `minecraft-protocol`, both directions | The codecs agree with an independent implementation |
-| `server` (`examples/vanilla`) | Pinned vanilla 1.8.9 and 26.1.2 clients | Real clients play against it |
-| `headless-minecraft` | `server`'s `examples/vanilla`, and pinned Paper | The client reaches play and observes correctly |
-| `minecraft-simulation` | Traces from the M9.1 capture repository | The kernel reproduces vanilla trajectories |
+| `minecraft-protocol` | Pinned Node `minecraft-protocol`, both directions, protocol 47 | The 47 codecs agree with an independent implementation |
+| `minecraft-protocol` | Pinned Node `minecraft-protocol`, both directions, protocol 775 | The 775 codecs agree with an independent implementation, or the lane records that upstream has no 775 support yet |
+| `server` (`examples/vanilla`) | Pinned vanilla 1.8.9 client | A real 1.8.9 client plays against it |
+| `server` (`examples/vanilla`) | Pinned vanilla 26.1.2 client | A real 26.1.2 client plays against it |
+| `headless-minecraft` | `server`'s `examples/vanilla` and pinned Paper 1.8.9 | The client reaches play and observes correctly on 47 |
+| `headless-minecraft` | `server`'s `examples/vanilla` and pinned Paper 26.1.2 | The client reaches play and observes correctly on 775 |
+| `minecraft-simulation` | Protocol 47 traces from the capture oracle | The kernel reproduces vanilla 1.8.9 trajectories |
+| `minecraft-simulation` | Protocol 775 traces from the capture oracle (M9.1b) | The kernel reproduces vanilla 26.1.2 trajectories |
 | `headless-minecraft` | Pinned Paper with an open-source anti-cheat | Ordinary automation draws no alerts |
+
+**The Node lane may not be runnable.** M4 found that upstream Node
+`minecraft-protocol` had no 775 support and that the differential suite waits on
+it. If upstream still lacks 775 when M10 runs, that lane records "no independent
+implementation available" with the date checked, and the 775 codecs rest on the
+live client and server lanes alone. An absent lane that says why is evidence; an
+absent lane that says nothing reads as coverage.
 
 - [ ] **Step 1: Write the failing test**
 
 ```go
+func TestEveryVersionedLaneRunsOnBothVersions(t *testing.T) {
+    t.Parallel()
+
+    // The lanes are declared as data so this test can read them. A lane that
+    // is version-specific must have a sibling for the other version, or
+    // declare itself version-neutral with a reason.
+    for _, lane := range conformance.Lanes() {
+        if lane.VersionNeutral {
+            if lane.Reason == "" {
+                t.Errorf("%s claims to be version-neutral with no reason", lane.Name)
+            }
+            continue
+        }
+        if !lane.Covers("1.8.9") || !lane.Covers("26.1.2") {
+            t.Errorf("%s covers %v; a versioned lane needs both", lane.Name, lane.Versions)
+        }
+    }
+}
+
 func TestTheHeadlessClientReachesPlayAgainstPaper(t *testing.T) {
     if testing.Short() {
         t.Skip("conformance lane")

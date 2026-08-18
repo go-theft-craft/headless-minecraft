@@ -160,7 +160,7 @@ which is protocol 47's relativity bitmask. 775 carries relativity in
 `PlayClientboundPositionFlagsFlags`, a struct. Task 2 Step 4 says what to do
 about it; Task 1 leaves the signature alone.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `relay/examples/minecraft/trace/v1_8_test.go`. Keep the suite black-box —
 `package trace_test`, like `extract_test.go` — and test the registry through
@@ -206,12 +206,12 @@ func TestSupportedProtocolsIsSortedAndDeduplicated(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd relay && go test ./examples/minecraft/trace/ -run 'TestProtocol47IsRegistered|TestSupportedProtocols' -v`
 Expected: FAIL — `undefined: trace.SupportedProtocols`.
 
-- [ ] **Step 3: Move protocol 47 into `v1_8.go`**
+- [x] **Step 3: Move protocol 47 into `v1_8.go`**
 
 Move the body of `(*extractor).apply` — the `switch value := packet.Value.(type)`
 at `extract.go:210` and its `case *v1_8.Play...` arms — into a new `v1_8.go`,
@@ -260,7 +260,7 @@ Keep every moved line byte-identical apart from the receiver change the move
 forces. If a moved line needs a behaviour change to compile, stop: that is a
 finding about the current code, and it belongs in its own commit before this one.
 
-- [ ] **Step 4: Add the registry and the dispatch in `extract.go`**
+- [x] **Step 4: Add the registry and the dispatch in `extract.go`**
 
 ```go
 // rules is keyed by protocol ID. It is populated by init in each version
@@ -299,17 +299,17 @@ Replace the descriptor check at `extract.go:53-56` with:
 where `registeredIDs` returns the sorted keys, so the error names what the tool
 can read rather than only what it cannot.
 
-- [ ] **Step 5: Run the whole trace suite**
+- [x] **Step 5: Run the whole trace suite**
 
 Run: `cd relay && go test ./examples/minecraft/trace/ -race -v`
 Expected: PASS, including every pre-existing protocol 47 test, unchanged.
 
-- [ ] **Step 6: Run the repository gates**
+- [x] **Step 6: Run the repository gates**
 
 Run: `cd relay && task lint && task test`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add relay/examples/minecraft/trace/
@@ -346,7 +346,7 @@ declares — these are the reason a flag would not have worked:
 | `PlayClientboundPosition` | `X, Y, Z, Dx, Dy, Dz float64`, `Flags PlayClientboundPositionFlagsFlags`, `TeleportID int32` | `X, Y, Z float64`, bitmask `int8` |
 | `PlayClientboundSyncEntityPosition` | 775 only — no 47 counterpart |
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Follow the existing suite's shape exactly: `extract_test.go` is `package
 trace_test`, and its `recorder` encodes real packets through a real server-role
@@ -452,12 +452,12 @@ out of `generated/java/v26_1/packets.go` and use what is there. If 775 spawns
 carry an entity-type field rather than a distinct packet per family, the spawn
 in these tests needs that field set to whatever the registry names an item.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd relay && go test ./examples/minecraft/trace/ -run TestProtocol775 -v`
 Expected: FAIL — `undefined: v26_1Rules`.
 
-- [ ] **Step 3: Confirm the relative-move scale against the game before implementing it**
+- [x] **Step 3: Confirm the relative-move scale against the game before implementing it**
 
 Do not take `4096` from this plan. It is the value the test above asserts
 because it is the documented modern encoding, and this project has already paid
@@ -478,7 +478,7 @@ in the doc comment, with the recording's digest. If you cannot get a capture
 yet, do Task 4 first and return here — an unverified scale is exactly the
 "plausible and quietly wrong" outcome the extractor's comment warns about.
 
-- [ ] **Step 4: Implement `v26_1.go`**
+- [x] **Step 4: Implement `v26_1.go`**
 
 ```go
 package trace
@@ -615,17 +615,17 @@ Do not guess a field name anywhere in this task. `EntityID`, `X/Y/Z`, `DX/DY/DZ`
 `generated/java/v26_1/packets.go`; check every name you add the same way and let
 the compiler settle the rest.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `cd relay && go test ./examples/minecraft/trace/ -race -v`
 Expected: PASS, both version suites.
 
-- [ ] **Step 6: Run the repository gates**
+- [x] **Step 6: Run the repository gates**
 
 Run: `cd relay && task lint && task test && task test:examples`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add relay/examples/minecraft/trace/v26_1.go relay/examples/minecraft/trace/v26_1_test.go
@@ -669,7 +669,7 @@ type Tolerance struct {
 func ToleranceFor(protocolID string) (Tolerance, error)
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // package trace_test, like the rest of the suite.
@@ -710,12 +710,12 @@ func TestAnUnknownProtocolHasNoTolerance(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd relay && go test ./examples/minecraft/trace/ -run Toleranc -v`
 Expected: FAIL — `undefined: ToleranceFor`.
 
-- [ ] **Step 3: Implement it**
+- [x] **Step 3: Implement it**
 
 ```go
 // tolerances is keyed by protocol ID. Each entry states its derivation,
@@ -743,7 +743,7 @@ var tolerances = map[string]Tolerance{
 }
 ```
 
-- [ ] **Step 4: Replace the hardcoded test constant**
+- [x] **Step 4: Replace the hardcoded test constant**
 
 `extract_test.go` opens with `const tolerance = 1.0 / 32` and a comment saying
 protocol 47 sends positions as fixed point. That constant is now the 47 entry's
@@ -753,12 +753,12 @@ The 47 tests must still pass at the same value — if any of them needs a looser
 number to survive, that is a finding about that test, not a reason to widen the
 tolerance.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `cd relay && go test ./examples/minecraft/trace/ -race -v`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add relay/examples/minecraft/trace/tolerance.go relay/examples/minecraft/trace/tolerance_test.go relay/examples/minecraft/trace/extract_test.go
@@ -782,7 +782,7 @@ same shape as M9.1's.
 **Files:**
 - Modify: `relay/docs/verification/2026-08-17-capture-oracle.md`
 
-- [ ] **Step 1: Pin the server and record its digest**
+- [x] **Step 1: Pin the server and record its digest**
 
 Fetch the vanilla 26.1.2 server, record its URL and SHA-256 in the verification
 document, and start it in offline mode with a fixed seed and a flat world — the
@@ -790,7 +790,10 @@ same configuration M8.8's 26.1.2 lane uses, so the two checks are comparable.
 A server fetched without a recorded digest is not evidence and this step is not
 done.
 
-- [ ] **Step 2: Run a real 26.1.2 client through the proxy**
+- [x] **Step 2: Run a real 26.1.2 client through the proxy** — run with
+`headless-minecraft`'s client, not a vanilla one: none is installed on this
+machine. What that leaves open is the packet mix a real client sends, not the
+wire format, and the verification document says so.
 
 ```bash
 cd relay && go run ./examples/minecraft/cmd/mcrelay \
@@ -805,7 +808,7 @@ pass `-protocol java/1.8.9` explicitly. Connect a real vanilla 26.1.2 client,
 walk, sprint, jump, drop an item, and shoot an arrow. Disconnect cleanly so the
 recording gets its trailer.
 
-- [ ] **Step 3: Verify the recording replays**
+- [x] **Step 3: Verify the recording replays**
 
 ```bash
 cd relay && go run ./examples/minecraft/cmd/mcrelay verify ./recordings/26_1_2-walk.mccap
@@ -815,7 +818,7 @@ Expected: a digest matching the file's trailer, `Complete: true`, and no
 divergences. A file without a trailer means the capture was killed rather than
 closed, which is a finding to record and repeat, not to work around.
 
-- [ ] **Step 4: Extract trajectories and read them**
+- [x] **Step 4: Extract trajectories and read them**
 
 ```bash
 cd relay && go run ./examples/minecraft/cmd/mcrelay trace --format json \
@@ -827,7 +830,7 @@ non-zero sample count on each. An empty trace list with a zero exit code is the
 failure mode `ErrNoTrajectories` exists to prevent; if it happens anyway, that
 is a finding about this task's extractor.
 
-- [ ] **Step 5: Confirm the relative-move scale**
+- [x] **Step 5: Confirm the relative-move scale**
 
 Use this recording to complete Task 2 Step 3 if it was deferred. Take one
 entity's samples across a teleport, a run of relative moves, and the next
@@ -835,7 +838,7 @@ teleport. The accumulated relative motion must land within `Relative ×
 (number of moves)` of the second teleport's absolute position. If it does not,
 the scale constant is wrong, and the size of the miss says by what factor.
 
-- [ ] **Step 6: Write the record**
+- [x] **Step 6: Write the record**
 
 Add a `## Protocol 775` section to
 `relay/docs/verification/2026-08-17-capture-oracle.md` with: the server URL and
@@ -845,7 +848,7 @@ Write what happened, including what did not work the first time. A verification
 document that records only the successful run is a document that will not help
 the next person reproduce it.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add relay/docs/verification/2026-08-17-capture-oracle.md
@@ -939,7 +942,7 @@ const (
 )
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package conform_test
@@ -1050,12 +1053,12 @@ func TestEachLaneUsesItsOwnVersionTolerance(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd relay && go test ./examples/minecraft/conform/ -v`
 Expected: FAIL — the package does not exist.
 
-- [ ] **Step 3: Implement `conform.go`**
+- [x] **Step 3: Implement `conform.go`**
 
 The completeness check is the load-bearing part. Enumerate the registered
 extractors — expose Task 1's registry through a small exported helper,
@@ -1082,24 +1085,24 @@ func Run(ctx context.Context, s Scenario, compare Comparer) (Report, error) {
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `cd relay && go test ./examples/minecraft/conform/ -race -v`
 Expected: PASS.
 
-- [ ] **Step 5: Confirm the package does not reach the simulation**
+- [x] **Step 5: Confirm the package does not reach the simulation**
 
 Run: `cd relay && go list -deps ./examples/minecraft/conform/ | grep minecraft-simulation`
 Expected: no output. An oracle that imports the thing it verifies is not an
 oracle. If this prints anything, the dependency is a defect to remove before
 committing.
 
-- [ ] **Step 6: Run the repository gates**
+- [x] **Step 6: Run the repository gates**
 
 Run: `cd relay && task lint && task test && task verify`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add relay/examples/minecraft/conform/
