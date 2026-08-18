@@ -14,8 +14,10 @@ type scripted struct {
 	// which is what the strict path refuses.
 	loaded   func(BlockPos) bool
 	entities map[int32]Entity
-	// harmful holds the cells that damage a body standing in them.
+	// harmful holds the cells that damage a body standing in them, and water
+	// the cells a burning bot can put itself out in.
 	harmful map[BlockPos]bool
+	water   map[BlockPos]bool
 }
 
 func newScripted() *scripted {
@@ -26,6 +28,7 @@ func newScripted() *scripted {
 		loaded:   func(BlockPos) bool { return true },
 		entities: map[int32]Entity{},
 		harmful:  map[BlockPos]bool{},
+		water:    map[BlockPos]bool{},
 	}
 }
 
@@ -53,6 +56,46 @@ func (s *scripted) Route(from, to Vec3) (Route, bool) {
 	}
 
 	return Route{Steps: append(steps, to), Complete: true}, true
+}
+
+// Safe returns the nearest cell a test has not declared harmful.
+func (s *scripted) Safe(from Vec3, within int) (Vec3, bool) {
+	foot := from.Floor()
+	for radius := range within + 1 {
+		for dx := -radius; dx <= radius; dx++ {
+			for dz := -radius; dz <= radius; dz++ {
+				if abs(dx) != radius && abs(dz) != radius {
+					continue
+				}
+				cell := BlockPos{X: foot.X + dx, Y: foot.Y, Z: foot.Z + dz}
+				if s.harmful[cell] || !s.loaded(cell) {
+					continue
+				}
+
+				return Vec3{X: float64(cell.X) + 0.5, Y: from.Y, Z: float64(cell.Z) + 0.5}, true
+			}
+		}
+	}
+
+	return Vec3{}, false
+}
+
+// Water returns the nearest cell a test has declared to be water.
+func (s *scripted) Water(from Vec3, within int) (Vec3, bool) {
+	var nearest Vec3
+	found := false
+
+	for cell := range s.water {
+		at := Vec3{X: float64(cell.X) + 0.5, Y: float64(cell.Y), Z: float64(cell.Z) + 0.5}
+		if at.HorizontalDistance(from) > float64(within) {
+			continue
+		}
+		if !found || at.HorizontalDistance(from) < nearest.HorizontalDistance(from) {
+			nearest, found = at, true
+		}
+	}
+
+	return nearest, found
 }
 
 // Hurting reports the cells a test has declared harmful.

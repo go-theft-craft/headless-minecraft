@@ -44,6 +44,16 @@ func (o Observed) Hurting(at Vec3) bool {
 	return o.navigator.Hurting(o.snapshot.Chunks, at)
 }
 
+// Safe finds the nearest cell that does not hurt, over this snapshot.
+func (o Observed) Safe(from Vec3, within int) (Vec3, bool) {
+	return o.navigator.Safe(o.snapshot.Chunks, from, within)
+}
+
+// Water finds the nearest water within a radius over this snapshot.
+func (o Observed) Water(from Vec3, within int) (Vec3, bool) {
+	return o.navigator.Water(o.snapshot.Chunks, from, within)
+}
+
 // Walkable reports whether a straight line is still clear over this snapshot.
 func (o Observed) Walkable(from, to Vec3) bool {
 	return o.navigator.Walkable(o.snapshot.Chunks, from, to)
@@ -112,5 +122,53 @@ func observeSelf(snapshot world.Snapshot) (Self, bool) {
 	return Self{
 		Position: Vec3{X: player.X, Y: player.Y, Z: player.Z},
 		Health:   float64(player.Health),
+		OnFire:   onFire(snapshot, player.EntityID),
 	}, true
 }
+
+// onFire reads the burning bit out of the player's own entity metadata.
+//
+// The player is an entity like any other and the server describes it to itself:
+// a live 26.1 session sent this client a hundred and seventy-four metadata
+// updates about its own entity. The world tracks any entity it hears about,
+// spawn packet or not, so the record is there to read.
+//
+// Index zero is shared_flags, which every entity in both versions carries first
+// -- it is the head of the metadata key list the data set publishes -- and its
+// low bit is fire. The value arrives as whatever number the codec decoded a
+// byte into, so the type switch takes the shapes a byte can turn up as rather
+// than betting on one.
+func onFire(snapshot world.Snapshot, self int32) bool {
+	entity, known := snapshot.Entities.Get(self)
+	if !known {
+		return false
+	}
+
+	flags, present := entity.Metadata[sharedFlagsIndex]
+	if !present {
+		return false
+	}
+
+	var bits int64
+	switch value := flags.Value.(type) {
+	case int8:
+		bits = int64(value)
+	case uint8:
+		bits = int64(value)
+	case int32:
+		bits = int64(value)
+	case int64:
+		bits = value
+	default:
+		return false
+	}
+
+	return bits&onFireFlag != 0
+}
+
+// sharedFlagsIndex is the metadata index every entity carries first, and
+// onFireFlag is the bit in it that says the entity is burning.
+const (
+	sharedFlagsIndex uint8 = 0
+	onFireFlag       int64 = 0x01
+)

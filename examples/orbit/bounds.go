@@ -24,10 +24,16 @@ type Bounds struct {
 	FleeMargin float64
 	// Escape is how long one flight may last.
 	Escape time.Duration
-	// EscapeReach is how far the bot aims when getting out of ground that is
-	// hurting it. Short: the nearest edge of a lava pool is usually a block or
-	// two, and aiming far turns a step out of the fire into a journey.
-	EscapeReach float64
+	// WaterSearch is how far, in cells, a burning bot looks for water.
+	WaterSearch int
+	// FireDuration is how long a body burns after lava lights it.
+	//
+	// The game's number, not a guess: lavaIgnite calls igniteForSeconds(15).
+	// It is here because the bot cannot read the fire's remaining ticks off the
+	// wire -- the server sends the burning bit and not the countdown -- so the
+	// only way to know how long is left is to know how long it lasts and watch
+	// the clock.
+	FireDuration time.Duration
 	// SafeDistance is how far from a threat counts as clear of it. It is also
 	// how far ahead the bot aims while running, which is why it is one number
 	// and not two: a bot that aimed shorter than it needed to be safe would
@@ -87,7 +93,8 @@ func DefaultBounds() Bounds {
 		NoProgress:     15 * time.Second,
 		FleeMargin:     8,
 		Escape:         10 * time.Second,
-		EscapeReach:    4,
+		WaterSearch:    12,
+		FireDuration:   15 * time.Second,
 		SafeDistance:   12,
 		TrappedBudget:  10 * time.Minute,
 		BreakerBudget:  5,

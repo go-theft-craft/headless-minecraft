@@ -325,6 +325,152 @@ func (n Navigator) Hurting(chunks world.ChunksView, at Vec3) bool {
 	return false
 }
 
+// Safe finds the nearest cell within a radius that does not hurt to stand in.
+//
+// For a bot that is already standing in something. The way out of a pool is
+// toward its nearest edge, and which edge that is depends on where in the pool
+// the bot is -- a fixed direction walks half of them deeper in.
+//
+// Unknown ground does not count as safe. It might be, and a bot fleeing lava
+// into a chunk nobody has described has swapped a known problem for one it
+// cannot see.
+func (n Navigator) Safe(chunks world.ChunksView, from Vec3, within int) (Vec3, bool) {
+	view := predict.NewTerrain(chunks, n.blocks, n.profile)
+	query := terrain.Query{View: view, Facts: n.facts, Body: n.capability.Body}
+	centre := cellOf(from)
+
+	for radius := range within + 1 {
+		var nearest simgeom.BlockPos
+		found := false
+
+		for _, cell := range ring(centre, radius) {
+			if cell.Y != centre.Y || !n.restful(query, cell) {
+				continue
+			}
+			if !found || closer(cell, nearest, centre) {
+				nearest, found = cell, true
+			}
+		}
+
+		if found {
+			feet := terrain.FeetOf(nearest)
+
+			return Vec3{X: feet.X, Y: feet.Y, Z: feet.Z}, true
+		}
+	}
+
+	return Vec3{}, false
+}
+
+// restful reports whether a cell is somewhere the body can stand without being
+// hurt, with the ground known and solid under it.
+func (n Navigator) restful(query terrain.Query, cell simgeom.BlockPos) bool {
+	feet := terrain.FeetOf(cell)
+
+	fit, err := query.Fits(feet)
+	if err != nil || fit != terrain.FitClear {
+		return false
+	}
+
+	ground, err := query.Ground(feet)
+	if err != nil || ground != terrain.GroundSolid {
+		return false
+	}
+
+	hazard, lookup, err := query.HazardAt(cell)
+	if err != nil || lookup == simworld.LookupUnknown || hazard != terrain.HazardNone {
+		return false
+	}
+
+	fluid, lookup, err := query.FluidAt(cell)
+
+	return err == nil && lookup != simworld.LookupUnknown && fluid == terrain.FluidNone
+}
+
+// Water finds the nearest cell of water the body could stand in, within a
+// radius, or reports that there is none.
+//
+// A ring search outward from the bot rather than a scan of the whole cube: a
+// burning bot wants the nearest water and wants it this tick, and the nearest
+// is almost always a few blocks off or nowhere at all. Stopping at the first
+// ring that has one keeps the common answer cheap and the empty answer bounded.
+//
+// It searches the layer the bot stands on and the one below. Water a body can
+// step into is water at its feet; water further down is a hole to fall into,
+// which this bot has no business with -- it cannot fall.
+func (n Navigator) Water(chunks world.ChunksView, from Vec3, within int) (Vec3, bool) {
+	view := predict.NewTerrain(chunks, n.blocks, n.profile)
+	query := terrain.Query{View: view, Facts: n.facts, Body: n.capability.Body}
+	centre := cellOf(from)
+
+	for radius := range within + 1 {
+		var nearest simgeom.BlockPos
+		found := false
+
+		for _, cell := range ring(centre, radius) {
+			fluid, lookup, err := query.FluidAt(cell)
+			if err != nil || lookup == simworld.LookupUnknown || fluid != terrain.FluidWater {
+				continue
+			}
+			if !found || closer(cell, nearest, centre) {
+				nearest, found = cell, true
+			}
+		}
+
+		if found {
+			feet := terrain.FeetOf(nearest)
+
+			return Vec3{X: feet.X, Y: feet.Y, Z: feet.Z}, true
+		}
+	}
+
+	return Vec3{}, false
+}
+
+// ring returns the cells whose Chebyshev distance from a centre is exactly the
+// radius, on the centre's layer and the one below it.
+func ring(centre simgeom.BlockPos, radius int) []simgeom.BlockPos {
+	if radius == 0 {
+		return []simgeom.BlockPos{centre, {X: centre.X, Y: centre.Y - 1, Z: centre.Z}}
+	}
+
+	cells := make([]simgeom.BlockPos, 0, 16*radius)
+	for dx := -radius; dx <= radius; dx++ {
+		for dz := -radius; dz <= radius; dz++ {
+			if abs(dx) != radius && abs(dz) != radius {
+				continue
+			}
+			for _, dy := range []int{0, -1} {
+				cells = append(cells, simgeom.BlockPos{
+					X: centre.X + int32(dx), Y: centre.Y + int32(dy), Z: centre.Z + int32(dz),
+				})
+			}
+		}
+	}
+
+	return cells
+}
+
+// closer reports whether one cell is nearer a centre than another, squared and
+// horizontal, which is all the ordering inside one ring needs.
+func closer(a, b, centre simgeom.BlockPos) bool {
+	return squared(a, centre) < squared(b, centre)
+}
+
+func squared(a, b simgeom.BlockPos) int32 {
+	dx, dz := a.X-b.X, a.Z-b.Z
+
+	return dx*dx + dz*dz
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+
+	return n
+}
+
 // cellOf is the block a position stands in, in the simulation's terms.
 func cellOf(p Vec3) simgeom.BlockPos {
 	block := p.Floor()

@@ -18,6 +18,10 @@ type Self struct {
 	Position Vec3
 	Health   float64
 	OnGround bool
+	// OnFire reports that the player is burning, read from the burning bit of
+	// its own entity metadata. It stays true for as long as the fire lasts,
+	// which is well after the bot has left whatever lit it.
+	OnFire bool
 }
 
 // Entity is a tracked entity the bot may fight.
@@ -73,6 +77,12 @@ type World interface {
 	// walkable" as "I am burning" would panic every time it reached the edge
 	// of the world the server has sent it.
 	Hurting(at Vec3) bool
+	// Water finds the nearest water the body could stand in within a radius of
+	// cells, for a bot that is on fire and would rather not be.
+	Water(from Vec3, within int) (Vec3, bool)
+	// Safe finds the nearest cell within a radius that does not hurt to stand
+	// in, for a bot that is standing in something that does.
+	Safe(from Vec3, within int) (Vec3, bool)
 	// Entity reports one tracked entity by ID.
 	Entity(id int32) (Entity, bool)
 }

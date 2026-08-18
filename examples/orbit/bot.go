@@ -17,6 +17,8 @@ const (
 	Fleeing
 	// Escaping gets out of ground that is hurting the bot.
 	Escaping
+	// Dousing walks to water to put a fire out.
+	Dousing
 	// Dead waits for a respawn to be sent and confirmed.
 	Dead
 	// Returning walks back to the circle after respawning.
@@ -38,6 +40,8 @@ func (s State) String() string {
 		return "fleeing"
 	case Escaping:
 		return "escaping"
+	case Dousing:
+		return "dousing"
 	case Dead:
 		return "dead"
 	case Returning:
@@ -135,6 +139,13 @@ type Bot struct {
 	// escapedAt is when the bot last noticed it was standing in something that
 	// hurts, which bounds how long it may spend getting out.
 	escapedAt time.Time
+	// dousingAt is the water being walked to.
+	dousingAt Vec3
+	// litAt is when the bot was first seen burning, and lit whether it was.
+	// The wire carries the burning bit and not the fire's remaining ticks, so
+	// how long is left is worked out from when it started.
+	litAt time.Time
+	lit   bool
 	// escapeTo is the goal the current flight is running to. It is kept so
 	// that a flight follows one chosen way out instead of choosing a new one
 	// every tick as the threat moves.
@@ -197,6 +208,26 @@ func (b *Bot) Advance(t Tick, w World) Action {
 		b.route = Route{}
 	}
 
+	// Note when the fire started. The server sends a bit that says burning and
+	// never says for how long, so the clock is the only way to know how much
+	// of it is left.
+	if t.Self.OnFire && !b.lit {
+		b.litAt, b.lit = t.Now, true
+	}
+	if !t.Self.OnFire {
+		b.lit = false
+	}
+
+	// Burning, and not already dealing with it or with something worse. Getting
+	// off burning ground outranks this: there is no point walking to water
+	// while standing in lava, because the lava relights the fire every tick.
+	if t.Self.OnFire && t.Ready &&
+		b.state != Escaping && b.state != Dousing && b.state != Dead && b.state != Done {
+		if water, worth := b.worthDousing(t, w); worth {
+			b.state, b.dousingAt, b.route = Dousing, water, Route{}
+		}
+	}
+
 	switch b.state {
 	case Joining:
 		return b.join(t, w)
@@ -206,6 +237,8 @@ func (b *Bot) Advance(t Tick, w World) Action {
 		return b.flee(t, w)
 	case Escaping:
 		return b.escape(t, w)
+	case Dousing:
+		return b.douse(t, w)
 	case Dead:
 		return b.dead(t)
 	case Returning:
@@ -431,6 +464,83 @@ func (b *Bot) unreachable(t Tick) Action {
 	return Action{Kind: Stand, Reason: "sealed in"}
 }
 
+// worthDousing decides whether a burning bot should go and stand in water.
+//
+// The arithmetic is the game's. Fire does one point of damage every twenty
+// ticks and lava lights a body for fifteen seconds, so the damage still to come
+// is one point per second of fire left. Walking to the water costs that same
+// damage for as long as the walk takes, because the fire burns either way --
+// so the trip is only worth making if it ends before the fire would have. Water
+// four seconds away with ten seconds of fire left saves six points; water ten
+// seconds away with four left saves nothing and costs the orbit.
+//
+// The leash is the other half. A bot that would chase water past the margin its
+// flights are held to is a bot that has swapped one problem for being lost, and
+// fire that is nearly out is not worth crossing the map for.
+//
+// Nothing here reads a water bucket, and this is where one would go: emptying a
+// bucket at your feet is instant where walking is not, so a bot holding one
+// would never need this calculation. Reading the inventory means decoding the
+// version's own slot format and using it means an action nothing in this
+// library sends yet.
+func (b *Bot) worthDousing(t Tick, w World) (Vec3, bool) {
+	left := b.bounds.FireDuration - t.Now.Sub(b.litAt)
+	if left <= 0 {
+		return Vec3{}, false
+	}
+
+	water, found := w.Water(t.Self.Position, b.bounds.WaterSearch)
+	if !found {
+		return Vec3{}, false
+	}
+
+	// How long the walk takes, at the speed the bot claims to walk.
+	travel := time.Duration(
+		t.Self.Position.HorizontalDistance(water) / b.bounds.WalkSpeed * float64(time.Second),
+	)
+	if travel >= left {
+		return Vec3{}, false
+	}
+
+	if water.HorizontalDistance(b.circle.Centre) > b.circle.Radius+b.bounds.FleeMargin {
+		return Vec3{}, false
+	}
+
+	return water, true
+}
+
+// douse walks to the water it decided was worth reaching.
+//
+// It stops the moment the fire is out, which is the point of the walk, and it
+// re-asks whether the trip is still worth making rather than committing to it:
+// the fire burns down while the bot walks, and water that was worth four
+// seconds of walking at the start is not worth it with two seconds of fire
+// left. A bot that committed would arrive at a puddle it no longer needed,
+// having left its circle for nothing.
+func (b *Bot) douse(t Tick, w World) Action {
+	if !t.Self.OnFire {
+		return b.disengage(t, "the fire is out")
+	}
+
+	water, worth := b.worthDousing(t, w)
+	if !worth {
+		return b.disengage(t, "not worth reaching water for what is left of the fire")
+	}
+	if water != b.dousingAt {
+		b.dousingAt, b.route = water, Route{}
+	}
+
+	action, routed := b.follow(t, w, b.dousingAt, douseRoute)
+	if !routed {
+		return b.disengage(t, "no way to the water")
+	}
+
+	return action
+}
+
+// douseRoute is the route key for the walk to water.
+const douseRoute = -3
+
 // escape gets the bot off ground that is hurting it.
 //
 // It outranks the orbit, the flight and the walk home, because all three are
@@ -454,39 +564,37 @@ func (b *Bot) escape(t Tick, w World) Action {
 		return b.disengage(t, "still in it, but out of time to be careful")
 	}
 
-	// Keep walking the way out already found.
-	if b.routedFor == escapeRoute && len(b.route.Steps) > 0 {
-		if action, routed := b.follow(t, w, b.escapeTo, escapeRoute); routed {
-			return action
-		}
-	}
-
-	for _, heading := range escapeHeadings {
-		goal := t.Self.Position.
-			Add(Vec3{X: b.bounds.EscapeReach}).
-			RotatedAbout(t.Self.Position, heading)
-
-		route, found := w.Route(t.Self.Position, goal)
-		if !found {
-			continue
+	// The nearest ground that does not hurt, which is the whole answer: the way
+	// out of a pool is toward its closest edge, and which edge that is depends
+	// on where in the pool the bot is standing. Picking a fixed direction walks
+	// half of them deeper in, which is what the first version of this did.
+	out, found := w.Safe(t.Self.Position, b.bounds.WaterSearch)
+	if !found {
+		// Nothing safe within reach. Keep the way out already being walked if
+		// there is one, and otherwise stand: with no known edge in any
+		// direction, a step is as likely to go further in as out.
+		if b.routedFor == escapeRoute && len(b.route.Steps) > 0 {
+			if action, routed := b.follow(t, w, b.escapeTo, escapeRoute); routed {
+				return action
+			}
 		}
 
-		b.leg, b.routedFor, b.escapeTo = 0, escapeRoute, goal
-		b.route = route
-
-		return b.step(b.route.Steps[0])
+		return Action{Kind: Stand, Reason: "in it with no edge in sight"}
 	}
 
-	// Nothing plans from in here. Walk, and pick the direction rather than
-	// stand: a planner that will not start is a planner that has nothing to
-	// say about which way is better, and one of them is out.
-	return b.step(t.Self.Position.Add(Vec3{X: b.bounds.EscapeReach}))
+	if out != b.escapeTo {
+		b.escapeTo, b.route = out, Route{}
+	}
+
+	// Routed if the planner will, and walked straight at it if it will not.
+	// A planner that refuses to start is a planner standing in lava with the
+	// bot: it has nothing to say, and the direction is known regardless.
+	if action, routed := b.follow(t, w, b.escapeTo, escapeRoute); routed {
+		return action
+	}
+
+	return b.step(b.escapeTo)
 }
-
-// escapeHeadings are the directions tried when getting out of something that
-// hurts. Eight of them, which is finer than the planner's own four and coarse
-// enough to be exhausted inside one tick.
-var escapeHeadings = []float64{0, 45, -45, 90, -90, 135, -135, 180}
 
 // escapeRoute is the route key for getting out of something that hurts.
 const escapeRoute = -2

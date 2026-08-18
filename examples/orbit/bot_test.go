@@ -841,3 +841,160 @@ func TestUnstreamedGroundIsNotMistakenForLava(t *testing.T) {
 		t.Error("the bot decided it was burning on ground nobody has described")
 	}
 }
+
+// TestBurningWalksToWaterWorthReaching pins the arithmetic in the direction
+// that saves the bot.
+//
+// Fire does a point a second and lava lights a body for fifteen, so water four
+// seconds away with most of the fire left is six or seven points saved for a
+// short walk.
+func TestBurningWalksToWaterWorthReaching(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+	// Three blocks away: under a second of walking, against fifteen of fire.
+	w.water[position.Add(Vec3{X: 3}).Floor()] = true
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+
+	bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position, OnFire: true},
+	}, w)
+
+	if bot.State() != Dousing {
+		t.Errorf("the bot is %v while burning next to water, want dousing", bot.State())
+	}
+}
+
+// TestBurningIgnoresWaterItCannotReachInTime pins the other half.
+//
+// The fire burns whether the bot walks or not, so a trip is only worth making
+// if it ends before the fire would have anyway. Water further off than the
+// fire is long costs the orbit and saves nothing.
+func TestBurningIgnoresWaterItCannotReachInTime(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+	w.water[position.Add(Vec3{X: 10}).Floor()] = true
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+
+	// Lit fourteen seconds ago: one second of fire left, and the water is two
+	// and a half seconds of walking away.
+	bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position, OnFire: true},
+	}, w)
+	bot.Advance(Tick{
+		Now: c.advance(14 * time.Second), Ready: true,
+		Self: Self{Position: position, OnFire: true},
+	}, w)
+
+	if bot.State() == Dousing {
+		t.Error("walked for water it cannot reach before the fire ends")
+	}
+}
+
+// TestBurningInLavaGetsOutBeforeLookingForWater pins the order.
+//
+// Walking to water while standing in lava is pointless: the lava relights the
+// fire every tick, so the fire the walk is meant to end never ends.
+func TestBurningInLavaGetsOutBeforeLookingForWater(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+	w.water[position.Add(Vec3{X: 3}).Floor()] = true
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+
+	// The ground turns to lava under a bot that is already burning.
+	w.harmful[position.Floor()] = true
+	bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position, OnFire: true},
+	}, w)
+
+	if bot.State() != Escaping {
+		t.Errorf("the bot is %v while burning in lava, want escaping first", bot.State())
+	}
+}
+
+// TestDousingStopsWhenTheFireIsOut pins the end of the walk.
+func TestDousingStopsWhenTheFireIsOut(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+	w.water[position.Add(Vec3{X: 3}).Floor()] = true
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+	bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position, OnFire: true},
+	}, w)
+	if bot.State() != Dousing {
+		t.Fatalf("the bot is %v, want dousing", bot.State())
+	}
+
+	bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position, OnFire: false},
+	}, w)
+
+	if bot.State() == Dousing {
+		t.Error("still walking to water after the fire went out")
+	}
+}
+
+// TestEscapingHeadsForTheNearestEdge pins the direction.
+//
+// The way out of a pool is toward its closest edge, and which edge that is
+// depends on where in the pool the bot is standing. The first version of this
+// walked a fixed heading, which takes half the cases deeper in -- the bot was
+// photographed standing in the middle of a spreading pool having done exactly
+// that.
+func TestEscapingHeadsForTheNearestEdge(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+
+	// A pool three cells wide reaching away on +X, with the bot at its -X end.
+	// The near edge is one step back the way it came.
+	foot := position.Floor()
+	for dx := range 4 {
+		w.harmful[BlockPos{X: foot.X + dx, Y: foot.Y, Z: foot.Z}] = true
+	}
+
+	action := bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position}, Revision: 2,
+	}, w)
+
+	if bot.State() != Escaping {
+		t.Fatalf("the bot is %v, want escaping", bot.State())
+	}
+	if action.Kind != StepTo {
+		t.Fatalf("produced %v, want a step out", action.Kind)
+	}
+	// Away from the pool, not along it.
+	if action.Target.X > position.X {
+		t.Errorf("stepped to %+v, which is further into the pool", action.Target)
+	}
+}
