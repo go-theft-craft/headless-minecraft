@@ -122,23 +122,31 @@ below are what is left of them.
 - [ ] **M9.8 — crafting**
   ([plan](docs/superpowers/plans/2026-08-17-m9-8-crafting.md)). Only the
   reconcile task is done; tasks 1–5 are open.
-- [ ] **`Connect` reports a placed session as one that never was.** `awaitReady`
-  selects between the readiness signal and the loop ending, both of which are
-  ready at once when a server places the player and kicks or hangs up straight
-  after — and a select picks between ready cases at random, so a session that
-  reached play is reported as "connection ended before the player was placed"
-  about half the times that happens. It is the same class as the stream defect
-  closed below, one layer up, and the fix is the same shape: drain the readiness
-  signal before reporting the ending. The message also renders a nil loop error
-  as `%!w(<nil>)`. Measured under a 24-way CPU load: three failures in eight
-  hundred sessions before the `v0.7.0` uptake and one in eight hundred after, so
-  the release neither caused it nor cures it.
 - [ ] **The hangup fixture closes while the client is still writing.**
   `TestAServerThatHangsUpSilentlyStillReportsTheDisconnect` fails at `Connect`
-  with `write position_look: managed stream is closed` about twice in four
-  hundred runs under the same load, and at the same rate before these changes.
-  The fixture waits for one packet from the client and then closes, and the
-  client has more than one to send.
+  with `write position_look: managed stream is closed` about twenty times in
+  nine hundred runs under a 24-way CPU load, at the same rate before and after
+  everything above. The fixture waits for one packet from the client and calls
+  that the acknowledgement, and the client has more than one to send. It is the
+  only flake left in that lane.
+
+Closed, 2026-08-18: **`Connect` reporting a placed session as one that never
+was.** `awaitReady` selected between the readiness signal and the loop ending,
+both ready at once when a server places the player and kicks straight after, and
+a select picks at random — so half of those sessions were reported as never
+placed, having reached play with the server's reason for leaving already on the
+subscription. The same class as the stream defect below, one layer up, and the
+same fix: take readiness first. Fixed in `ce6d594`, which also stops the message
+rendering a nil loop error as `%!w(<nil>)`.
+
+That commit also moved the state a disconnect names off the observation path,
+which was the flaw in the first repair: observations may drop what they have not
+delivered when the transport goes, so a disconnect could name the state before
+the one the session was in. The read loop records the state each packet arrives
+in, which needs nothing that can be gone by then.
+
+Measured, 900 sessions of each affected test per arm, interleaved so both arms
+saw the same machine: four failures of those two kinds before, none after.
 
 Closed, 2026-08-18: **a kicked session reporting the state it ended in as
 `unknown`.** Both halves of it, and neither was where the first reading put it.
