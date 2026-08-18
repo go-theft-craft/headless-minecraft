@@ -10,26 +10,117 @@
 
 ## Before executing this plan: reconcile it
 
-This plan depends on M9.3 and on the M8 contracts it named. Symbols specified
-but not yet built, with their source:
+**Reconciled 2026-08-18, by Task 0.** The table below is what is built today,
+not what was specified. Where this plan said something that turned out to be
+false, the task now says the true thing and the difference is recorded under
+"What reconciliation changed" beneath the table.
 
-| Symbol | Specified in |
-| --- | --- |
-| `sim.Phase`, `sim.TickState`, `sim.Command`, `sim.DomainEvent`, `sim.Profile` | M8.3 plan, Tasks 6, 9 |
-| `world.BlockRef`, `world.View`, `world.StateView` | M8.3 plan, Task 2 |
-| `profile/java/v1_8.New`, `profile/java/v26_1.New` and their block tables | M8.4 Task 6–7, M8.7 Task 4–5 |
-| `client.Do`, `client.Action` | M8.8 plan, Task 1 |
-| `conformance.Compare`, `conformance.Document` | M9.3 plan, Task 2 |
-| `conform.Scenario`, `conform.Lane`, `conform.Run` | M9.1b plan, Task 5 |
+| Symbol | Where it is | State |
+| --- | --- | --- |
+| `sim.Phase`, `sim.TickState`, `sim.Command`, `sim.DomainEvent`, `sim.Profile`, `sim.Kernel` | `minecraft-simulation/sim` | built, names unchanged |
+| `sim.CommandOutcome{Index, Kind, Accepted, Reason}` | `minecraft-simulation/sim/command.go` | built, and its fields are the ones Task 3's tests read |
+| `sim.TickResult.Completeness{Complete bool, Missing []Dependency}` | `minecraft-simulation/sim/completeness.go` | built, names unchanged |
+| `world.BlockRef`, `world.View`, `world.StateView`, `world.BlockView` | `minecraft-simulation/world` | built, names unchanged |
+| `profile/java/v1_8.New`, `profile/java/v26_1.New` | `minecraft-simulation/profile/java/*` | built as `New(*data.Set) (sim.Profile, error)` — **the interface, not an exported struct** |
+| `client.Do`, `client.Action` | `headless-minecraft/client` | built. `Do(ctx, version.Action) error`; the action types live in `version`, not in `client` |
+| `data.Block.Hardness` (`*float64`), `.HarvestTools` (`data.HarvestToolSet`), `.Material` (string), `.Diggable` | `minecraft-protocol/data/block.go` | built, and read again on 2026-08-18 |
+| `data.Material{Name, ToolSpeeds}`, `data.ToolSpeedIndex` | `minecraft-protocol/data/material.go` | built. A material carries a name and a tool-speed table, and nothing else |
+| `conform.Scenario`, `conform.Lane`, `conform.Run` | `relay/examples/minecraft/conform` | built (M9.1b) |
+| `mctest.Captured`, `mctest.LoadCaptured`, `mctest.LoadCapturedDir`, `mctest.ReplayCaptured` | `minecraft-simulation/mctest` | built (M9.2) — **this is what M9.3's `conformance` package became** |
+| `mcreference dump` for `26.1.2` | `minecraft-reference/internal/reference/physics/dumper.go` | built, typed rather than reflective |
+| `conformance.Compare`, `conformance.Document` | — | **never built and not planned.** See below |
+| `mining.BreakTicks`, `mining.Damage`, `mining.Conditions`, `mining.Dig`, `mining.Phase` | — | this plan, Tasks 1 and 3 |
+| `mining.Classifier` (the optional profile interface) | — | this plan, Task 2 |
+| `version.ActionDig{Block, Face, Stage}` | — | the [interaction primitives plan](2026-08-18-interaction-primitives.md), Task 4. **Not this plan's to build** |
 
-Symbols that **do** exist today and were read before writing this plan:
-`data.Block.Hardness` (a `*float64`), `data.Block.HarvestTools`
-(`data.HarvestToolSet`, a set of item IDs), `data.Block.Material` (a string),
-`data.Material.ToolSpeeds` (`data.ToolSpeedIndex`, item ID to multiplier), and
-the per-version registries in `generated/java/v1_8` and `generated/java/v26_1`.
+### What reconciliation changed
 
-**Task 0:** reconcile the unlanded names against what shipped before touching
-anything else.
+Six things this plan asserted are not true of the tree it now runs against.
+
+- **There is no `conformance` package, and there will not be one.** M9.3's Task 2
+  proposed `conformance.Compare`; its own reconciliation re-scoped that to
+  extending `mctest`, which is where M9.2 then built `Captured`, `LoadCaptured`,
+  `LoadCapturedDir`, and `ReplayCaptured`. Task 5 below moved out of
+  `minecraft-simulation/conformance/` accordingly.
+- **A profile is an interface, so `Conditions` and `Hardness` cannot be methods
+  on an exported `*Profile`.** `New` returns `sim.Profile`, and that interface
+  has exactly five methods — `ID`, `Slipperiness`, `Motion`, `Shape`, `Phases`.
+  This repository already has the pattern for extending a profile without
+  widening the one interface every profile must satisfy: `sim.BlockNames` and
+  `sim.DataDigest` are optional interfaces a caller type-asserts for. Task 2 now
+  adds `mining.Classifier` the same way — declared in `mining` rather than in
+  `sim`, because `mining` imports `sim` and an interface in `sim` returning a
+  `mining.Conditions` would be an import cycle.
+- **The 26.1 material vocabulary is larger than this plan said, and its compound
+  names are registry keys.** 26.1's registry holds 25 materials, not the five
+  this plan listed: `mineable/pickaxe`, `mineable/axe`, `mineable/shovel`,
+  `mineable/hoe`, `sword_efficient`, `sword_instantly_mines`,
+  `vine_or_glow_lichen`, `gourd`, `coweb`, `default`, `leaves`, `plant`, `wool`,
+  seven `incorrect_for_<tier>_tool` entries, and the compounds. 1.8.9's holds 8.
+  Crucially, a compound like `gourd;mineable/axe` is **itself a key in the
+  registry, with its own merged tool-speed table**, so Task 2's instruction to
+  split on `;` and merge by hand was wrong: it would recompute, possibly
+  differently, what upstream already states. Checked mechanically on 2026-08-18:
+  every distinct `Material` value on every block in both versions is a key in
+  that version's material registry, so a direct lookup resolves all of them and
+  none needs splitting.
+- **Only one `incorrect_for_<tier>_tool` material is used by a block.** 108
+  blocks in 26.1 carry `incorrect_for_wooden_tool`; the other six tiers exist in
+  the registry and no block names them. What the tier materials mean for speed is
+  still the open question this plan flagged — but it is one material to answer it
+  for, not seven.
+- **The dig primitive is not this plan's.** `client.ActionDig{Block, Face}` and
+  `client.ActionDigCancel{Block}` do not exist and will not: actions live in
+  `version`, and the [interaction primitives
+  plan](2026-08-18-interaction-primitives.md) ships one `version.ActionDig`
+  carrying a `Stage`, because the wire is one packet with a status field and two
+  types would be two names for one packet. **What M9.4 owns is the break time** —
+  the arithmetic, the classification, the phase, and the timing between the start
+  and the finish. Task 4 is rewritten against that boundary.
+
+  A nuance worth having exactly right: `client` does re-export the eight actions
+  that existed at M8.8 as **type aliases** — `client.ActionMove` and
+  `version.ActionMove` are the same type. What it does not do is invent one. The
+  interaction primitives plan declares its new actions in `version` and adds no
+  alias, so name them `version.X` here.
+- **26.1.2 can be read from its jar.** The risk section said `mcreference dump`
+  rejects every version but 1.8.9. It does not: `minecraft-reference` carries a
+  typed 26.1.2 dumper, and M9.2 used that route to measure that version's item
+  and arrow motion constants and confirmed them in bytecode. Both lanes of this
+  stage can therefore rest on the same evidence, and Task 1 Step 3's fallback is
+  a fallback rather than the expected case.
+
+### How the live tests in this plan must be written
+
+Every test here that starts a real server lands in the lane that already exists
+for that, and M9.3's reconciliation found the same thing before this one did. The
+rules, read off `client/vanilla_e2e_test.go` and `client/vanilla_scenario_test.go`
+on 2026-08-18:
+
+- The file carries `//go:build vanilla` and lives in `client/` (package
+  `client_test`). A live test without the tag breaks `task verify`, which must
+  stay offline; a live test outside `client/` is a test nothing runs, because the
+  task is `go test ./client/ -run TestVanilla -tags vanilla`.
+- The two versions are **two top-level tests**, not a loop over a version table:
+  `TestVanilla<Thing>` and `TestVanilla26<Thing>`, each one line, each calling a
+  shared scenario function with `lane1_8()` or `lane26()`. `-run TestVanilla`
+  selects both, and a failure names the version in the test name rather than in a
+  subtest the log has to be read for.
+- The server comes from `lane.start(t)`, which wraps `vanilla.Start(t,
+  vanilla.Options{…})`. 26.1.2's lane sets `Jar`, `Libraries`, `LevelType`, and a
+  longer `Ready`; a test that calls `vanilla.Start` with bare options gets a
+  1.8.9 server whatever it meant.
+- `vanilla.Server` exposes `Lines`, `Log`, `Matching`, and `Stop`. There is no
+  `LogLines` and no `Kill`.
+
+The snippets below show scenario bodies. Wrap each in that pair before running
+it, and do not invent a `vanillaVersions(t)` table — there is none, and a loop
+variable named `version` would shadow the `version` package the bodies now name.
+
+Two smaller name corrections, applied in place below: `world.BlockPosition` is
+`world.BlockPos{X, Y, Z int32}` in `headless-minecraft/world`, and
+`vanilla.Start(t, vanilla.Options)` returns a `*vanilla.Server` exposing `Lines`,
+`Log`, `Matching`, and `Stop` — there is no `LogLines` and no `Kill`.
 
 ## Global Constraints
 
@@ -49,14 +140,21 @@ anything else.
 **The two versions have incompatible material vocabularies, and this is the
 whole difficulty.** In `generated/java/v1_8/materials.go` the materials are
 `dirt`, `leaves`, `melon`, `plant`, `rock`, `web`, `wood`, `wool`, and stone's
-`Material` is `"rock"`. In `generated/java/v26_1/materials.go` they are
-`mineable/pickaxe`, `mineable/axe`, `gourd`, `coweb`, `default`, and a family of
-`incorrect_for_<tier>_tool` entries, and stone's `Material` is
-`"mineable/pickaxe"`. These are not renames of one another: 26.1 encodes tool
-*correctness* as materials, which 1.8.9 encodes as `HarvestTools` alone. A
-shared lookup keyed by material name would silently miss on every 26.1 block.
-The formula is shared; the classification is version-owned, and it lives in each
-profile's block table.
+`Material` is `"rock"`. In `generated/java/v26_1/materials.go` there are 25,
+built around `mineable/<tool>` names, seven `incorrect_for_<tier>_tool` entries,
+a few block families — `gourd`, `coweb`, `vine_or_glow_lichen`,
+`sword_efficient`, `sword_instantly_mines` — a catch-all `default`, and compound
+names like `gourd;mineable/axe`. Stone's `Material` is `"mineable/pickaxe"`.
+
+These are not renames of one another: 26.1 encodes tool *correctness* as
+materials, which 1.8.9 encodes as `HarvestTools` alone. A shared lookup keyed by
+material name would silently miss on every 26.1 block. The formula is shared; the
+classification is version-owned, and it lives in each profile's block table.
+
+Three names — `leaves`, `plant`, `wool` — appear in both vocabularies, which is
+the trap rather than the reassurance: a shared lookup would resolve those three
+and miss everything else, so it would work on the blocks a hand-written test
+reaches first.
 
 **Harvest legality and tool speed are different questions.** `HarvestTools` says
 whether the block drops anything; `ToolSpeeds` says how fast it breaks. A wooden
@@ -95,15 +193,66 @@ arithmetic.
 
 - `command.go` — modify. `sim.CommandDig` and its outcome.
 
+Nothing else changes in `sim`. `mining.Classifier` — the optional interface a
+profile implements to answer a block's hardness and a held tool's conditions —
+lives in `mining/profile.go`, because `mining` imports `sim` and declaring it the
+other way round would be an import cycle.
+
 **`headless-minecraft/`**
 
-- `client/dig.go` — the three-packet dig sequence behind one action.
+- `client/dig.go` — the dig sequence: start, wait the break time, finish. It
+  drives `version.ActionDig`, which the interaction primitives plan owns.
 - `client/dig_test.go`
 
-**`minecraft-simulation/conformance/`**
+**`minecraft-simulation/mining/`** — the matrix gate lives with the code it
+gates, because there is no `conformance` package and the simulation cannot
+import `relay`'s examples module to reach `conform`.
 
-- `mining_test.go` — the matrix gate.
-- `testdata/mining/` — the captured break-time corpus, per version.
+- `vanilla_test.go` — the matrix gate.
+- `testdata/vanilla/` — the captured break-time corpus, one file per version.
+
+---
+
+## Task 0: Reconcile this plan against what is built
+
+- [x] **Step 1: Check every symbol the table names**
+
+Done. The table above says where each one is and what shape it landed in, and
+"What reconciliation changed" lists the six places this plan was wrong. Two of
+them would have been found only after writing code against them: a profile is an
+interface with five methods, and the dig action belongs to another plan.
+
+- [x] **Step 2: Check the data, not only the symbols**
+
+This stage is a rule over generated data, so the data is as much a dependency as
+a function name. Both versions' material vocabularies were read out of the
+generated registries and every block's `Material` was checked against them:
+
+```bash
+cd minecraft-protocol
+for v in v1_8 v26_1; do
+  comm -23 \
+    <(grep -o 'Material: "[^"]*"' generated/java/$v/blocks.go | sed 's/Material: //' | sort -u) \
+    <(grep -o '{Name: "[^"]*"' generated/java/$v/materials.go | sed 's/{Name: //' | sort -u)
+done
+```
+
+Both print nothing, which is what says a direct lookup resolves every block and
+Task 2's splitting rule was solving a problem the data does not have.
+
+- [x] **Step 3: Check what is claimed to be impossible**
+
+The risk section said 26.1.2 cannot be dumped from its jar. It can — the typed
+dumper is `minecraft-reference/internal/reference/physics/dumper_source_26_1.go`
+and M9.2 used that route. A plan that carries a stale impossibility spends the
+stage working around it.
+
+- [x] **Step 4: Commit the reconciliation**
+
+```bash
+git add docs/superpowers/plans/2026-08-17-m9-4-digging-block-breaking.md
+git commit -m "docs(plan): reconcile M9.4 against the profiles, the data, and the action path"
+```
 
 ---
 
@@ -334,20 +483,68 @@ fatigue all compound rather than shadowing one another."
   block, material, item, enchantment, and effect registries.
 - Produces, in each profile:
 
+`New` returns `sim.Profile`, and that interface has five methods that every
+profile must satisfy. Mining is not one of them and must not become one: a
+profile hand-built in a test has no block data to answer from. So this lands the
+way `sim.BlockNames` and `sim.DataDigest` already did — an optional interface a
+caller type-asserts for.
+
+It is declared in `minecraft-simulation/mining/profile.go` rather than in `sim`,
+and that is not a preference: `mining` imports `sim` for `Phase` and `Command`,
+so a `sim` interface returning a `mining.Conditions` would be an import cycle.
+The optional interface belongs to the package that owns the vocabulary either
+way.
+
 ```go
-// Conditions resolves everything version-specific about breaking one block
-// with one held item.
+// Classifier is a profile that can say how one block breaks under one held item.
 //
-// This is per-version because the two editions classify blocks by different
+// It is optional for the same reason BlockNames is: nothing inside a tick reads
+// it — the dig phase is handed conditions rather than resolving them — and a
+// profile assembled in a test has no registries to answer from. A caller that
+// needs it asserts for it and reports a profile that cannot answer, rather than
+// every profile being obliged to carry block data.
+//
+// It is per-version because the two editions classify blocks by different
 // vocabularies. 1.8.9's material for stone is "rock"; 26.1.2's is
 // "mineable/pickaxe", and 26.1.2 additionally encodes tool correctness as
 // materials named "incorrect_for_<tier>_tool" that 1.8.9 has no counterpart
 // for. A shared lookup keyed by material name would miss on every 26.1 block.
-func (p *Profile) Conditions(ref world.BlockRef, held ItemStack, effects Effects, underwater, airborne bool) (mining.Conditions, error)
+type Classifier interface {
+	// Conditions resolves everything version-specific about breaking one block
+	// with one held item.
+	Conditions(ref world.BlockRef, held Held, effects Effects, underwater, airborne bool) (Conditions, error)
+	// Hardness returns the block's hardness, or nil when it has none.
+	Hardness(ref world.BlockRef) *float64
+}
 
-// Hardness returns the block's hardness, or nil when it has none.
-func (p *Profile) Hardness(ref world.BlockRef) *float64
+// Held is the item in the player's hand, as a version's own item id and the
+// enchantment levels that change a break time. It is an id rather than a
+// modelled stack because that is all this question needs, and modelling an
+// inventory item here would put M9.7's data model in M9.4's path.
+type Held struct {
+	Item       data.ItemID
+	Efficiency int
+}
+
+// Effects are the status effects that change a break time. Amplifiers, not
+// levels: haste I is amplifier 0, as the protocol sends it.
+type Effects struct {
+	Haste, MiningFatigue int
+	HasHaste, HasFatigue bool
+}
 ```
+
+Each version's `mining.go` then implements it on the unexported profile struct
+`New` already returns, and each profile's test asserts the interface is
+satisfied — the M7 defect the master plan records is exactly a seam satisfied by
+assertion that nobody asserted:
+
+```go
+var _ mining.Classifier = (*profile)(nil)
+```
+
+`newProfile(t)` in the tests below returns the asserted `mining.Classifier`, not
+a bare `sim.Profile`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -433,11 +630,23 @@ take `ToolSpeeds[heldItemID]`, defaulting to 1. `Harvestable` is
 harvestable by anything, including a bare hand — an empty set means "no tool
 required", not "no tool works".
 
-For 26.1.2: the same shape, but `Material` may be a compound like
-`"gourd;mineable/axe"` — split on `;` and take the best speed across the parts.
-Handle the `incorrect_for_<tier>_tool` materials explicitly: they encode
-correctness, and treating them as ordinary speed tables gives a fast break where
-vanilla gives a slow one.
+For 26.1.2: the same shape, and **do not split the compound material names**.
+`"gourd;mineable/axe"` looks like two materials joined and is one key in the
+material registry, carrying its own merged tool-speed table — splitting it would
+recompute by hand what upstream already states, and the two answers would differ
+the first time upstream merged them by a rule other than "best speed wins". Task
+0 checked every block in both versions: every `Material` value is a registry key,
+so the lookup that works for 1.8.9 works here unchanged.
+
+What does need deciding is the `incorrect_for_<tier>_tool` family. 108 blocks in
+26.1 carry `incorrect_for_wooden_tool` and no block carries the other six tiers.
+The material's table gives the wooden tools a speed of 2 — the same number the
+tier gets on a material it *is* correct for — so reading it as an ordinary speed
+table gives a fast break where vanilla gives a slow one. Settle it against the
+game before implementing: dig one such block with a wooden and with a stone tool
+on a pinned 26.1.2 server, and let the two observed times say which reading is
+right. Record the answer in the doc comment, because nothing in the dataset says
+it.
 
 - [ ] **Step 4: Run the tests and gates**
 
@@ -597,8 +806,23 @@ allows. An unknown block is an incomplete tick, not a rejection."
 - Test: `headless-minecraft/client/dig_test.go`
 
 **Interfaces:**
-- Consumes: `client.Action`, `version.Adapter`.
-- Produces: `client.ActionDig{Block, Face}` and `client.ActionDigCancel{Block}`.
+- Consumes: `version.Action`, `client.Do`, and `version.ActionDig{Block
+  version.BlockPos, Face version.Face, Stage version.DigStage}` with its
+  `DigStart`, `DigCancel`, and `DigFinish` stages — all built by the
+  [interaction primitives plan](2026-08-18-interaction-primitives.md), Tasks 1
+  and 4. **This task builds none of them.**
+- Produces: `client.Dig(ctx context.Context, block version.BlockPos, face
+  version.Face) error` — the sequence, not the packet. It sends the start stage,
+  waits the break time this stage computes, and sends the finish stage; a
+  cancelled context sends the cancel stage.
+
+This is the boundary reconciliation moved. One packet with a status field is one
+action type with a stage, so the client owns *when* the three stages are sent and
+M9.4 owns *how long* the wait between them is. A dig that sends the right three
+packets at the wrong times is this stage's failure, not the primitive's.
+
+If the interaction primitives plan has not run when this task is reached, stop
+and run it first rather than adding a second dig action here.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -610,17 +834,17 @@ func TestADigSendsStartThenFinish(t *testing.T) {
 	// finish-digging. A client that sends only the finish packet breaks blocks
 	// instantly and is the first thing an anti-cheat notices — which matters,
 	// because M10 has an anti-cheat lane that must stay quiet.
-	for _, version := range vanillaVersions(t) {
-		t.Run(version.Name, func(t *testing.T) {
-			server := vanilla.Start(t, version.Options)
+	// The loop variable is `lane`, not `version`: the body names the version
+	// package, and a variable of that name would shadow it.
+	for _, lane := range vanillaVersions(t) {
+		t.Run(lane.Name, func(t *testing.T) {
+			server := vanilla.Start(t, lane.Options)
 			c := connected(t, server)
 
 			sent := recordOutbound(t, c)
-			if err := c.Do(t.Context(), client.ActionDig{
-				Block: world.BlockPosition{X: 0, Y: 63, Z: 0},
-				Face:  client.FaceTop,
-			}); err != nil {
-				t.Fatalf("Do: %v", err)
+			if err := c.Dig(t.Context(),
+				version.BlockPos{X: 0, Y: 63, Z: 0}, version.FaceTop); err != nil {
+				t.Fatalf("Dig: %v", err)
 			}
 			awaitBlockBroken(t, c)
 
@@ -647,14 +871,13 @@ func TestADigDoesNotFinishEarly(t *testing.T) {
 
 	sent := recordOutbound(t, c)
 	start := time.Now()
-	if err := c.Do(t.Context(), client.ActionDig{
-		Block: world.BlockPosition{X: 0, Y: 63, Z: 0}, Face: client.FaceTop,
-	}); err != nil {
-		t.Fatalf("Do: %v", err)
+	if err := c.Dig(t.Context(),
+		version.BlockPos{X: 0, Y: 63, Z: 0}, version.FaceTop); err != nil {
+		t.Fatalf("Dig: %v", err)
 	}
 	awaitBlockBroken(t, c)
 
-	want := expectedBreakDuration(t, c, world.BlockPosition{X: 0, Y: 63, Z: 0})
+	want := expectedBreakDuration(t, c, version.BlockPos{X: 0, Y: 63, Z: 0})
 	if elapsed := digElapsed(t, sent); elapsed < want {
 		t.Fatalf("finished after %v, want at least %v; a dig this fast is what "+
 			"an anti-cheat flags", elapsed, want)
@@ -671,9 +894,7 @@ func TestACancelledDigSendsCancelAndNotFinish(t *testing.T) {
 	sent := recordOutbound(t, c)
 	ctx, cancel := context.WithCancel(t.Context())
 	go func() { time.Sleep(50 * time.Millisecond); cancel() }()
-	_ = c.Do(ctx, client.ActionDig{
-		Block: world.BlockPosition{X: 0, Y: 63, Z: 0}, Face: client.FaceTop,
-	})
+	_ = c.Dig(ctx, version.BlockPos{X: 0, Y: 63, Z: 0}, version.FaceTop)
 
 	kinds := digPacketKinds(t, sent)
 	if slices.Contains(kinds, "finish") {
@@ -717,8 +938,16 @@ cancel rather than claiming to have finished."
 ## Task 5: The matrix gate
 
 **Files:**
-- Create: `minecraft-simulation/conformance/mining_test.go`
-- Create: `minecraft-simulation/conformance/testdata/mining/*.json`
+- Create: `minecraft-simulation/mining/vanilla_test.go`
+- Create: `minecraft-simulation/mining/testdata/vanilla/1_8_9.json`, `26_1_2.json`
+
+The gate lives beside the arithmetic it gates. There is no `conformance`
+package — M9.3's proposal for one became `mctest` — and the simulation cannot
+import `relay`'s `conform` to register a scenario, because that harness lives in
+an examples module and the simulation must not depend on it. What carries the
+two-version rule here is the same thing that carries it in `mctest`: a test that
+fails when a version has no lane, in the shape of `mctest`'s own
+`TestBothVersionsHaveACapturedLane`.
 
 - [ ] **Step 1: Capture the corpus**
 
@@ -787,18 +1016,37 @@ an anti-cheat will not.
 
 - [ ] **Step 3: Run it, fix what it names**
 
-Run: `cd minecraft-simulation && devbox run -- go test ./conformance/ -run BreakTimes -v`
+Run: `cd minecraft-simulation && devbox run -- go test ./mining/ -run BreakTimes -v`
 
-- [ ] **Step 4: Declare the scenario and run the gate**
+- [ ] **Step 4: Refuse a one-version gate**
 
-Register `mining` as a `conform.Scenario` with a lane per version.
+There is no `conform.Scenario` to register from here, so the two-version rule is
+a test:
+
+```go
+func TestBothVersionsHaveABreakTimeCorpus(t *testing.T) {
+	t.Parallel()
+
+	// A stage that gates one version and skips the other is the failure this
+	// milestone was subdivided to prevent. mctest carries the same test for
+	// captured trajectories; this is its counterpart for break times.
+	for _, version := range []string{"1_8_9", "26_1_2"} {
+		if len(loadMiningCorpus(t, version)) == 0 {
+			t.Fatalf("%s has no break-time corpus", version)
+		}
+	}
+}
+```
+
+Then record the stage in `relay`'s `conform` matrix the way M9.1b's harness
+expects, from the side that may import it.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd minecraft-simulation
-git add conformance/mining_test.go conformance/testdata/mining/
-git commit -m "test(conformance): break times match vanilla across the matrix
+git add mining/vanilla_test.go mining/testdata/vanilla/
+git commit -m "test(mining): break times match vanilla across the matrix
 
 Exact tick comparison on both versions. The combinations dropped from
 the cross product are logged in the test rather than left implied."
@@ -845,13 +1093,16 @@ git commit -m "docs(plan): close M9.4, and what the break-time matrix found"
 
 ## Risks
 
-**The break-time formula may not be dumpable for 26.1.2.** M8.7's plan already
-found that `mcreference dump` rejects every version but 1.8.9 and that no
-deobfuscated 26.1.2 server jar is held. If that is still true when this stage
-runs, the 26.1.2 constants rest on the captured corpus alone, which catches a
-wrong formula and not a constant wrong in the fifteenth decimal place. Say so in
-the doc comment and in the master plan rather than letting the two lanes look
-equally verified.
+**~~The break-time formula may not be dumpable for 26.1.2.~~ Retired by Task 0.**
+This said `mcreference dump` rejects every version but 1.8.9. It no longer does:
+`minecraft-reference` carries a typed 26.1.2 dumper, and M9.2 measured that
+version's item and arrow motion constants through it and confirmed them in
+bytecode. What survives of the risk is the ordinary one — that the method
+computing break progress may be harder to reach than the motion constants were —
+and the answer is the same as M8.1's: say in the doc comment which of the two
+paths, decompiled source and `javap -p -c`, each number came from, and mark a
+number that came from neither as unverified rather than letting the two lanes
+look equally evidenced.
 
 **The matrix is a sample and must say so.** Four axes multiply to thousands of
 cases. Sampling is correct; sampling silently is not. The test logs what it
