@@ -16,10 +16,11 @@
 > that goes silent between actions is never told it died. `examples/orbit`
 > fought, died, respawned, and returned to its circle on 26.1.2; on 1.8.9 it
 > orbits but cannot be provoked, because protocol 47 names no attacker and
-> orbit deliberately infers none. What waits on a `minecraft-simulation`
-> release: the client's transcribed reach constants are pinned by literals,
-> and the cross-module agreement test activates when the released module
-> first carries `combat`.
+> orbit deliberately infers none. The cross-module agreement test
+> landed with `minecraft-simulation` v0.3.0, the first release to carry
+> `combat`: the client's transcribed reach constants are now pinned against
+> the simulation profiles offline, in
+> `client.TestTheCombatNumbersAgreeWithTheSimulation`.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or execute this plan inline one task at a time. Keep every checkbox current.
 

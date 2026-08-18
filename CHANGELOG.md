@@ -4,6 +4,14 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
 
 ## Unreleased
 
+### Changed
+
+- The module consumes `minecraft-simulation` v0.3.0, the first release to
+  carry `combat`. The client's transcribed combat constants are now pinned
+  against the simulation profiles in the offline lane rather than by
+  literals — the cross-module test M9.6's close said would activate with
+  this release.
+
 ### Added
 
 - `behaviour`: one shape for a multi-tick task — follow, flee, eat, block with a

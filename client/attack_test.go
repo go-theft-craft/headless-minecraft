@@ -5,6 +5,12 @@ import (
 	"errors"
 	"testing"
 
+	gen1_8data "github.com/go-theft-craft/minecraft-protocol/generated/java/v1_8"
+	gen26data "github.com/go-theft-craft/minecraft-protocol/generated/java/v26_1"
+	"github.com/go-theft-craft/minecraft-simulation/combat"
+	simv1_8 "github.com/go-theft-craft/minecraft-simulation/profile/java/v1_8"
+	simv26_1 "github.com/go-theft-craft/minecraft-simulation/profile/java/v26_1"
+
 	"github.com/go-theft-craft/headless-minecraft/event"
 	"github.com/go-theft-craft/headless-minecraft/version"
 	"github.com/go-theft-craft/headless-minecraft/version/java"
@@ -179,23 +185,43 @@ func TestRespawnIsSentOnceThePlayerIsDead(t *testing.T) {
 	}
 }
 
-func TestTheCombatNumbersAreTheTranscribedOnes(t *testing.T) {
+func TestTheCombatNumbersAgreeWithTheSimulation(t *testing.T) {
 	t.Parallel()
 
-	// The rules are minecraft-simulation's combat profiles, which pin the
-	// same numbers to their sources in TestTheReachNumbersAreTheOnesTheGamesUse.
-	// This pins the transcription on this side; a cross-module test that
-	// imports the profiles has to wait for the release that first carries
-	// them, because the offline module graph builds against the released
-	// minecraft-simulation and go mod tidy reads every build tag.
+	// The rules are minecraft-simulation's combat profiles; this package
+	// carries transcribed copies so an attack does not load a game dataset to
+	// learn one float. This is what keeps the two spellings from drifting —
+	// the same shape the observability names use. It became possible offline
+	// when the released module first carried combat, in v0.3.0; before that
+	// the constants were pinned by literals here.
+	set, err := gen1_8data.Data()
+	if err != nil {
+		t.Fatalf("load the 1.8.9 data set: %v", err)
+	}
+	old, err := simv1_8.New(set)
+	if err != nil {
+		t.Fatalf("v1_8.New: %v", err)
+	}
+	set26, err := gen26data.Data()
+	if err != nil {
+		t.Fatalf("load the 26.1.2 data set: %v", err)
+	}
+	modern, err := simv26_1.New(set26)
+	if err != nil {
+		t.Fatalf("v26_1.New: %v", err)
+	}
+
 	for name, check := range map[string]struct{ got, want float64 }{
-		"survival attack reach": {attackReach, 3.0},
-		"1.8.9 creative reach":  {creativeAttackReach18, 6.0},
-		"26.1.2 creative reach": {creativeAttackReach26, 5.0},
-		"standing eye height":   {eyeHeight, 1.62},
+		"survival":        {attackReach, old.(combat.Fighter).Reach().Attack},
+		"survival 26":     {attackReach, modern.(combat.Fighter).Reach().Attack},
+		"creative 1.8.9":  {creativeAttackReach18, old.(combat.Fighter).CreativeReach().Attack},
+		"creative 26.1.2": {creativeAttackReach26, modern.(combat.Fighter).CreativeReach().Attack},
+		"eye height":      {eyeHeight, old.(combat.Fighter).EyeHeight()},
+		"eye height 26":   {eyeHeight, modern.(combat.Fighter).EyeHeight()},
 	} {
 		if check.got != check.want {
-			t.Errorf("%s = %v, want %v", name, check.got, check.want)
+			t.Errorf("%s: this package says %v and the simulation says %v",
+				name, check.got, check.want)
 		}
 	}
 }
