@@ -62,19 +62,28 @@ Split by responsibility rather than into one growing `action.go`: the interactio
 **Interfaces:**
 - Produces: nothing in code. This task exists so that two committed plans do not instruct a later worker to build types this plan already built under other names.
 
-- [ ] **Step 1: Correct the M9.6 plan's Task 5**
+**Done 2026-08-18, as part of reconciling the M9.3-M9.8 stage plans rather than
+as part of executing this one.** Steps 1 to 3 are ticked because the edits are
+in those files; Step 4's commit is not, because that reconciliation pass left its
+changes uncommitted for review. Two things went further than this task asked:
+M9.4's dig correction landed on its Task 4 rather than its Task 5 (the plan's
+numbering moved), and M9.7 and M9.8 were corrected the same way for
+`ActionClickSlot`, `ActionCloseWindow`, and the `ClickMode` enumeration — which
+this plan names but does not enumerate, and M9.7 does.
+
+- [x] **Step 1: Correct the M9.6 plan's Task 5**
 
 Replace `client.ActionAttack{Target int32}` with `version.ActionInteract{Entity: target, Kind: version.InteractAttack}` and `client.ActionRespawn{}` with `version.ActionRespawn{}` at every occurrence. Replace the reconcile block's claim that there is "no outbound action path at all" with a line recording that M8.8 landed it and that `ActionRespawn` followed.
 
 What M9.6 still owns after this edit is the **scenario** — reach validation, cooldown timing, damage, knockback, death, and the respawn gate — not the primitive. Say so in the plan.
 
-- [ ] **Step 2: Correct the M9.4 plan's Task 5**
+- [x] **Step 2: Correct the M9.4 plan's Task 5**
 
 Replace `client.ActionDig{Block, Face}` and `client.ActionDigCancel{Block}` with the single `version.ActionDig{Block, Face, Stage}`, and record why: the wire is one packet with a status field, so two types would be two names for one packet.
 
 What M9.4 still owns is the break time. Say so.
 
-- [ ] **Step 3: Correct the master plan**
+- [x] **Step 3: Correct the master plan**
 
 In the M9 section, the Task 6 primitive list — "use, place, attack, interact, dig, slot, click, drop, and close stay with M9, mechanic by mechanic" — becomes: the primitives land under the interaction primitives plan; M9.4 through M9.8 keep their gates.
 

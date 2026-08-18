@@ -1699,9 +1699,16 @@ because each one changes what a stage costs:
   look, move-look, and ground — and `ActionRespawn` followed it, because a
   client that dies and cannot respawn is stuck. M9.6's respawn scenario and
   [`examples/orbit`](docs/superpowers/specs/2026-08-16-orbit-example-design.md)
-  are both unblocked. The remaining Task 6 primitives — use, place, attack,
-  interact, dig, slot, click, drop, and close — stay with M9, mechanic by
-  mechanic.
+  are both unblocked. Revised 2026-08-18, while reconciling the M9.3-M9.8 stage
+  plans: the remaining Task 6 primitives — use, place, attack, interact, dig,
+  slot, click, drop, and close — do **not** stay with M9 mechanic by mechanic.
+  They land together under the [interaction primitives
+  plan](docs/superpowers/plans/2026-08-18-interaction-primitives.md), in
+  `version`, so consumers stop waiting on a milestone for a packet; M9.4 through
+  M9.8 keep their gates and their numbers. Attack is not among them as its own
+  type: both protocols encode it as a mode of the interact packet, so it is
+  `ActionInteract` with `InteractAttack`. And orbit is unblocked on respawn only
+  — what it says still stops it is attack.
 - [ ] Export `movement.Strategy` so an application can implement one. Task 7
   designs controller-owned strategy switching and ships bunnyhop; nothing yet
   proves a strategy defined outside the library works, which `examples/orbit`
