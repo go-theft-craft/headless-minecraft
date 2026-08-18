@@ -312,7 +312,7 @@ func BreakTicks(hardness *float64, c Conditions) (int, error)
 func Damage(hardness *float64, c Conditions) (float64, error)
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package mining_test
@@ -428,12 +428,12 @@ func TestMiningFatigueCanOutweighHaste(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./mining/ -v`
 Expected: FAIL — the package does not exist.
 
-- [ ] **Step 3: Derive the formula from the game, not from a wiki**
+- [x] **Step 3: Derive the formula from the game, not from a wiki**
 
 Before writing `Damage`, confirm the arithmetic against the jar the way M8.1
 and M8.2 did. `minecraft-reference` already extracts from a verified Mojang jar
@@ -451,13 +451,13 @@ and in the milestone record, and mark that version's constants as unverified —
 the same way M8.7's plan requires for its fixtures. A number that records a
 belief and does not say so is what makes a later failure hard to diagnose.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
-- [ ] **Step 5: Run the tests and gates**
+- [x] **Step 5: Run the tests and gates**
 
 Run: `cd minecraft-simulation && devbox run -- task verify`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd minecraft-simulation
@@ -546,7 +546,7 @@ var _ mining.Classifier = (*profile)(nil)
 `newProfile(t)` in the tests below returns the asserted `mining.Classifier`, not
 a bare `sim.Profile`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestStoneIsClassifiedByThisVersionsVocabulary(t *testing.T) {
@@ -617,12 +617,12 @@ func TestEveryDiggableBlockResolvesAMaterial(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./profile/java/... -run Classif -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement each version**
+- [x] **Step 3: Implement each version**
 
 For 1.8.9: `Material` is a plain name; look it up in the material registry and
 take `ToolSpeeds[heldItemID]`, defaulting to 1. `Harvestable` is
@@ -648,11 +648,11 @@ on a pinned 26.1.2 server, and let the two observed times say which reading is
 right. Record the answer in the doc comment, because nothing in the dataset says
 it.
 
-- [ ] **Step 4: Run the tests and gates**
+- [x] **Step 4: Run the tests and gates**
 
 Run: `cd minecraft-simulation && devbox run -- task verify`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd minecraft-simulation
@@ -698,7 +698,7 @@ func (Dig) CommandKind() string { return "mining.dig" }
 func Phase() sim.Phase
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestProgressAccumulatesAcrossTicks(t *testing.T) {
@@ -774,18 +774,18 @@ func TestDiggingAnUnknownBlockIsIncompleteNotRejected(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd minecraft-simulation && devbox run -- go test ./mining/ -run Phase -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
-- [ ] **Step 4: Run the tests and gates**
+- [x] **Step 4: Run the tests and gates**
 
 Run: `cd minecraft-simulation && devbox run -- task verify`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd minecraft-simulation
@@ -824,7 +824,7 @@ packets at the wrong times is this stage's failure, not the primitive's.
 If the interaction primitives plan has not run when this task is reached, stop
 and run it first rather than adding a second dig action here.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestADigSendsStartThenFinish(t *testing.T) {
@@ -906,23 +906,23 @@ func TestACancelledDigSendsCancelAndNotFinish(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd headless-minecraft && devbox run -- go test ./client/ -run Dig -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 The three packets are version-owned and belong in each adapter — 47 and 775
 number the dig statuses differently and 775 adds a sequence field the server
 echoes. The sequencing and the timing are version-neutral and belong in
 `client/dig.go`.
 
-- [ ] **Step 4: Run the tests and gates**
+- [x] **Step 4: Run the tests and gates**
 
 Run: `cd headless-minecraft && devbox run -- task verify`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/dig.go client/dig_test.go internal/adapter/
@@ -932,6 +932,65 @@ A client that sends only the finish packet breaks blocks instantly,
 which is the first thing an anti-cheat notices. Cancelling sends a
 cancel rather than claiming to have finished."
 ```
+
+---
+
+## Progress, 2026-08-18
+
+Tasks 1 through 4 are built and committed. Tasks 5 and 6 are not: the matrix
+gate needs a corpus captured through the proxy against pinned servers on both
+versions, which has not been run.
+
+What the four tasks found, beyond what the reconciliation above records:
+
+- **The tick count is an accumulation, not a reciprocal.** Both games hold the
+  progress in a float32 and add the per-tick fraction to it, comparing against
+  one — `PlayerControllerMP.onPlayerDamageBlock` on 1.8.9 and the same shape on
+  26.1.2. Stone with a bare hand is 150 ticks by `ceil(1/damage)` and 151 by the
+  addition, and 151 is what the game does. `mining.BreakTicks` performs the
+  addition.
+- **There is a third outcome besides "breaks" and "unbreakable".** Near one, that
+  float32's spacing is about 6e-8, so a per-tick fraction below half of that
+  rounds away and the total stops moving: the player mines forever. That is
+  `mining.ErrNeverBreaks`, and it is a different answer from a very long time.
+- **Bedrock is unbreakable two different ways.** 1.8.9 leaves its hardness
+  absent, which this plan anticipated. 26.1.2 records it as -1, which it did
+  not. A rule that only checked for nil computes a negative break time here and
+  calls it fast.
+- **26.1.2's tier materials are not speed tables, and this is worse than the
+  reconciliation said.** Gold ore's material is `incorrect_for_wooden_tool`,
+  whose table lists the four *wooden* tools at speed two and nothing else. Read
+  as a speed table it gives a diamond pickaxe no speed at all — 90 ticks against
+  vanilla's 15 — and gives a wooden *shovel* the pickaxe's speed against ore.
+  The tool class the dataset's flattening dropped is recoverable from the
+  block's own `HarvestTools`, and 107 of the 108 tier-tagged blocks resolve to
+  exactly one class that way. The crafter is the one that does not: it publishes
+  no harvest tools at all.
+- **The 26.1 dataset gets some tool speeds wrong, and the 26.1 lane of this
+  stage's gate cannot pass for them.** Checked against the version's own jar:
+  `ToolMaterial.COPPER` declares a speed of 5.0F and the dataset gives every
+  copper tool a 1, on every material — so a copper pickaxe mines stone at a bare
+  hand's rate here and at better than a stone pickaxe's in game. And
+  `ShearsItem.createToolProperties` overrides the speed for leaves at 15.0F and
+  wool at 5.0F, neither of which the dataset carries, though it does carry the
+  same file's cobweb rule at 15. These are not worked around: overriding a
+  dataset value with a constant typed into a profile is the one thing that
+  module does not do. They are pinned by
+  `TestTheDatasetToolSpeedsThisVersionGetsWrong`, which fails the day upstream
+  fixes one.
+- **The dig progress does not live in the kernel.** This plan's Task 3 tests
+  implied a kernel that accumulates across ticks, and `sim.Kernel` holds no
+  mutable state by design. The game does not accumulate in the world either: a
+  vanilla client keeps `curBlockDamageMP` on the controller doing the digging
+  and zeroes it when the button comes up. So `mining.Dig` carries an `Elapsed`
+  count that is the caller's, the phase computes rather than accumulates,
+  interrupting needs no cancel command, and `sim` did not change at all.
+- **`client.Dig` takes the break time rather than computing it.** This plan's
+  Task 4 specified `Dig(ctx, block, face)`. `headless-minecraft` models no
+  inventory, no effects, and no submersion, so it cannot compute a break time —
+  and a client that guessed would finish early on every block it guessed wrong
+  about, which is the one failure the three-packet sequence exists to avoid. The
+  signature is `Dig(ctx, block, face, breaking time.Duration)`.
 
 ---
 
