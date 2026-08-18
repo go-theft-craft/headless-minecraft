@@ -64,6 +64,7 @@ type Route struct {
 type Navigator struct {
 	blocks     predict.Blocks
 	profile    simprofile.Profile
+	facts      Facts
 	capability navigation.Capability
 	budget     navigation.Budget
 }
@@ -76,12 +77,8 @@ type Navigator struct {
 func (n Navigator) Plan(ctx context.Context, chunks world.ChunksView, from, to Vec3) (Route, bool) {
 	view := predict.NewTerrain(chunks, n.blocks, n.profile)
 
-	// Facts is nil. It describes hazards and fluids, and the profile this
-	// example builds does not publish them yet, so the planner routes on
-	// collision alone -- it will walk the bot through fire it could have gone
-	// around. Saying so beats passing something invented.
 	path, err := navigation.Find(
-		ctx, view, nil, n.capability, cellOf(from), cellOf(to), n.budget,
+		ctx, view, n.facts, n.capability, cellOf(from), cellOf(to), n.budget,
 	)
 	if err != nil || len(path.Edges) == 0 {
 		return Route{}, false
@@ -110,8 +107,13 @@ func (n Navigator) Plan(ctx context.Context, chunks world.ChunksView, from, to V
 	// shortcut is only taken where the body has been checked along the whole
 	// straight line of it, so the corners this cuts are corners it has looked
 	// at, which is the difference between smoothing and guessing.
+	// Facts here as well as in the search. A shortcut is only allowed where the
+	// body has been checked along the line, and a check that knew nothing about
+	// fire would pull a route taut straight through the thing the search went
+	// round.
 	steps = n.taut(terrain.Query{
 		View:  view,
+		Facts: n.facts,
 		Body:  n.capability.Body,
 		Limit: n.capability.CandidateLimit,
 	}, steps)
@@ -171,8 +173,14 @@ func (n Navigator) clearLine(query terrain.Query, from, to Vec3) bool {
 	return n.standable(query, to)
 }
 
-// standable reports whether the body fits at a position with something holding
-// it up.
+// standable reports whether the body fits at a position, with something holding
+// it up and nothing there that harms it.
+//
+// All three, because Fits and Ground answer about geometry alone and a body
+// fits inside a fire perfectly well. The search refuses a cell carrying any
+// hazard and refuses water to a body that cannot swim; a shortcut is only
+// honest if it asks the same questions, or the smoothing walks the bot through
+// exactly what the search routed around.
 func (n Navigator) standable(query terrain.Query, at Vec3) bool {
 	feet := simgeom.Vec3{X: at.X, Y: at.Y, Z: at.Z}
 
@@ -182,8 +190,23 @@ func (n Navigator) standable(query terrain.Query, at Vec3) bool {
 	}
 
 	ground, err := query.Ground(feet)
+	if err != nil || ground != terrain.GroundSolid {
+		return false
+	}
 
-	return err == nil && ground == terrain.GroundSolid
+	cell := cellOf(at)
+
+	hazard, lookup, err := query.HazardAt(cell)
+	if err != nil || lookup == simworld.LookupUnknown || hazard != terrain.HazardNone {
+		return false
+	}
+
+	fluid, lookup, err := query.FluidAt(cell)
+	if err != nil || lookup == simworld.LookupUnknown {
+		return false
+	}
+
+	return fluid == terrain.FluidNone || (fluid == terrain.FluidWater && n.capability.CanSwim)
 }
 
 // lineProbe is how finely a straight line is sampled, in blocks. A fifth of a
