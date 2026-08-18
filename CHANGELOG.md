@@ -6,6 +6,30 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
 
 ### Added
 
+- `predict`: a prediction loop that simulates the local player ahead of the
+  server and reconciles when the server disagrees. The rules are
+  `minecraft-simulation`'s, so this client and a server run the same ones; what
+  this package owns is the fork a prediction is applied to, the choice of which
+  movement packet a tick warrants, and what happens when a correction arrives.
+  It carries the cadence rule `version/action.go` measured off a real client's
+  traffic, and its tests assert it tick by tick without a server: a position when
+  the squared distance passes 9.0e-4 or twenty packets have gone without one, a
+  look when only the rotation changed, and a bare ground flag when neither did.
+  `predict.Terrain` turns the observed chunks into the simulation's tri-state
+  block view, so a cell in an unloaded chunk is unknown rather than air and a
+  tick over unstreamed terrain reports itself incomplete instead of walking the
+  player through it. The resolver is per version, because the two protocols
+  disagree about what a block state is.
+- `internal/vanilla` and a `test:vanilla` task: the conformance lane. It starts a
+  real server, connects, runs scripted input, and requires zero corrections. Six
+  scenarios on Java 1.8.9 and the same six on 26.1.2 pass — no position packet
+  after the client began reporting its own, nothing in either server's log about
+  a player moving wrongly or too quickly, and the cadence exactly as the measured
+  rule predicts. It runs behind a build tag and skips when the prepared jar is
+  absent, so an ordinary verify stays fast and offline.
+  The lane runs in offline mode, which is a limit of it: nothing measured there
+  says anything about online-mode behaviour until Microsoft authentication lands.
+
 - Initial repository structure, endpoint-scoped authorization, strict safety defaults, version-profile validation, Devbox tooling, CI, and a tracked pre-commit hook for lint and secret scanning.
 - `version`, `client`: the outbound action path. `Client.Do` sends one
   version-neutral intent — `ActionMove`, `ActionLook`, `ActionMoveLook`, or
