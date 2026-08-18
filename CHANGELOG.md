@@ -67,6 +67,12 @@ This file records notable user-visible changes. It follows [Keep a Changelog](ht
   Taking `v0.6.0` fixes it, and a new test decodes the bytes a real 26.1.2 server
   sent rather than building the packet as a value, because a value-built test
   cannot see a byte order at all.
+- `internal/adapter`, `client`: a kick reaches this client. Taking
+  `minecraft-protocol v0.7.0` picks up a stream fix: a peer that kicks writes its
+  disconnect and closes, so the frame and the EOF behind it arrive together, and
+  the stream discarded that packet when its queue closed with the transport.
+  This client saw a bare EOF instead of the server's reason, rarely and only
+  under load — about three sessions in eight hundred on a busy machine.
 - `client`: a disconnect names the state the session ended in. The state was
   read back off the stream at the moment the ending was reported, and a
   terminated stream answers nothing about itself — so every transport loss, the
