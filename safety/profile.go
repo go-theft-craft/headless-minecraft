@@ -13,6 +13,20 @@ const (
 	ScopeInventory Scope = "inventory"
 	// ScopeInteract permits block and entity interaction.
 	ScopeInteract Scope = "interact"
+	// ScopeAttack permits attacking entities.
+	//
+	// It is separate from ScopeInteract even though the two are one action on
+	// the wire — both protocols carry attack as a mode of the same interact
+	// packet. The split is a safety decision rather than a protocol one: an
+	// authorization that permits opening a chest is not obviously one that
+	// permits attacking a player, and a caller that wanted the first and got
+	// the second would have no way to say so.
+	//
+	// The cost of the split is that a caller wanting both declares both. That
+	// was judged the smaller cost while there is one caller; reversing it later
+	// would mean widening every authorization that had asked for interact
+	// alone.
+	ScopeAttack Scope = "attack"
 	// ScopeDig permits digging operations.
 	ScopeDig Scope = "dig"
 	// ScopeBuild permits block placement operations.
