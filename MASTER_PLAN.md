@@ -478,7 +478,7 @@ flowchart LR
     M5["M5 Routing, capture/replay, mcproto<br/>Complete"]
     M6["M6 Complete consumer migrations<br/>Complete (M6.4 postponed)"]
     M7["M7 Observed client world state<br/>Complete"]
-    M8["M8 Deterministic simulation slice<br/>M8.1–M8.4 complete"]
+    M8["M8 Deterministic simulation slice<br/>complete"]
     M9["M9 Movement, attack, inventory, craft"]
     M10["M10 Conformance and stable v1"]
     M11["M11 Server framework<br/>M11.1–M11.7"]
@@ -505,17 +505,17 @@ there is capacity. Its only hard obligation to the rest of the plan is that
 | M5 | Packet routing and middleware, capture history, replay, status/login helpers, and non-interactive `mcproto` | `minecraft-protocol` | Complete | M4 | [Design](../minecraft-protocol/docs/superpowers/specs/2026-08-15-routing-capture-replay-cli-design.md) (amended 2026-08-15), [implementation plan](../minecraft-protocol/docs/superpowers/plans/2026-08-15-routing-capture-replay-cli.md) (amended 2026-08-15) |
 | M6 | Finish shared-protocol migration for the server and proxy, then connect headless-minecraft to the current Java profile | `server`, `proxy`, `headless-minecraft` | Complete; M6.4 Microsoft device-code postponed, nothing depends on it | M5 | [Shared extraction](docs/superpowers/plans/2026-08-13-shared-protocol-extraction.md), [headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [headless lifecycle plan](docs/superpowers/plans/2026-08-13-headless-client-authentication.md) |
 | M7 | Immutable observed player, entity, chunk, registry, container, and environment snapshots; reducers apply packets in wire order | `headless-minecraft` | Complete | M6 | [Headless design](docs/superpowers/specs/2026-08-13-headless-minecraft-design.md), [observed world state plan](docs/superpowers/plans/2026-08-15-observed-world-state.md), [world-state plan, Tasks 1–6](docs/superpowers/plans/2026-08-13-world-state-actions.md) |
-| M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 player movement slice with canonical replay and server/client adapters; items and arrows moved to M9 | `minecraft-simulation` | M8.1–M8.4 and M8.6 complete | M4, M7 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
+| M8 | First deterministic, protocol-independent Java 1.8.9 and 26.1.2 player movement slice with canonical replay and server/client adapters; items and arrows moved to M9 | `minecraft-simulation` | Complete: both profiles gated on their own servers, and both drive one kernel | M4, M7 | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [simulation design](docs/superpowers/specs/2026-08-13-minecraft-simulation-design.md), [physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [reference research plan](docs/superpowers/plans/2026-08-13-minecraft-reference-extraction.md), [simulation implementation plan](docs/superpowers/plans/2026-08-13-minecraft-simulation-foundation.md) |
 | M8.1 | Extract Java 1.8.9 physics constants from a verified Mojang server jar and publish them as a pinned, generated Go package | `minecraft-reference`, `minecraft-protocol` | Complete | — | [Physics subproject design](../minecraft-simulation/docs/superpowers/specs/2026-08-14-simulation-physics-first-subproject-design.md), [implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-14-m8-1-ground-truth-pipeline.md) |
 | M8.2 | `geom`, `world`, and `collision`: swept axis-aligned collision reproducing Java Edition 1.8.9 axis order and step-up, over a tri-state block view, verified against a real server jar | `minecraft-simulation` | Complete | — | [M8.2 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-15-m8-2-geometry-collision-core.md) |
 | M8.3 | `sim`, `entity`, `runtime`, block handles in `world`, and an in-memory store: the tick contract, canonical result digest, and revision-checked change sets | `minecraft-simulation` | Complete | M8.2 | [M8.3 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-3-kernel-contracts.md) |
 | M8.4 | `movement` and `profile/java/v1_8` for the player, gated on a differential test against the game's own movement tick | `minecraft-simulation` | Complete; 4,800 ticks agree with the game, and six fixtures replay without a JDK | M8.3 | [M8.4 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-4-v1-8-player-movement.md) |
 | M8.6 | Canonical recording and replay, and a six-target determinism matrix | `minecraft-simulation` | Complete; all six targets agree, and the matrix found an arm64 fused-multiply-add bug | M8.3 for encoding, M8.4 for the matrix | [M8.6 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-6-replay-and-determinism.md) |
-| M8.7 | `profile/java/v26_1` for the player, plus a 26.1.2 physics dumper and dataset | `minecraft-reference`, `minecraft-protocol`, `minecraft-simulation` | Planned, plan written; starts with an oracle feasibility task | M8.4, M4 | [M8.7 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-7-v26-1-player-movement.md) |
-| M8.8 | One kernel driven by client prediction and server authority, gated on zero corrections from vanilla | `minecraft-simulation`, `headless-minecraft`, `server` | Planned, plan written | M8.4, M6, M7 | [M8.8 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) |
+| M8.7 | `profile/java/v26_1` for the player, plus a 26.1.2 physics dumper and dataset | `minecraft-reference`, `minecraft-protocol`, `minecraft-simulation` | Complete; 4,800 ticks agree with a real 26.1.2 server, and four rules the reading got wrong were found by asking it | M8.4, M4 | [M8.7 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-7-v26-1-player-movement.md) |
+| M8.8 | One kernel driven by client prediction and server authority, gated on zero corrections from vanilla | `minecraft-simulation`, `headless-minecraft`, `server` | Complete; zero corrections from a real 1.8.9 server and a real 26.1.2 server, in offline mode | M8.4, M6, M7 | [M8.8 implementation plan](../minecraft-simulation/docs/superpowers/plans/2026-08-17-m8-8-consumer-integration.md) |
 | M9 | Entity-trace capture, dropped items and arrows, then movement, digging, building, attack, container, inventory, and crafting scenarios, subdivided into M9.1–M9.8 by mechanic, each verified against both 1.8.9 and 26.1.2 | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | M9.1 client checks pending; M9.1b planned; M9.3–M9.8 plans drafted ahead of their prerequisites, each with a reconcile-first task; M9.2 unblocked by M8.4 and awaiting M8.8 | M9.1 on M5 and `relay` v0.2.0; M9.1b on M9.1 and M4; M9.2–M9.8 on M8.8, M9.1, and M9.1b | [Sequencing design](../minecraft-simulation/docs/superpowers/specs/2026-08-15-m8-m9-sequencing-design.md), [world-state and actions plan](docs/superpowers/plans/2026-08-13-world-state-actions.md), [M9 plan](docs/superpowers/plans/2026-08-16-m9-gameplay-mechanics.md) (M9.1 written; M9.2–M9.8 await their prerequisite), [M9.1b–M10 cross-version plan](docs/superpowers/plans/2026-08-17-m9-1b-m10-cross-version-conformance.md) |
 | M10 | Cross-implementation conformance, compatibility contracts, migration notes, and stable `v1.0.0` releases | all runtime repositories | Planned | M9 | Existing repository roadmaps, [M10 plan](docs/superpowers/plans/2026-08-16-m10-conformance-releases.md) |
-| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | M11.1 through M11.4 complete; M11.5 implemented except block identity and reconciliation at load; M11.6–M11.7 designed and planned, unimplemented | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), six sub-milestone designs, and a plan for each, [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) |
+| M11 | Turn `server` into a framework: composable seams, a version-neutral world model, storage, world generation, provenance, observability, and commands, subdivided into M11.1–M11.7 | `server` | Complete: M11.1 through M11.7 | M6.1 | [Server framework design](../server/docs/superpowers/specs/2026-08-16-server-framework-design.md), six sub-milestone designs, and a plan for each, [M11 plan](docs/superpowers/plans/2026-08-16-m11-server-framework.md) |
 
 ## What is complete
 
@@ -1521,10 +1521,36 @@ because each one changes what a stage costs:
   bit for bit across 2,872 whole moves.
 - [x] Write implementation plans for every remaining M8 stage: M8.3, M8.4,
   M8.6, M8.7, and M8.8.
-- [ ] Implement the deterministic kernel, strict unknown-state handling,
+- [x] Implement the deterministic kernel, strict unknown-state handling,
   movement, canonical result digest, and replay (M8.3, M8.4, M8.6).
-- [ ] Prove the same simulation through server and headless adapters, gated on
-  zero corrections from a live vanilla 1.8.9 server (M8.8).
+- [x] Complete M8.7: `profile/java/v26_1`, its block table keyed by block state,
+  and a thirteen-phase tick order read from the version's own movement path.
+  4,800 ticks of walk, sprint, jump, sneak, fall, and collide agree with a real
+  26.1.2 server bit for bit, and the six scenarios ship as fixtures that replay
+  with no JDK. The gate found four rules a careful reading had got wrong: the box
+  is rebuilt around the position rather than offset, the supporting block is
+  remembered across a tick rather than derived, the input shaping scales by a
+  reciprocal where the module divided, and the client's own input method — decay,
+  sneak factor, and a stretch onto the unit square — replaces the shared decay
+  rather than preceding it.
+- [x] Prove the same simulation through server and headless adapters, gated on
+  zero corrections from a live vanilla server (M8.8). Six scenarios on Java
+  1.8.9 and the same six on 26.1.2, 220 ticks apiece: **zero corrections from
+  either server**, nothing in either log about a player moving wrongly or too
+  quickly, and the packet cadence exactly as the rule measured off a real
+  client's traffic predicts — 210 bare ground flags and 10 forced positions while
+  standing, 207 looks while turning on the spot.
+  **Both lanes ran in offline mode**, because M6.4's Microsoft device-code
+  authentication is postponed. Nothing measured there says anything about
+  online-mode behaviour, and the first check that does will be whichever
+  milestone picks M6.4 up.
+  What the gate found was never physics. A server of 1.8.9's age does not run on
+  a modern JVM until its native transport is turned off; the headless client
+  observes nothing until a world is installed; and the plan's third assertion —
+  compare the prediction against the server's last acknowledged position — could
+  not be measured at all, because a 1.8.9 server states a position only to
+  correct one and silence is how it accepts. That the physics needed nothing is
+  what M8.4's and M8.7's oracles bought.
 - [x] Build the protocol 47 capture consumer on `relay`: recording sink, trace
   extraction, replay gate, and `mcrelay trace` / `mcrelay verify` (M9.1). Every
   automated gate is green against a stub upstream.
@@ -1606,6 +1632,18 @@ because each one changes what a stage costs:
 - [ ] Publish stable releases only after all release gates pass.
 
 ### M11 — Server framework
+
+**Complete, 2026-08-18.** All seven sub-milestones have landed. `server` is a
+framework: composable seams for storage, world generation, observation, and
+commands; a version-neutral world model; an audit trail that is off by default
+and says what it costs when it is on; and six examples that are a test surface
+rather than documentation. What each one deviated from its own plan is in the
+sub-milestone records below — the four worth reading first are M11.5's finding
+that the sidecar generation stamp cannot match across a restart, M11.6's that
+producing samples is not measurable against the work being sampled, M11.7's
+that six of 79 pinned suggestions needed the signature model to grow before
+they reproduced, and M11.7's that brigadier rendering has never been sent to a
+client.
 
 `server` is a framework first and an application never. `cmd/server` becomes
 `examples/vanilla`, and the eight items in `server/docs/todo.md` become seams
@@ -1810,9 +1848,9 @@ The three worth carrying furthest:
   - The `HeightAt`/`Generate` disagreement at a cave mouth is still there. It
     is documented on the method now rather than only in the design, and it
     belongs to whoever owns where a dropped item lands.
-- [~] M11.5 Provenance: item and block identity, the ID index, the audit log and
-  its queries, reconciliation on load. **Item identity complete on 2026-08-17;
-  block identity and reconciliation are what is left.**
+- [x] M11.5 Provenance: item and block identity, the ID index, the audit log and
+  its queries, reconciliation on load. **Item identity complete 2026-08-17;
+  block identity and reconciliation completed 2026-08-18.**
   [Design](../server/docs/superpowers/specs/2026-08-17-m11-5-provenance-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-5-provenance.md), 2026-08-17.
   - **Landed:** item IDs from a persisted epoch (Task 1), identity on the stack
     with split and merge that keep the invariant (Task 2), the index, its
@@ -1832,16 +1870,42 @@ The three worth carrying furthest:
     turned out not to be items at all — an untaken result is an offer, minted
     only when somebody takes it, which is why the invariant deliberately
     excludes that one slot. [The record](../server/docs/verification/2026-08-17-m11-5-click-path-conversion.md).
-  - **Not landed:** Task 6 (sparse block identity in the sidecar) and Task 7
-    (reconciliation at load). Until Task 7, a stack restored from disk without
-    identity gets it minted at its own location on the first click that moves
-    it, which keeps the invariant true from the first click rather than from the
-    load; minting at the source cannot invent a duplication, but an item that
-    survived a restart without identity gets a new one rather than being
-    recognised. Chest contents lose identity across a restart, because the Anvil
-    writer has nowhere to put it and the sidecar M11.3 wrote empty is still
-    empty; player inventories keep it, because `PlayerData` is JSON and
-    `ItemStack` marshals its IDs.
+  - **Tasks 6 and 7 landed 2026-08-18, and closed a gap the plan did not name.**
+    Block identity is sparse and chunk-keyed in the sidecar M11.3 wrote empty; a
+    break record names the block and the items that fell out of it, which is the
+    join that makes one chain run from an inventory, through a wall, and back.
+    What the plan missed is that *container* item identity had nowhere to live
+    either: the Anvil format has a field for the items and none for their IDs,
+    so a chest lost every ID at each restart and reconciliation dutifully minted
+    the whole chest again. It is now in the same sidecar, by the same
+    load-and-unload-with-the-chunk mechanism.
+  - **The sidecar generation stamp cannot match across a restart, and that is
+    the most useful thing this milestone found.** Generation is a per-run
+    counter and the world file does not carry it, so a sidecar written by a
+    previous run can never carry a stamp that a fresh load will agree with. The
+    obvious reading of the design — discard identity when the stamp disagrees —
+    would have discarded all of it on every restart. So nothing is discarded:
+    the stamp is a request to reconcile rather than a licence to trust, which
+    means after a restart every column is reconciled rather than trusted. The
+    stamp still does its in-run job. Making it work across runs would mean
+    persisting the per-chunk generation in the world file and seeding the
+    counter from `level.json`, which is a world-format change this milestone had
+    no reason to make.
+  - **Reconciliation runs on the column before the world publishes it**, in
+    `storeLoader.LoadChunk`. That is the only window in which the pass can write
+    into a chunk's containers, and the alternative — reconciling through the
+    world after publication — would ask the world for a chunk it is still
+    loading and recurse. Player inventories are reconciled where they are read,
+    in `playerBridge.LoadPlayer`, under protocol slot numbering rather than
+    array indices: armor runs feet-first in the array and head-first in the
+    protocol, and reconciling under the wrong one would claim items at locations
+    no later move could find.
+  - **Universal block identity was not built and no flag pretends otherwise.**
+    The design says it "stays behind a flag"; shipping a flag whose on-state is
+    8.2 GB for a 2000×2000 world would have been worse than shipping neither.
+    `TestUniversalIdentityIsOffByDefault` asserts the sparse property directly —
+    reading a whole generated column puts nothing in the table — so a build
+    cannot drift into it by accident.
   - **The detector is proved against a known failure shape, not against an open
     bug.** Both M3 duplications were fixed before this milestone was designed
     (`e67ec09`), so `TestThePartialDepositBugIsDetected` reconstructs the
@@ -1879,10 +1943,131 @@ The three worth carrying furthest:
     is the first lever if this ever stops being affordable; sharding the map is
     the second, and that one is about contention rather than size, so M11.6 is
     what should decide it. `M11_MEASURE=1 go test -run TestItemIndexMemory`.
-- [ ] M11.6 Observability: one `Observer` interface, per-player, per-feature,
-  and per-chunk attribution. [Design](../server/docs/superpowers/specs/2026-08-17-m11-6-observability-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-6-observability.md), 2026-08-17.
-- [ ] M11.7 Commands: `Command`, `Set`, `vanilla.Stubs()`, brigadier rendering
-  on protocol 775 and tab-complete on 47. [Design](../server/docs/superpowers/specs/2026-08-17-m11-7-commands-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-7-commands.md), 2026-08-17.
+- [x] M11.6 Observability: one `Observer` interface, per-player, per-feature,
+  and per-chunk attribution. **Complete 2026-08-18.**
+  [Design](../server/docs/superpowers/specs/2026-08-17-m11-6-observability-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-6-observability.md), 2026-08-17.
+  - **What a join actually costs, which is the first real answer to the todo
+    item this track started from.** At view distance 12 a join is 625 chunks.
+    Cold — generate and encode, flat generator, AMD Ryzen 9 9950X — that is
+    8.1 ms, 12.9 µs per chunk, of which generation is 4.9 µs. The same 625
+    columns encoded again with the section cache warm is 1.7 ms, 2.8 µs per
+    chunk. `M11_MEASURE=1 go test -run TestJoinCostByFeature -v ./server/`.
+  - **M11.2's encode cache showed up in the numbers**, which M11.2's own record
+    could only assert: 12.9 µs cold against 2.8 µs warm is a factor of 4.6 on
+    the whole path and about 2.9 on the encode alone once generation is taken
+    out. The span is deliberately placed *around* the cache lookup rather than
+    inside the encode, so a hit reads as a cheap encode rather than as no encode
+    at all — a hit that recorded nothing would make the cache look like it
+    removed the work rather than made it cheap, and those are different claims.
+  - **The off profile.** A span with no observer is 1.9 ns and no allocation:
+    one branch and a package-level closure, no clock read. With an observer it
+    is 148 ns — two clock reads and a queue send. On the fixed workload (625
+    encodes, 1,000 block writes, 2,000 counted events), over 5×200 iterations:
+    the floor is 5.36–5.59 ms, a discarding observer 5.48–5.71 ms, and a
+    recording one 6.53–6.67 ms. The discarding observer is **inside the floor's
+    own spread** — producing the samples is not measurable against the work
+    being sampled, which is what 625 × 148 ns = 92 µs against 5.5 ms predicts.
+    The +20% belongs to the consumer, not to the server. The allocation figure
+    is a *test*, so CI fails on a regression; the wall times are recorded and
+    asserted by nothing, and `task test:profile` runs three iterations, which is
+    enough to notice an order of magnitude and not enough to rank the first two
+    — the numbers above came from `-benchtime 200x -count 5`.
+  - **The wall-time tolerance the plan hedged about was never written.** Task 6
+    Step 2 allowed for demoting it to a recorded number if CI could not hold it;
+    it was demoted before it was written, because the assertion that catches a
+    real regression is the allocation one and a wall-time bound on a shared
+    runner is a flake with a schedule.
+  - **The design's thirteen features became fourteen.** The per-tick accumulator
+    needed somewhere to put a block write and the list had nowhere: filing it
+    under `inventory` would have made two unrelated numbers one, and leaving it
+    out would have left the most frequent write in the server unmeasured. The
+    list is meant to be extended by editing it, and `server.Features()` returns
+    it so a sink registers series up front rather than discovering them.
+  - **The accumulator is not lock-free, and the design said it would be.** "A
+    plain struct owned by the tick goroutine" is only true if the counters are
+    incremented there; a block write happens on the connection's goroutine. It
+    is a map behind a mutex, held for one increment, against a block write that
+    already does a compare-and-swap on a chunk pointer.
+  - **`Sample.Labels` changed from a map to a closed struct**, one milestone
+    after M11.1 published it. M11.1 populated it with nothing, so no consumer in
+    the tree was reading a key, and the alternative was a map allocated per
+    sample on a path that runs per frame.
+  - **The dispatcher now reports its own drops**, which closes the gap M11.1
+    left: an observer under load silently saw less than it thought, and a graph
+    that goes quiet looks like a server that went quiet.
+  - **`examples/observed` is the first real use of the nested module's
+    independence.** The Prometheus client is in `examples/go.mod` and the root
+    module's dependency list is byte-identical. The example's `/metrics`
+    endpoint is asserted by `task test:examples`, which is what keeps the sink
+    wired rather than merely compiling.
+- [x] M11.7 Commands: `Command`, `Set`, `vanilla.Stubs()`, brigadier rendering
+  on protocol 775 and tab-complete on 47. **Complete 2026-08-18.**
+  [Design](../server/docs/superpowers/specs/2026-08-17-m11-7-commands-design.md) and [plan](../server/docs/superpowers/plans/2026-08-17-m11-7-commands.md), 2026-08-17.
+  - **The pinned list has 60 vanilla names, and they were not captured the way
+    the plan said.** The plan called for running a vanilla 1.8.9 server and
+    paging through `/help`. What was used instead is
+    `source/java/1.8/language.json` in `minecraft-protocol` — the client
+    language file the game ships — which carries 101 `commands.<name>.usage`
+    keys, one usage line per command and several for the ones with subcommands.
+    The names are the first token of each usage line, deduplicated, and the
+    usage line is reproduced verbatim as the stub's description. That is
+    strictly better than a transcript: it is an upstream artifact that can be
+    diffed and re-derived, and the fixture header says how. What it does *not*
+    carry is aliases — the language file has one key per command, so `/msg` and
+    `/w` do not appear beside `/tell`. Those are hand-listed in `stubs.go` and
+    marked as the half with no upstream source.
+  - **All 79 pinned suggestions reproduce from signatures, and six of them
+    needed the signature model to grow first.** That is the measurement of
+    whether the "one declaration" claim held, and the honest answer is that it
+    held after three additions the design did not have:
+    - `ParamCommand`, an eighth parameter type, so `/help` completes command
+      names from `Set.All()`. The design said seven types covered the ten
+      built-ins; `/help`'s own argument is the counterexample.
+    - `Param.Also`, accepted but never suggested, so `/gamemode` still takes
+      `sp` and `3` without offering all twelve forms in a list where the four
+      readable ones would be buried.
+    - `Param.NoSuggest`, so `/tp`'s first argument offers player names rather
+      than also the caller's own x — "10" in a list of player names reads like
+      somebody called 10.
+    Pinning the table *before* deleting the switch is what made all six
+    visible. Written afterwards, the table would have recorded whatever the
+    rewrite happened to do.
+  - **Brigadier rendering is unproven against a client and must not be read as
+    a working 775 server.** Nothing in this repository speaks 775. The tree is
+    checked against the generated codec — encode, decode, compare — and against
+    `v26_1.Data().Commands()`, which is what says every parser name it emits is
+    one vanilla also uses. It has never been sent to a client. That is the same
+    limit M11.2 records for its 775 block-state registry round-trip.
+  - **Permissions default to allowing everything, deliberately.** This server
+    has no operator list, and a framework milestone that silently introduced
+    one would lock people out of their own worlds on upgrade. A refusal is
+    rendered as "unknown command" rather than "forbidden", because the second
+    tells somebody that `/ban` exists — which is what an authorizer was
+    installed to withhold — and suggestion is gated the same way.
+  - **The built-ins are in package `server`, not `server/commands/builtin`.**
+    A command names `server.Command` and the server defaults to the built-ins;
+    together that is an import cycle. `server/commands/vanilla` and
+    `server/commands/v775` are subpackages as planned, because nothing in
+    `server` depends on either.
+  - **Tasks 2 and 4 landed as one commit.** Separating them would have needed a
+    throwaway bridge in `tab_complete.go`: the switch it deletes reads the
+    command list, and the command list left the package in Task 2. Two commits
+    that cannot land apart are not two commits.
+  - **The race detector found an unstated contract on the first run.** `/save`
+    replies from its own goroutine — a save walks the resident world and the
+    player who asked for it should not be frozen while it does — so a `Caller`
+    has to tolerate `Reply` from a goroutine other than the one the command ran
+    on. Nothing said so, and the fake in the tests was an unguarded slice. The
+    contract is now on the `Caller` doc comment and the fake holds a mutex,
+    which is the honest fix: a fake that did not would be relying on something
+    no real implementation is allowed to rely on.
+  - **The 440 lines of `commands_test.go` did not survive as the plan expected,
+    and the replacement is better.** `internal/server/conn` cannot import
+    `server` — `server` imports it — so the command tests could not run through
+    the new path from there. They moved to `server/dispatch_test.go` and run
+    against a fake `Caller`, which is the whole point of the milestone: what
+    they used to assert was "some packet was written", and what they assert now
+    is the line a player reads.
 
 ## Document index
 
