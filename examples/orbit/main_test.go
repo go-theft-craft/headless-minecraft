@@ -77,6 +77,9 @@ func (failing) Locomotion(context.Context, bool) error { return nil }
 // under test, and failing it would move the failure a line earlier.
 func (failing) Mark(context.Context, Vec3) error { return nil }
 
+// Kill succeeds too, for the same reason.
+func (failing) Kill(context.Context) error { return nil }
+
 func TestAPendingPortStopsTheRunWithoutCrashing(t *testing.T) {
 	t.Parallel()
 
@@ -127,24 +130,24 @@ func TestARealActuatorErrorIsNotSwallowed(t *testing.T) {
 	}
 }
 
-func TestTheActuatorNamesWhatItStillOwes(t *testing.T) {
+// TestTheExampleStillNamesWhatItCannotDo pins the startup warning.
+//
+// Attack used to be in this list and is not any more: the library gained an
+// interaction vocabulary and the bot hits back. What is left is the body --
+// gravity, collision and a jump -- which is why the bot walks a flat world and
+// nothing else, and a run that stopped saying so would be a run that looked
+// more capable than it is.
+func TestTheExampleStillNamesWhatItCannotDo(t *testing.T) {
 	t.Parallel()
 
-	// Step and respawn are real now, so neither is in this list. Attack is
-	// not, and it has to say which milestone owes it rather than failing
-	// blankly.
-	var actuator Actuator = NewSender(nil, DefaultBounds())
-
-	for name, err := range map[string]error{
-		"attack": actuator.Attack(t.Context(), 1),
-	} {
-		if !errors.Is(err, ErrNotYet) {
-			t.Errorf("%s returned %v, want ErrNotYet", name, err)
-		}
+	owed := Missing()
+	if len(owed) == 0 {
+		t.Fatal("the example claims to owe nothing while it still has no body")
 	}
-
-	if len(Missing()) == 0 {
-		t.Error("Missing lists nothing while attack is owed")
+	for _, line := range owed {
+		if line == "" {
+			t.Error("an empty line in the list of what is owed")
+		}
 	}
 }
 
@@ -216,6 +219,7 @@ func (mute) Attack(context.Context, int32) error                        { return
 func (mute) Respawn(context.Context) error                              { return nil }
 func (m mute) Locomotion(context.Context, bool) error                   { return m.err }
 func (mute) Mark(context.Context, Vec3) error                           { return nil }
+func (mute) Kill(context.Context) error                                 { return nil }
 
 // TestAProtocolThatCannotNarrateStillWalks pins that the decoration is
 // optional and the movement is not.

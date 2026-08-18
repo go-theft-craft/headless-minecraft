@@ -415,6 +415,8 @@ func apply(
 		moved, err = actuator.Step(ctx, from, action.Target, action.Jump)
 	case Strike:
 		err = actuator.Attack(ctx, action.Entity)
+	case AskToDie:
+		err = actuator.Kill(ctx)
 	case SendRespawn:
 		err = actuator.Respawn(ctx)
 	case Exit:

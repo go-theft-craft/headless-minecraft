@@ -13,8 +13,8 @@ const (
 	Joining State = iota
 	// Orbiting walks the circle.
 	Orbiting
-	// Fleeing runs from the entity that hit the bot.
-	Fleeing
+	// Fighting hits back at the entity that hit the bot.
+	Fighting
 	// Escaping gets out of ground that is hurting the bot.
 	Escaping
 	// Dousing walks to water to put a fire out.
@@ -36,8 +36,8 @@ func (s State) String() string {
 		return "joining"
 	case Orbiting:
 		return "orbiting"
-	case Fleeing:
-		return "fleeing"
+	case Fighting:
+		return "fighting"
 	case Escaping:
 		return "escaping"
 	case Dousing:
@@ -88,6 +88,9 @@ const (
 	Stand ActionKind = iota
 	// StepTo emits one movement update.
 	StepTo
+	// AskToDie asks the server to kill the bot, which is how it leaves a trap
+	// nothing else gets it out of.
+	AskToDie
 	// Strike attacks an entity. The core no longer decides on one -- it flees
 	// instead -- and the kind stays because the actuator's Attack does, for
 	// the same reason.
@@ -139,6 +142,11 @@ type Bot struct {
 	// escapedAt is when the bot last noticed it was standing in something that
 	// hurts, which bounds how long it may spend getting out.
 	escapedAt time.Time
+	// killedAt is when the bot last asked the server to kill it, so a sealed-in
+	// bot asks on an interval rather than every tick.
+	killedAt time.Time
+	// struckAt is when the bot last swung, which paces the next swing.
+	struckAt time.Time
 	// dousingAt is the water being walked to.
 	dousingAt Vec3
 	// litAt is when the bot was first seen burning, and lit whether it was.
@@ -233,8 +241,8 @@ func (b *Bot) Advance(t Tick, w World) Action {
 		return b.join(t, w)
 	case Orbiting:
 		return b.orbit(t, w)
-	case Fleeing:
-		return b.flee(t, w)
+	case Fighting:
+		return b.fight(t, w)
 	case Escaping:
 		return b.escape(t, w)
 	case Dousing:
@@ -447,31 +455,11 @@ func (b *Bot) guardedStep(t Tick, w World, target Vec3) Action {
 	return b.step(target)
 }
 
-// fleeTurns are the escape headings to try, in order: straight away first, then
-// wider either side.
-//
-// Ninety degrees is where it stops, which is where the game stops. Vanilla's
-// own avoid-entity goal draws its escape inside pi/2 radians of directly away
-// and then throws out any destination no further from the threat than the mob
-// already is; past a quarter turn those are the same rule, because a heading
-// more than ninety degrees off is closing the distance. This walked into that:
-// a fan that ran to a full half turn would happily pick a way out that ran at
-// the thing it was running from.
-//
-// Deterministic where the game is random. A mob picks a direction inside the
-// arc and retries; this takes the straightest heading that routes, because an
-// example whose behaviour changes run to run is an example nobody can debug.
-var fleeTurns = []float64{0, 30, -30, 60, -60, 90, -90}
-
 // lookahead is how far along the current leg the bot re-examines when the
 // world changes, in blocks. Two is ten ticks of walking: far enough that
 // something appearing in the way is seen before it is reached, and short
 // enough that the check stays a fixed cost rather than growing with the route.
 const lookahead = 2.0
-
-// fleeRoute is the route key for a flight. Waypoint indices only ever grow
-// from zero, so a negative one cannot collide with them.
-const fleeRoute = -1
 
 // unreachable answers a waypoint nothing can route to: skip it, and after
 // enough skips call the bot sealed in.
@@ -494,6 +482,10 @@ func (b *Bot) unreachable(t Tick) Action {
 	b.state = Trapped
 	b.trappedAt = t.Now
 	b.trappedRevision = t.Revision
+	// The clock starts now, so the first request to die is one interval away
+	// rather than immediate. A bot briefly boxed in by a mob should wait for
+	// it to wander off, not kill itself over it.
+	b.killedAt = t.Now
 
 	return Action{Kind: Stand, Reason: "sealed in"}
 }
@@ -659,53 +651,47 @@ var escapeHeadings = []float64{0, 45, -45, 90, -90, 135, -135, 180}
 // escapeRoute is the route key for getting out of something that hurts.
 const escapeRoute = -2
 
-// flee runs from the threat until it is gone, until the bot is clear of it,
-// until the bot has run far enough from its circle, or until the clock runs
-// out. Whichever lands first, the bot goes back to orbiting.
+// fight hits the thing that hit the bot, until it dies, leaves, or the clock
+// runs out.
 //
-// It runs rather than fights on purpose. Fighting needs attack, attack needs
-// the version profile's cooldown, and that is M9.6; running needs a direction
-// and the movement this example already has. A bot that runs is also the
-// honest demonstration of what the library can do today, where a bot that
-// swings at things would be a demonstration of an error message.
-func (b *Bot) flee(t Tick, w World) Action {
+// It replaces running away, which is what this did until the library could
+// attack: fleeing was the honest behaviour for a bot with no way to hit back,
+// and the way back to the circle afterwards is the same either way.
+func (b *Bot) fight(t Tick, w World) Action {
 	threat, known := w.Entity(b.target)
 	switch {
 	case !known || !threat.Alive:
-		return b.disengage(t, "threat gone")
-	case t.Now.Sub(b.fledAt) > b.bounds.Escape:
-		return b.disengage(t, "ran as long as it is worth running")
-	case t.Self.Position.HorizontalDistance(threat.Position) >= b.bounds.SafeDistance:
-		return b.disengage(t, "clear of "+threatName(threat))
-	// The bot's distance from the centre, not the threat's. The bot is the one
-	// running, and it is the one that has to come back.
-	case t.Self.Position.HorizontalDistance(b.circle.Centre) > b.circle.Radius+b.bounds.FleeMargin:
-		return b.disengage(t, "ran far enough from the circle")
+		return b.disengage(t, "killed "+threatName(threat))
+	case t.Now.Sub(b.fledAt) > b.bounds.Engagement:
+		return b.disengage(t, "gave up on "+threatName(threat))
+	case threat.Position.HorizontalDistance(b.circle.Centre) > b.circle.Radius+b.bounds.FleeMargin:
+		return b.disengage(t, threatName(threat)+" left the neighbourhood")
 	}
 
-	// Keep walking the way out already chosen. Re-choosing every tick as the
-	// threat moves would have the bot pivot on the spot instead of leaving.
-	if b.routedFor == fleeRoute && len(b.route.Steps) > 0 {
-		if action, routed := b.follow(t, w, b.escapeTo, fleeRoute); routed {
-			return action
+	// Close first. Reach is the server's own number: it sends the player an
+	// entity_interaction_range attribute of 3, which is what a live 26.1.2
+	// session was measured carrying.
+	if t.Self.Position.HorizontalDistance(threat.Position) > b.bounds.Reach {
+		action, routed := b.follow(t, w, threat.Position, fightRoute)
+		if !routed {
+			return b.disengage(t, "no way to reach "+threatName(threat))
 		}
+		// The target moves, so the route to it is stale the moment it is
+		// planned. Throwing it away every tick would be a search a tick; this
+		// keeps it until the leg runs out, which is a few blocks of chase.
+		return action
 	}
 
-	// The way out ran out and the threat is still here. Look for another, and
-	// go back to the circle if there is none -- walking a circle while being
-	// hit beats standing still while being hit, and it is what the game does:
-	// a mob whose avoid goal cannot find a path does not freeze, it carries on
-	// with whatever it was doing.
-	goal, found := b.wayOut(t, w, threat)
-	if !found {
-		return b.disengage(t, "nowhere to run from "+threatName(threat))
+	if t.Now.Sub(b.struckAt) < b.bounds.Cooldown {
+		return Action{Kind: Stand, Reason: "between swings"}
 	}
+	b.struckAt = t.Now
 
-	// wayOut left the route on the bot; this is the rest of the bookkeeping.
-	b.leg, b.routedFor, b.escapeTo = 0, fleeRoute, goal
-
-	return b.step(b.route.Steps[0])
+	return Action{Kind: Strike, Entity: b.target, Reason: "hitting " + threatName(threat)}
 }
+
+// fightRoute is the route key for closing on a target.
+const fightRoute = -4
 
 // disengage returns to the circle at the nearest waypoint by angle.
 func (b *Bot) disengage(t Tick, why string) Action {
@@ -797,6 +783,17 @@ func (b *Bot) trapped(t Tick, w World) Action {
 		), 1)
 	}
 
+	// Ask to die, on an interval. Nothing can be walked, dug or jumped out of
+	// a hole this shape, and a bot that respawns is a bot back on its circle a
+	// few seconds later -- which beats standing in it until the budget runs
+	// out and the process exits. The interval is long because this is a last
+	// resort and a wall may yet open.
+	if t.Now.Sub(b.killedAt) >= b.bounds.KillInterval {
+		b.killedAt = t.Now
+
+		return Action{Kind: AskToDie, Reason: "sealed in; asking the server to kill me"}
+	}
+
 	// Re-test on a revision that changed, not on a timer. The revision is
 	// already the signal that a block moved; a timer would either burn ticks
 	// on a world that has not changed or miss the opening for its whole period.
@@ -820,7 +817,7 @@ func (b *Bot) trapped(t Tick, w World) Action {
 
 // provoked switches to Fleeing when this tick carries an attacker.
 func (b *Bot) provoked(t Tick, w World) (Action, bool) {
-	if t.Attacker == 0 || b.state == Fleeing {
+	if t.Attacker == 0 || b.state == Fighting {
 		return Action{}, false
 	}
 
@@ -846,61 +843,13 @@ func (b *Bot) provoked(t Tick, w World) (Action, bool) {
 	// and then found nowhere to go would have abandoned its circle to stand
 	// still, which is the worst of both.
 	b.target = t.Attacker
+	b.fledAt = t.Now
+	b.state = Fighting
 	b.route = Route{}
 
-	goal, found := b.wayOut(t, w, attacker)
-	if !found {
-		b.target = 0
-
-		return Action{}, false
-	}
-
-	b.fledAt = t.Now
-	b.state = Fleeing
-	b.leg, b.routedFor, b.escapeTo = 0, fleeRoute, goal
-
-	// Through flee rather than straight to the step, so that the tick which
-	// starts the flight is still subject to the tests that end one. A threat
-	// already out of range, or a bot already past its margin, ends the flight
-	// on the tick it began.
-	return b.flee(t, w), true
-}
-
-// wayOut picks a heading the bot can actually leave on, and plans the route.
-//
-// Two rules, both the game's. The heading stays inside a quarter turn of
-// directly away, and a destination no further from the threat than the bot
-// already is gets thrown out -- the second is what stops a wide fan choosing a
-// way out that runs at the thing being run from, and it is a rule vanilla
-// states outright in its own avoid-entity goal.
-//
-// It leaves the route on the bot, because planning it is most of the work and
-// the caller is about to walk it.
-func (b *Bot) wayOut(t Tick, w World, threat Entity) (Vec3, bool) {
-	here := t.Self.Position
-	direct := Away(here, threat.Position, b.bounds.SafeDistance)
-	// Vanilla measures sixteen blocks; this measures the safe distance, which
-	// is shorter, because this bot is on a leash that one is not -- it has a
-	// circle to get back to, and FleeMargin ends a flight that leaves it.
-	gap := here.HorizontalDistance(threat.Position)
-
-	for _, turn := range fleeTurns {
-		goal := direct.RotatedAbout(here, turn)
-		if goal.HorizontalDistance(threat.Position) <= gap {
-			continue
-		}
-
-		route, found := w.Route(here, goal)
-		if !found {
-			continue
-		}
-
-		b.route = route
-
-		return goal, true
-	}
-
-	return Vec3{}, false
+	// Through fight rather than straight to a swing, so the tick that starts
+	// one is still subject to the tests that end one.
+	return b.fight(t, w), true
 }
 
 // threatName is what to call a threat in a log line.

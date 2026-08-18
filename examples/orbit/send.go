@@ -143,9 +143,30 @@ func (s *Sender) Step(ctx context.Context, from, target Vec3, _ bool) (Vec3, err
 	return next, nil
 }
 
-// Attack swings at an entity.
-func (*Sender) Attack(context.Context, int32) error {
-	return fmt.Errorf("%w: attack is M9.6", ErrNotYet)
+// Attack hits an entity: the swing a watcher sees, then the blow.
+//
+// Both, and in that order, because they are two packets and a real client
+// sends both. The animation is what makes an attack visible to everyone else;
+// the interaction is what does the damage. A client that sent only the second
+// would hurt things without appearing to move.
+func (s *Sender) Attack(ctx context.Context, id int32) error {
+	if err := s.client.Do(ctx, version.ActionSwing{}); err != nil {
+		return fmt.Errorf("swing: %w", err)
+	}
+
+	return s.client.Do(ctx, version.ActionInteract{
+		Entity: id,
+		Kind:   version.InteractAttack,
+	})
+}
+
+// Kill asks the server to kill the bot.
+//
+// The way out of a hole nothing can be dug or walked out of. It is a command,
+// so it needs the bot opped, and an unopped one is refused and stays where it
+// is -- which is the same place it was going to stay anyway.
+func (s *Sender) Kill(ctx context.Context) error {
+	return s.client.Do(ctx, version.ActionCommand{Command: "kill"})
 }
 
 // Mark paints the floor under a position with stone.

@@ -108,15 +108,7 @@ type Actuator interface {
 	// so the snapshot cannot answer "where am I now" for a bot that is
 	// walking. The caller carries that between ticks.
 	Step(ctx context.Context, from, target Vec3, jump bool) (Vec3, error)
-	// Attack swings at an entity. Timing is the version profile's cooldown,
-	// not a constant here, because 1.8.9 and 26.1.2 disagree and the example
-	// must not encode either.
-	//
-	// Nothing in this example calls it: the bot runs from what hits it rather
-	// than hitting back, so the one action it cannot perform is also the one
-	// it never asks for. It stays on the port because the library still owes
-	// it and a consumer that wants to fight will need it, and because deleting
-	// the surface would hide that M9.6 is unfinished rather than record it.
+	// Attack hits an entity.
 	Attack(ctx context.Context, id int32) error
 	// Locomotion declares whether the body is walking or standing, so that a
 	// watcher sees a player rather than a position that changes. It is
@@ -130,6 +122,9 @@ type Actuator interface {
 	// separate from Step because it is a debugging aid: a run with it off must
 	// send nothing at all.
 	Mark(ctx context.Context, at Vec3) error
+	// Kill asks the server to kill the bot, which is how it leaves a trap
+	// nothing else gets it out of.
+	Kill(ctx context.Context) error
 	// Respawn answers a death.
 	Respawn(ctx context.Context) error
 }

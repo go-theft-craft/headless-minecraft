@@ -1,7 +1,6 @@
 package main
 
 import (
-	"math"
 	"testing"
 	"time"
 )
@@ -267,146 +266,6 @@ func trapped(t *testing.T) (*Bot, *clock, *scripted, Vec3) {
 	return bot, c, w, position
 }
 
-func TestBeingHitSendsTheBotRunningTheOtherWay(t *testing.T) {
-	t.Parallel()
-
-	w := newScripted()
-	circle := NewCircle(w.spawn, 25, 32)
-	position := circle.At(0, 0)
-
-	// Two blocks away on +X, so away is -X and the direction is unambiguous.
-	attacker := position.Add(Vec3{X: 2})
-	w.entities[42] = Entity{ID: 42, Position: attacker, Health: 20, Alive: true}
-
-	bot, c := join(t, w, position)
-	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
-
-	action := bot.Advance(Tick{
-		Now:      c.advance(50 * time.Millisecond),
-		Ready:    true,
-		Self:     Self{Position: position},
-		Attacker: 42,
-	}, w)
-
-	if bot.State() != Fleeing {
-		t.Fatalf("the bot is %v after being hit, want fleeing", bot.State())
-	}
-	if action.Kind != StepTo {
-		t.Fatalf("produced %+v, want a step", action)
-	}
-	// Away, and routed: the bot aims at the first leg of a way out rather than
-	// at the destination, so the destination is the end of the route and the
-	// step only has to be heading there.
-	route := bot.Route()
-	if len(route.Steps) == 0 {
-		t.Fatal("fleeing without a route")
-	}
-	want := position.X - DefaultBounds().SafeDistance
-	if last := route.Steps[len(route.Steps)-1]; math.Abs(last.X-want) > 1e-9 ||
-		math.Abs(last.Z-position.Z) > 1e-9 {
-		t.Errorf("the route ends at %+v, want (%v, _, %v)", last, want, position.Z)
-	}
-	if action.Target.X >= position.X {
-		t.Errorf("stepped to %+v, which is not away from the attacker", action.Target)
-	}
-}
-
-// TestTheBotRunsEvenWhenTheThreatIsStandingOnIt pins the degenerate direction.
-//
-// A mob that has walked into the bot shares its horizontal position, and the
-// direction away from it is then undefined. Standing still is the one answer
-// that is certainly wrong, because whatever is there is hitting the bot.
-func TestTheBotRunsEvenWhenTheThreatIsStandingOnIt(t *testing.T) {
-	t.Parallel()
-
-	w := newScripted()
-	circle := NewCircle(w.spawn, 25, 32)
-	position := circle.At(0, 0)
-	w.entities[42] = Entity{ID: 42, Position: position, Health: 20, Alive: true}
-
-	bot, c := join(t, w, position)
-	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
-
-	action := bot.Advance(Tick{
-		Now:      c.advance(50 * time.Millisecond),
-		Ready:    true,
-		Self:     Self{Position: position},
-		Attacker: 42,
-	}, w)
-
-	if action.Kind != StepTo {
-		t.Fatalf("produced %+v, want a step", action)
-	}
-	if action.Target.HorizontalDistance(position) == 0 {
-		t.Error("the bot stood still on top of the thing hitting it")
-	}
-}
-
-func TestRunningEndsOnceTheBotIsClearOfTheThreat(t *testing.T) {
-	t.Parallel()
-
-	w := newScripted()
-	circle := NewCircle(w.spawn, 25, 32)
-	position := circle.At(0, 0)
-	w.entities[42] = Entity{ID: 42, Position: position, Health: 20, Alive: true}
-
-	bot, c := join(t, w, position)
-	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
-	bot.Advance(Tick{Now: c.advance(50 * time.Millisecond), Ready: true, Self: Self{Position: position}, Attacker: 42}, w)
-
-	// The threat gives up and leaves, putting it well past the safe distance.
-	w.entities[42] = Entity{ID: 42, Position: Vec3{X: 500, Y: 64, Z: 500}, Health: 20, Alive: true}
-
-	bot.Advance(Tick{Now: c.advance(50 * time.Millisecond), Ready: true, Self: Self{Position: position}}, w)
-
-	if bot.State() != Returning {
-		t.Errorf("the bot is %v once clear of the threat, want returning", bot.State())
-	}
-}
-
-func TestRunningEndsWhenTheThreatDies(t *testing.T) {
-	t.Parallel()
-
-	w := newScripted()
-	circle := NewCircle(w.spawn, 25, 32)
-	position := circle.At(0, 0)
-	w.entities[42] = Entity{ID: 42, Position: position, Health: 20, Alive: true}
-
-	bot, c := join(t, w, position)
-	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
-	bot.Advance(Tick{Now: c.advance(50 * time.Millisecond), Ready: true, Self: Self{Position: position}, Attacker: 42}, w)
-
-	w.entities[42] = Entity{ID: 42, Position: position, Alive: false}
-	bot.Advance(Tick{Now: c.advance(50 * time.Millisecond), Ready: true, Self: Self{Position: position}}, w)
-
-	if bot.State() != Returning {
-		t.Errorf("the bot is %v after the threat died, want returning", bot.State())
-	}
-}
-
-func TestRunningStopsOnceItHasGoneOnLongEnough(t *testing.T) {
-	t.Parallel()
-
-	w := newScripted()
-	circle := NewCircle(w.spawn, 25, 32)
-	position := circle.At(0, 0)
-	w.entities[42] = Entity{ID: 42, Position: position, Health: 20, Alive: true}
-
-	bot, c := join(t, w, position)
-	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
-	bot.Advance(Tick{Now: c.advance(50 * time.Millisecond), Ready: true, Self: Self{Position: position}, Attacker: 42}, w)
-
-	bot.Advance(Tick{
-		Now:   c.advance(DefaultBounds().Escape + time.Second),
-		Ready: true,
-		Self:  Self{Position: position},
-	}, w)
-
-	if bot.State() != Returning {
-		t.Errorf("the bot is %v after the escape timeout, want returning", bot.State())
-	}
-}
-
 func TestDeathSendsOneRespawnAndReturnsToTheCircle(t *testing.T) {
 	t.Parallel()
 
@@ -503,39 +362,6 @@ func TestTheBotWaitsForSpawnBeforeBuildingACircle(t *testing.T) {
 	}
 }
 
-// TestRunningStopsOnceTheBotHasLeftItsCircleBehind pins the leash.
-//
-// The bot runs from a threat, not to the horizon. Without this bound a mob
-// that keeps pace would walk the bot off the map, and the circle it exists to
-// orbit would never be seen again.
-func TestRunningStopsOnceTheBotHasLeftItsCircleBehind(t *testing.T) {
-	t.Parallel()
-
-	w := newScripted()
-	circle := NewCircle(w.spawn, 25, 32)
-	position := circle.At(0, 0)
-	bounds := DefaultBounds()
-
-	// Past the radius and the margin both, with the threat still on the bot's
-	// heels so that the distance to it is not what ends the run.
-	far := w.spawn.Add(Vec3{X: circle.Radius + bounds.FleeMargin + 1})
-	w.entities[42] = Entity{ID: 42, Position: far.Add(Vec3{X: 2}), Health: 20, Alive: true}
-
-	bot, c := join(t, w, position)
-	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
-
-	bot.Advance(Tick{
-		Now:      c.advance(50 * time.Millisecond),
-		Ready:    true,
-		Self:     Self{Position: far},
-		Attacker: 42,
-	}, w)
-
-	if bot.State() != Returning {
-		t.Errorf("the bot is %v after running past its margin, want returning", bot.State())
-	}
-}
-
 // TestSomethingThatCannotFollowDoesNotEndTheOrbit pins the point of naming
 // entities at all.
 //
@@ -566,111 +392,6 @@ func TestSomethingThatCannotFollowDoesNotEndTheOrbit(t *testing.T) {
 
 	if bot.State() != Orbiting {
 		t.Errorf("the bot is %v after a minecart hit it, want it still orbiting", bot.State())
-	}
-}
-
-// TestAnUnnamedAttackerIsStillRunFrom pins that the cautious default survives
-// into the core, not just the lookup.
-func TestAnUnnamedAttackerIsStillRunFrom(t *testing.T) {
-	t.Parallel()
-
-	w := newScripted()
-	circle := NewCircle(w.spawn, 25, 32)
-	position := circle.At(0, 0)
-	// Named false, and a Kind that would say "harmless" if anything read it.
-	w.entities[42] = Entity{
-		ID: 42, Position: position.Add(Vec3{X: 2}), Health: 20, Alive: true,
-		Kind: Kind{Pursues: false}, Named: false,
-	}
-
-	bot, c := join(t, w, position)
-	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
-
-	bot.Advance(Tick{
-		Now:      c.advance(50 * time.Millisecond),
-		Ready:    true,
-		Self:     Self{Position: position},
-		Attacker: 42,
-	}, w)
-
-	if bot.State() != Fleeing {
-		t.Errorf("the bot is %v after something it cannot name hit it, want fleeing", bot.State())
-	}
-}
-
-// TestAWayOutNeverRunsAtTheThreat pins the rule the game states outright.
-//
-// Vanilla's avoid-entity goal throws out any destination no further from the
-// thing being avoided than the mob already is. Without it a wide fan of
-// headings will cheerfully pick one that closes the distance, which is not an
-// escape however confidently it is walked.
-func TestAWayOutNeverRunsAtTheThreat(t *testing.T) {
-	t.Parallel()
-
-	w := newScripted()
-	circle := NewCircle(w.spawn, 25, 32)
-	position := circle.At(0, 0)
-	threat := Entity{
-		ID: 42, Position: position.Add(Vec3{X: 2}), Health: 20, Alive: true,
-		Kind: Kind{Name: "Zombie", Pursues: true}, Named: true,
-	}
-	w.entities[42] = threat
-
-	bot, c := join(t, w, position)
-	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
-	bot.Advance(Tick{
-		Now:      c.advance(50 * time.Millisecond),
-		Ready:    true,
-		Self:     Self{Position: position},
-		Attacker: 42,
-	}, w)
-
-	if bot.State() != Fleeing {
-		t.Fatalf("the bot is %v, want fleeing", bot.State())
-	}
-
-	route := bot.Route()
-	if len(route.Steps) == 0 {
-		t.Fatal("fleeing without a route")
-	}
-
-	was := position.HorizontalDistance(threat.Position)
-	for i, step := range route.Steps {
-		if got := step.HorizontalDistance(threat.Position); got < was-0.001 && i == len(route.Steps)-1 {
-			t.Errorf("the way out ends %.2f from the threat, closer than the %.2f it started at", got, was)
-		}
-	}
-}
-
-// TestNowhereToRunKeepsTheBotOnItsCircle pins that a cornered bot walks.
-//
-// It used to stand still, which is the one answer worse than either
-// alternative: it is being hit either way, and standing gives up the orbit as
-// well. The game does the same thing -- a mob whose avoid goal cannot find a
-// path does not start it, and carries on with what it was doing.
-func TestNowhereToRunKeepsTheBotOnItsCircle(t *testing.T) {
-	t.Parallel()
-
-	w := newScripted()
-	circle := NewCircle(w.spawn, 25, 32)
-	position := circle.At(0, 0)
-	w.entities[42] = Entity{
-		ID: 42, Position: position.Add(Vec3{X: 1}), Health: 20, Alive: true,
-		Kind: Kind{Name: "Zombie", Pursues: true}, Named: true,
-	}
-	// Nothing routes anywhere: every destination is unreachable.
-	w.loaded = func(BlockPos) bool { return false }
-
-	bot, c := join(t, w, position)
-	bot.Advance(Tick{
-		Now:      c.advance(50 * time.Millisecond),
-		Ready:    true,
-		Self:     Self{Position: position},
-		Attacker: 42,
-	}, w)
-
-	if bot.State() == Fleeing {
-		t.Error("the bot started a flight it has nowhere to run to")
 	}
 }
 
@@ -1038,5 +759,188 @@ func TestABotAlreadyInLavaIsAllowedToMove(t *testing.T) {
 	}
 	if action.Kind != StepTo {
 		t.Fatalf("produced %v while standing in a pool, want a step: standing is what kills it", action.Kind)
+	}
+}
+
+// TestBeingHitStartsAFight pins the answer to being attacked.
+//
+// The bot used to run. It ran because the library could not hit back and a
+// fleeing bot was the honest demonstration of that; the library can hit back
+// now, so it does.
+func TestBeingHitStartsAFight(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+	// Within reach, so the first tick is a swing rather than a walk.
+	w.entities[42] = Entity{
+		ID: 42, Position: position.Add(Vec3{X: 2}), Health: 20, Alive: true,
+		Kind: Kind{Name: "Zombie", Pursues: true}, Named: true,
+	}
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+
+	action := bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position}, Attacker: 42,
+	}, w)
+
+	if bot.State() != Fighting {
+		t.Fatalf("the bot is %v after being hit, want fighting", bot.State())
+	}
+	if action.Kind != Strike || action.Entity != 42 {
+		t.Errorf("produced %+v, want a strike at 42", action)
+	}
+}
+
+// TestSwingsArePaced pins the cooldown.
+//
+// Protocol 47 has no attack cooldown and 775 derives one from attack speed,
+// four a second for an empty hand. A bot swinging every tick is swinging
+// twenty times a second, which one version ignores and the other discards.
+func TestSwingsArePaced(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+	w.entities[42] = Entity{
+		ID: 42, Position: position.Add(Vec3{X: 2}), Health: 20, Alive: true,
+		Kind: Kind{Name: "Zombie", Pursues: true}, Named: true,
+	}
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+	bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position}, Attacker: 42,
+	}, w)
+
+	strikes := 0
+	for range 10 {
+		if bot.Advance(Tick{
+			Now: c.advance(50 * time.Millisecond), Ready: true,
+			Self: Self{Position: position},
+		}, w).Kind == Strike {
+			strikes++
+		}
+	}
+
+	// Half a second of ticks against a cooldown longer than that.
+	if strikes > 0 {
+		t.Errorf("swung %d times inside the cooldown, want none", strikes)
+	}
+}
+
+// TestAFightEndsWhenTheThreatDies pins the way back to the circle.
+func TestAFightEndsWhenTheThreatDies(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+	w.entities[42] = Entity{
+		ID: 42, Position: position.Add(Vec3{X: 2}), Health: 20, Alive: true,
+		Kind: Kind{Name: "Zombie", Pursues: true}, Named: true,
+	}
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+	bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position}, Attacker: 42,
+	}, w)
+
+	w.entities[42] = Entity{ID: 42, Position: position, Alive: false}
+	bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position},
+	}, w)
+
+	if bot.State() != Returning {
+		t.Errorf("the bot is %v after the threat died, want returning", bot.State())
+	}
+}
+
+// TestAnUnnamedAttackerIsStillFought pins the cautious default, which survives
+// the change from running to fighting.
+func TestAnUnnamedAttackerIsStillFought(t *testing.T) {
+	t.Parallel()
+
+	w := newScripted()
+	circle := NewCircle(w.spawn, 25, 32)
+	position := circle.At(0, 0)
+	w.entities[42] = Entity{
+		ID: 42, Position: position.Add(Vec3{X: 2}), Health: 20, Alive: true,
+		Kind: Kind{Pursues: false}, Named: false,
+	}
+
+	bot, c := join(t, w, position)
+	advanceTo(t, bot, w, c, func() Self { return Self{Position: position} }, Orbiting, 4)
+	bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position}, Attacker: 42,
+	}, w)
+
+	if bot.State() != Fighting {
+		t.Errorf("the bot is %v after something it cannot name hit it, want fighting", bot.State())
+	}
+}
+
+// TestASealedInBotAsksToBeKilled pins the last resort.
+//
+// A hole nothing can be walked, dug or jumped out of is still a hole, and a
+// bot standing in it until its budget expires and the process exits is a bot
+// that gave up. Dying is a way out: it respawns and walks back to its circle a
+// few seconds later.
+func TestASealedInBotAsksToBeKilled(t *testing.T) {
+	t.Parallel()
+
+	bot, c, w, position := trapped(t)
+
+	// Nothing for the first interval: a mob that boxed the bot in may wander
+	// off, and killing itself over that would be worse than waiting.
+	action := bot.Advance(Tick{
+		Now:   c.advance(DefaultBounds().KillInterval - time.Second),
+		Ready: true, Self: Self{Position: position}, Revision: 1,
+	}, w)
+	if action.Kind == AskToDie {
+		t.Fatal("asked to die before waiting out the interval")
+	}
+
+	action = bot.Advance(Tick{
+		Now: c.advance(2 * time.Second), Ready: true,
+		Self: Self{Position: position}, Revision: 1,
+	}, w)
+	if action.Kind != AskToDie {
+		t.Fatalf("produced %v after the interval, want it to ask to die", action.Kind)
+	}
+
+	// And not again on the very next tick.
+	action = bot.Advance(Tick{
+		Now: c.advance(50 * time.Millisecond), Ready: true,
+		Self: Self{Position: position}, Revision: 1,
+	}, w)
+	if action.Kind == AskToDie {
+		t.Error("asked to die twice in a row")
+	}
+}
+
+// TestAskingToDieReachesTheServer pins the shell half.
+func TestAskingToDieReachesTheServer(t *testing.T) {
+	t.Parallel()
+
+	actuator := &recording{}
+	_, _, done, err := apply(
+		t.Context(), quiet(), actuator, NewBot(DefaultBounds()), Vec3{},
+		Action{Kind: AskToDie}, false,
+	)
+	if err != nil || done {
+		t.Fatalf("apply returned (%v, %v), want the run to carry on", done, err)
+	}
+	if actuator.kills != 1 {
+		t.Errorf("sent %d kill requests, want 1", actuator.kills)
 	}
 }

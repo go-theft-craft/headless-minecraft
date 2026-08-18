@@ -34,11 +34,37 @@ type Bounds struct {
 	// only way to know how long is left is to know how long it lasts and watch
 	// the clock.
 	FireDuration time.Duration
+	// Reach is how far the bot can hit from.
+	//
+	// The server's own number rather than a guess: a live 26.1.2 session sends
+	// the player an entity_interaction_range attribute of 3. It is a constant
+	// here because reading it off the wire per tick would be reading a number
+	// that never changes for a bot with no equipment.
+	Reach float64
+	// Cooldown is how long between swings.
+	//
+	// Protocol 47 has no attack cooldown at all and 775 derives one from the
+	// attack-speed attribute, which for an empty hand is four per second. Six
+	// hundred and twenty-five milliseconds is that, and it is the slower of the
+	// two, so a bot pacing itself by it is never swinging faster than either
+	// version allows.
+	Cooldown time.Duration
+	// Engagement is how long one fight may last before the bot gives up and
+	// goes back to its circle.
+	Engagement time.Duration
 	// SafeDistance is how far from a threat counts as clear of it. It is also
 	// how far ahead the bot aims while running, which is why it is one number
 	// and not two: a bot that aimed shorter than it needed to be safe would
 	// arrive and stop while still being hit.
 	SafeDistance float64
+	// KillInterval is how often a sealed-in bot asks the server to kill it.
+	//
+	// Dying is the way out of a hole nothing can be walked, dug or jumped out
+	// of: the bot respawns and walks back to its circle, which is a working
+	// bot again. Two minutes because it is a last resort and a bot that killed
+	// itself the moment it was briefly boxed in would be a bot that never
+	// waited for a wall to open.
+	KillInterval time.Duration
 	// TrappedBudget is how long the bot stands sealed in before it gives up
 	// and exits non-zero.
 	TrappedBudget time.Duration
@@ -93,9 +119,13 @@ func DefaultBounds() Bounds {
 		NoProgress:     15 * time.Second,
 		FleeMargin:     8,
 		Escape:         10 * time.Second,
+		Reach:          3,
+		Cooldown:       625 * time.Millisecond,
+		Engagement:     30 * time.Second,
 		WaterSearch:    12,
 		FireDuration:   15 * time.Second,
 		SafeDistance:   12,
+		KillInterval:   2 * time.Minute,
 		TrappedBudget:  10 * time.Minute,
 		BreakerBudget:  5,
 		Tick:           50 * time.Millisecond,
