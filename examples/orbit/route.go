@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/go-theft-craft/minecraft-protocol/data"
 	gen1_8 "github.com/go-theft-craft/minecraft-protocol/generated/java/v1_8"
@@ -194,19 +195,78 @@ func (n Navigator) standable(query terrain.Query, at Vec3) bool {
 		return false
 	}
 
-	cell := cellOf(at)
+	// Every cell the body covers, not the one its centre falls in.
+	//
+	// A body 0.6 wide standing on a cell centre stays inside that cell, which
+	// is why the search gets away with asking about one: it moves centre to
+	// centre along an axis and never leans into a neighbour. Smoothing breaks
+	// that. A shortcut is a diagonal, a body on a diagonal straddles up to
+	// four cells, and asking only about the middle one lets the route skim the
+	// corner of a cell it would never have been allowed to stand in. Lava does
+	// not care that the bot's centre was somewhere safe -- this is a bot that
+	// caught fire walking past the corner of a lava pool.
+	for _, cell := range n.bodyCells(at) {
+		hazard, lookup, err := query.HazardAt(cell)
+		if err != nil || lookup == simworld.LookupUnknown || hazard != terrain.HazardNone {
+			return false
+		}
 
-	hazard, lookup, err := query.HazardAt(cell)
-	if err != nil || lookup == simworld.LookupUnknown || hazard != terrain.HazardNone {
-		return false
+		fluid, lookup, err := query.FluidAt(cell)
+		if err != nil || lookup == simworld.LookupUnknown {
+			return false
+		}
+		if fluid == terrain.FluidLava {
+			return false
+		}
+		if fluid == terrain.FluidWater && !n.capability.CanSwim {
+			return false
+		}
 	}
 
-	fluid, lookup, err := query.FluidAt(cell)
-	if err != nil || lookup == simworld.LookupUnknown {
-		return false
+	return true
+}
+
+// bodyCells returns the cells the body occupies at a position: the one to four
+// columns its box covers, at the height of its feet and of its head.
+//
+// The head layer matters as much as the feet. Fire fills a cell and a body two
+// blocks tall stands in two of them, so a check that looked only underfoot
+// would walk the bot upright through a fire burning at chest height.
+func (n Navigator) bodyCells(at Vec3) []simgeom.BlockPos {
+	half := n.capability.Body.HalfWidth
+	feet := at.Floor()
+
+	// One or two per axis, depending on whether the box straddles a boundary.
+	xs := axisCells(at.X, half)
+	zs := axisCells(at.Z, half)
+	layers := int(math.Ceil(n.capability.Body.Height))
+	if layers < 1 {
+		layers = 1
 	}
 
-	return fluid == terrain.FluidNone || (fluid == terrain.FluidWater && n.capability.CanSwim)
+	cells := make([]simgeom.BlockPos, 0, len(xs)*len(zs)*layers)
+	for layer := range layers {
+		for _, x := range xs {
+			for _, z := range zs {
+				cells = append(cells, simgeom.BlockPos{
+					X: int32(x), Y: int32(feet.Y + layer), Z: int32(z),
+				})
+			}
+		}
+	}
+
+	return cells
+}
+
+// axisCells returns the one or two cell coordinates one horizontal axis of the
+// body covers.
+func axisCells(centre, half float64) []int {
+	low, high := int(math.Floor(centre-half)), int(math.Floor(centre+half))
+	if low == high {
+		return []int{low}
+	}
+
+	return []int{low, high}
 }
 
 // lineProbe is how finely a straight line is sampled, in blocks. A fifth of a
@@ -237,7 +297,7 @@ func cellOf(p Vec3) simgeom.BlockPos {
 // the server collides. Spawning a state and measuring its box is how the
 // example gets the server's answer instead of its own.
 func NewNavigator(legacy bool, bounds Bounds) (Navigator, error) {
-	profile, blocks, err := versionTerrain(legacy)
+	profile, blocks, set, err := versionTerrain(legacy)
 	if err != nil {
 		return Navigator{}, err
 	}
@@ -270,6 +330,7 @@ func NewNavigator(legacy bool, bounds Bounds) (Navigator, error) {
 	return Navigator{
 		blocks:  blocks,
 		profile: profile,
+		facts:   NewFacts(set, blocks),
 		budget:  navigation.Budget{Nodes: routeNodes},
 		capability: navigation.Capability{
 			Body: body,
@@ -317,34 +378,34 @@ func spawnState(legacy bool, profile simprofile.Profile) (simentity.State, simmo
 // reason predict ships two resolvers: 47 packs a block identifier and four bits
 // of metadata into one number, and 775 carries the flattened state identifier
 // the profile's own table is keyed by.
-func versionTerrain(legacy bool) (simprofile.Profile, predict.Blocks, error) {
+func versionTerrain(legacy bool) (simprofile.Profile, predict.Blocks, *data.Set, error) {
 	if legacy {
 		set, err := gen1_8.Data()
 		if err != nil {
-			return nil, nil, fmt.Errorf("load the 1.8.9 data set: %w", err)
+			return nil, nil, nil, fmt.Errorf("load the 1.8.9 data set: %w", err)
 		}
 		profile, err := simv1_8.New(set)
 		if err != nil {
-			return nil, nil, fmt.Errorf("build the 1.8.9 profile: %w", err)
+			return nil, nil, nil, fmt.Errorf("build the 1.8.9 profile: %w", err)
 		}
 		names, ok := profile.(simprofile.BlockNames)
 		if !ok {
-			return nil, nil, errNoBlockNames
+			return nil, nil, nil, errNoBlockNames
 		}
 
-		return profile, predict.MetadataBlocks(set, names), nil
+		return profile, predict.MetadataBlocks(set, names), set, nil
 	}
 
 	set, err := gen26_1.Data()
 	if err != nil {
-		return nil, nil, fmt.Errorf("load the 26.1 data set: %w", err)
+		return nil, nil, nil, fmt.Errorf("load the 26.1 data set: %w", err)
 	}
 	profile, err := simv26_1.New(set)
 	if err != nil {
-		return nil, nil, fmt.Errorf("build the 26.1 profile: %w", err)
+		return nil, nil, nil, fmt.Errorf("build the 26.1 profile: %w", err)
 	}
 
 	return profile, predict.FlattenedBlocks(func(state data.BlockStateID) (simworld.BlockRef, bool) {
 		return simv26_1.RefState(profile, state)
-	}), nil
+	}), set, nil
 }

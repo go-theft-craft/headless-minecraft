@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	simgeom "github.com/go-theft-craft/minecraft-simulation/geom"
+	"github.com/go-theft-craft/minecraft-simulation/navigation"
 	simprofile "github.com/go-theft-craft/minecraft-simulation/sim"
 	"github.com/go-theft-craft/minecraft-simulation/terrain"
 	simworld "github.com/go-theft-craft/minecraft-simulation/world"
@@ -23,7 +24,7 @@ func TestTheFactsResolveAgainstBothProfiles(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			profile, _, err := versionTerrain(legacy)
+			profile, blocks, set, err := versionTerrain(legacy)
 			if err != nil {
 				t.Fatalf("versionTerrain: %v", err)
 			}
@@ -31,7 +32,7 @@ func TestTheFactsResolveAgainstBothProfiles(t *testing.T) {
 			if !ok {
 				t.Fatal("the profile cannot resolve block names")
 			}
-			facts := NewFacts(profile)
+			facts := NewFacts(set, blocks)
 
 			for block, want := range map[string]terrain.Fluid{
 				"water": terrain.FluidWater,
@@ -128,5 +129,119 @@ func TestATautRouteWillNotCutThroughFire(t *testing.T) {
 	// And the diagonal straight across both fires is refused outright.
 	if navigator.clearLine(query, staircase[0], staircase[len(staircase)-1]) {
 		t.Error("a line through two fires reported itself clear")
+	}
+}
+
+// TestATautRouteWillNotSkimALavaCorner reproduces the bot catching fire.
+//
+// This is the failure the centre-cell check let through, seen on a live server:
+// the bot walked past the corner of a lava pool, its own centre never entered a
+// lava cell, and it caught fire anyway because a body is 0.6 wide and lava does
+// not care where the middle of it was.
+//
+// The diagonal here passes corner to corner with the lava on one side. Every
+// cell the route stands in is clear; the body's box is not.
+func TestATautRouteWillNotSkimALavaCorner(t *testing.T) {
+	t.Parallel()
+
+	// Lava in one cell only, off the line of centres but inside the body's
+	// reach as it cuts the corner.
+	view := hazardSlab{slab: newSlab(), harmful: map[simgeom.BlockPos]bool{
+		{X: 1, Y: 64, Z: 1}: true,
+	}}
+	navigator := Navigator{
+		facts:      Facts{lava: map[simworld.BlockRef]bool{harmfulRef: true}},
+		capability: navigation.Capability{Body: terrain.Body{HalfWidth: 0.3, Height: 1.8}},
+	}
+	query := terrain.Query{View: view, Facts: navigator.facts, Body: navigator.capability.Body}
+
+	// Standing dead centre of the cell next door is fine: the box stays inside.
+	if !navigator.standable(query, Vec3{X: 0.5, Y: 64, Z: 1.5}) {
+		t.Error("refused a cell whose body does not reach the lava")
+	}
+
+	// Leaning toward the corner is not. The centre cell is still clear.
+	corner := Vec3{X: 0.95, Y: 64, Z: 1.05}
+	if cell := cellOf(corner); view.harmful[cell] {
+		t.Fatalf("the test position is inside the lava cell %+v; it must not be", cell)
+	}
+	if navigator.standable(query, corner) {
+		t.Error("accepted a position whose body overlaps the lava cell")
+	}
+
+	// And the shortcut across the corner is refused outright.
+	if navigator.clearLine(query, Vec3{X: 0.5, Y: 64, Z: 0.5}, Vec3{X: 1.5, Y: 64, Z: 1.5}) {
+		t.Error("a diagonal skimming the lava corner reported itself clear")
+	}
+}
+
+// TestFireAtHeadHeightIsNotWalkedThrough pins the layer above the feet.
+func TestFireAtHeadHeightIsNotWalkedThrough(t *testing.T) {
+	t.Parallel()
+
+	view := hazardSlab{slab: newSlab(), harmful: map[simgeom.BlockPos]bool{
+		{X: 3, Y: 65, Z: 3}: true,
+	}}
+	navigator := Navigator{
+		facts:      Facts{burn: map[simworld.BlockRef]bool{harmfulRef: true}},
+		capability: navigation.Capability{Body: terrain.Body{HalfWidth: 0.3, Height: 1.8}},
+	}
+	query := terrain.Query{View: view, Facts: navigator.facts, Body: navigator.capability.Body}
+
+	if navigator.standable(query, Vec3{X: 3.5, Y: 64, Z: 3.5}) {
+		t.Error("stood upright in a fire burning at head height")
+	}
+}
+
+// TestTheNavigatorIsBuiltWithItsFacts pins the wiring, not the mechanism.
+//
+// Every other test here constructs a Navigator literal with facts in it, which
+// tests that hazards are honoured and says nothing about whether the navigator
+// the program actually builds has any. It did not: the field was declared, the
+// sets were built, and the constructor never assigned them, so the planner ran
+// with empty facts and the bot walked into lava on a live server while the
+// tests were green.
+func TestTheNavigatorIsBuiltWithItsFacts(t *testing.T) {
+	t.Parallel()
+
+	for name, legacy := range map[string]bool{"26.1": false, "1.8.9": true} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			navigator, err := NewNavigator(legacy, DefaultBounds())
+			if err != nil {
+				t.Fatalf("NewNavigator: %v", err)
+			}
+
+			if len(navigator.facts.lava) == 0 || len(navigator.facts.burn) == 0 {
+				t.Fatal("the navigator was built without its facts")
+			}
+
+			// And through the resolver the terrain reads with, so a handle in
+			// the set is one a cell can actually produce.
+			_, blocks, set, err := versionTerrain(legacy)
+			if err != nil {
+				t.Fatalf("versionTerrain: %v", err)
+			}
+			lava, known := set.Blocks().ByName("lava")
+			if !known {
+				t.Fatal("no lava in the data set")
+			}
+
+			// Every state, not the default alone. The rim of a pool is the
+			// flowing states, and the rim is the part anything walks into.
+			for _, state := range statesOf(lava) {
+				ref, ok := blocks.Ref(state)
+				if !ok {
+					continue
+				}
+				if navigator.facts.Fluid(ref) != terrain.FluidLava {
+					t.Errorf("lava state %d is not known as lava", state)
+				}
+				if navigator.facts.Hazard(ref) != terrain.HazardBurn {
+					t.Errorf("lava state %d is not known to burn", state)
+				}
+			}
+		})
 	}
 }

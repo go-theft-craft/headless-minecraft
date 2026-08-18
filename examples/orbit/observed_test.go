@@ -104,7 +104,7 @@ func TestTheMeasuredTableAgreesWithTheGame(t *testing.T) {
 	// rules, and this test did not, because what it pins is not where the
 	// numbers live: it is that the bot walking a protocol 47 world gets
 	// vanilla's answer for the blocks a bot actually meets.
-	profile, blocks, err := versionTerrain(true)
+	profile, blocks, _, err := versionTerrain(true)
 	if err != nil {
 		t.Fatalf("versionTerrain: %v", err)
 	}

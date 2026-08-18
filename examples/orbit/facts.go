@@ -1,9 +1,11 @@
 package main
 
 import (
-	simprofile "github.com/go-theft-craft/minecraft-simulation/sim"
+	"github.com/go-theft-craft/minecraft-protocol/data"
 	"github.com/go-theft-craft/minecraft-simulation/terrain"
 	simworld "github.com/go-theft-craft/minecraft-simulation/world"
+
+	"github.com/go-theft-craft/headless-minecraft/predict"
 )
 
 // Facts tells the planner what a block does to a body standing in it.
@@ -78,34 +80,73 @@ var (
 	lavaBlocks  = []string{"lava", "flowing_lava"}
 )
 
-// NewFacts resolves the lists against a profile.
+// NewFacts resolves the lists to every state each block has.
 //
-// A profile that cannot name blocks gets empty facts rather than an error. The
-// consequence is a bot that routes on geometry alone, which is what it did
-// before any of this existed, and refusing to start over it would be trading a
-// working bot for a decorated one.
-func NewFacts(profile simprofile.Profile) Facts {
-	names, ok := profile.(simprofile.BlockNames)
-	if !ok {
-		return Facts{}
-	}
-
+// Every state, and through the same resolver the terrain reads cells with.
+// Both halves of that are the fix for a bot that burned to death on a live
+// server with lava already in these lists.
+//
+// A profile mints one handle per block state, not per block, and the name
+// lookup answers with the default state alone. Lava is sixteen states -- one
+// per level -- and only the first of them is the source block; the flowing
+// edges of a pool are the other fifteen. Facts built from the name therefore
+// knew the middle of a lava pool and not its rim, and the bot walked in at the
+// edge, which is the only part of a pool anything walks into.
+//
+// Going through predict.Blocks rather than the profile's name table is what
+// keeps this honest: it is the resolver that turns an observed chunk state
+// into a handle, so a handle in these sets is a handle a cell can actually
+// produce. Two resolvers would be two chances to disagree.
+func NewFacts(set *data.Set, blocks predict.Blocks) Facts {
 	return Facts{
-		burn:    refsOf(names, burnBlocks),
-		contact: refsOf(names, contactBlocks),
-		water:   refsOf(names, waterBlocks),
-		lava:    refsOf(names, lavaBlocks),
+		burn:    refsOf(set, blocks, burnBlocks),
+		contact: refsOf(set, blocks, contactBlocks),
+		water:   refsOf(set, blocks, waterBlocks),
+		lava:    refsOf(set, blocks, lavaBlocks),
 	}
 }
 
 // refsOf resolves what it can and quietly drops what it cannot.
-func refsOf(names simprofile.BlockNames, blocks []string) map[simworld.BlockRef]bool {
-	refs := make(map[simworld.BlockRef]bool, len(blocks))
-	for _, name := range blocks {
-		if ref, ok := names.Ref(name); ok {
-			refs[ref] = true
+func refsOf(set *data.Set, blocks predict.Blocks, names []string) map[simworld.BlockRef]bool {
+	refs := make(map[simworld.BlockRef]bool)
+
+	for _, name := range names {
+		block, known := set.Blocks().ByName(name)
+		if !known {
+			continue
+		}
+
+		for _, state := range statesOf(block) {
+			if ref, ok := blocks.Ref(state); ok {
+				refs[ref] = true
+			}
 		}
 	}
 
 	return refs
+}
+
+// statesOf lists the chunk states a block appears as.
+//
+// The two versions describe this differently and the difference is the
+// flattening. Java 26.1 gives a block a contiguous range of state identifiers,
+// one per combination of its properties. Java 1.8 has no such thing: a chunk
+// carries the block identifier shifted left four with four bits of metadata
+// under it, so the states are the sixteen values that metadata can take.
+func statesOf(block data.Block) []uint32 {
+	if block.MaxStateID >= block.MinStateID && block.MaxStateID > 0 {
+		states := make([]uint32, 0, block.MaxStateID-block.MinStateID+1)
+		for state := block.MinStateID; state <= block.MaxStateID; state++ {
+			states = append(states, uint32(state))
+		}
+
+		return states
+	}
+
+	states := make([]uint32, 0, 16)
+	for meta := range uint32(16) {
+		states = append(states, uint32(block.ID)<<4|meta)
+	}
+
+	return states
 }
