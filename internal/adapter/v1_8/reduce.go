@@ -1,6 +1,7 @@
 package v1_8
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -690,7 +691,9 @@ const (
 func containerReducer(containers *world.Containers) world.Func {
 	return func(_ *world.Context, batch version.Batch, c *event.Collector) error {
 		for _, packet := range batch.Packets {
-			reduceContainerPacket(containers, packet, c)
+			if err := reduceContainerPacket(containers, packet, c); err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -701,7 +704,7 @@ func reduceContainerPacket(
 	containers *world.Containers,
 	packet protocol.Packet,
 	c *event.Collector,
-) {
+) error {
 	switch value := packet.Value.(type) {
 	case *gen.PlayClientboundOpenWindow:
 		opened := event.ContainerOpened{
@@ -733,15 +736,40 @@ func reduceContainerPacket(
 		if value.WindowID == cursorContainer && value.Slot == cursorSlot {
 			containers.CursorChanged(c, value.Item, value.Item.BlockID >= 0)
 
-			return
+			return nil
 		}
 		containers.SlotsChanged(c,
 			int32(value.WindowID), map[int32]any{int32(value.Slot): value.Item}, 0, false)
+
+	case *gen.PlayClientboundTransaction:
+		// The server's answer to a click. Accepted means the click's claim
+		// matched what the server computed and the prediction stands;
+		// rejected is followed by a full window resend, but the rollback runs
+		// first so the interval between the two never shows the prediction as
+		// fact.
+		//
+		// An unknown sequence answers a click the store never saw — the
+		// window closed, or the click predates a reconnect — and is not an
+		// error. An out-of-order confirmation is: the pendings can no longer
+		// be trusted and nothing can repair them, so the error propagates and
+		// poisons the world, which is this library's word for "stop believing
+		// this state".
+		var resolve error
+		if value.Accepted {
+			resolve = containers.Confirm(c, int32(value.Action))
+		} else {
+			resolve = containers.Reject(c, int32(value.Action))
+		}
+		if resolve != nil && !errors.Is(resolve, world.ErrUnknownSequence) {
+			return resolve
+		}
 
 	case *gen.PlayClientboundCraftProgressBar:
 		containers.PropertyChanged(c,
 			int32(value.WindowID), int32(value.Property), int32(value.Value))
 	}
+
+	return nil
 }
 
 // horseMenuType is the one protocol 47 menu whose open packet carries an

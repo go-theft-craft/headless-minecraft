@@ -71,6 +71,23 @@ const (
 	doubleClickMode47 int8 = 6
 )
 
+// claim47 renders the caller's slot claim in this protocol's shape.
+//
+// The claim comes straight out of the world store, which keeps whatever this
+// adapter decoded — so anything that is neither nil nor this protocol's own
+// slot value is a caller's bug, reported rather than silently claimed empty:
+// a wrong claim turns every click into a rejection.
+func claim47(claim any) (gen.Slot, error) {
+	switch value := claim.(type) {
+	case nil:
+		return emptySlot47(), nil
+	case gen.Slot:
+		return value, nil
+	default:
+		return gen.Slot{}, fmt.Errorf("protocol %s cannot claim a %T as a slot", ProtocolID, claim)
+	}
+}
+
 // emptySlot47 is an absent item stack. 1.8.9 writes a block ID of -1 for one.
 //
 // Every placement this adapter sends carries one, and that costs nothing: the
@@ -178,16 +195,21 @@ func (a adapter) encodeInteraction(action version.Action) (protocol.Packet, bool
 			return protocol.Packet{}, true, version.UnsupportedAction(ProtocolID, value)
 		}
 
-		// The transaction number is the adapter's to allocate, not the
-		// caller's: 47 confirms a click by echoing it, so whoever assigns it
-		// has to be whoever waits for it.
+		// The transaction number is the caller's, because the caller is what
+		// waits for the echo: the world records the pending click under it
+		// and the confirmation path resolves it by it.
+		claim, err := claim47(value.Claim)
+		if err != nil {
+			return protocol.Packet{}, true, err
+		}
+
 		return play47("window_click", &gen.PlayServerboundWindowClick{
 			WindowID:    uint8(value.Window),
 			Slot:        value.Slot,
 			MouseButton: value.Button,
-			Action:      a.nextTransaction(),
+			Action:      value.Sequence,
 			Mode:        mode,
-			Item:        emptySlot47(),
+			Item:        claim,
 		}), true, nil
 
 	case version.ActionCloseWindow:

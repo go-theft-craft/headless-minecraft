@@ -131,8 +131,8 @@ func TestConfirmingOutOfOrderIsAnError(t *testing.T) {
 	f.store.Click(collector, f.store.Snapshot(1, chestWindow, 0, 1), swapPrediction())
 	f.store.Click(collector, f.store.Snapshot(2, chestWindow, 1, 2), nil)
 
-	if err := f.store.Confirm(collector, 2); !errors.Is(err, world.ErrUnknownSequence) {
-		t.Fatalf("Confirm out of order = %v, want ErrUnknownSequence", err)
+	if err := f.store.Confirm(collector, 2); !errors.Is(err, world.ErrOutOfOrder) {
+		t.Fatalf("Confirm out of order = %v, want ErrOutOfOrder", err)
 	}
 	if err := f.store.Confirm(collector, 1); err != nil {
 		t.Fatalf("Confirm in order: %v", err)

@@ -58,6 +58,18 @@ type ActionClickSlot struct {
 	Slot   int16
 	Button int8
 	Mode   ClickMode
+	// Sequence identifies this click to the confirmation path. The caller
+	// allocates it, because the caller is what records the pending click and
+	// waits for the answer: protocol 47 carries it on the wire and echoes it,
+	// and 775 never sends it — that protocol confirms by state, and the
+	// number only keys the pending record.
+	Sequence int16
+	// Claim is what the client believes the clicked slot holds, as this
+	// protocol's own decoded stack straight from the world store; nil claims
+	// an empty slot. Protocol 47's server executes the click and then
+	// compares this against what it computed — a wrong claim is what turns a
+	// click into a rejection and a full resend — and 775 has no field for it.
+	Claim any
 }
 
 // ActionKind implements Action.

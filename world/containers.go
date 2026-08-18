@@ -14,6 +14,13 @@ import (
 // accumulating a silent offset.
 var ErrUnknownSequence = errors.New("world: no such pending click")
 
+// ErrOutOfOrder reports a confirmation for a later click while an earlier one
+// is unanswered. Unlike an unknown sequence — which can be a click that
+// predates a reconnect — this one cannot be shrugged off: the skipped click's
+// prediction would stand unexamined forever, so the pendings as a whole can
+// no longer be trusted.
+var ErrOutOfOrder = errors.New("world: click confirmed out of order")
+
 // The container domain records the menu the server actually opened, and never
 // predicts one from the block a caller clicked.
 //

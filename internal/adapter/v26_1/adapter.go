@@ -40,6 +40,21 @@ func New(collector *event.Collector, outbox *version.Outbox) version.Adapter {
 
 func (adapter) ProtocolID() string { return ProtocolID }
 
+// StackEmpty implements version.Stacks.
+//
+// This protocol has two spellings for an absent stack and both are real: a
+// nullable field decodes to nil, and a full-window set decodes every empty
+// slot as a stack whose item count is zero — the same rule the game's own
+// ItemStack.isEmpty applies.
+func (adapter) StackEmpty(stack any) bool {
+	if stack == nil {
+		return true
+	}
+	value, ok := stack.(*gen.Slot)
+
+	return ok && (value == nil || value.ItemCount <= 0)
+}
+
 // Reducers gives an installed world this protocol's reducers.
 //
 // The client asserts the adapter for this method rather than version

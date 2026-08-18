@@ -696,6 +696,11 @@ func reduceContainerPacket(
 		containers.SlotsChanged(c, value.WindowID, items, value.StateID, true)
 		// The same packet carries the cursor, which belongs to no menu.
 		containers.CursorChanged(c, value.CarriedItem, value.CarriedItem != nil)
+		// The full set is also this protocol's answer to a click: the server
+		// performs every click it is sent and follows a state mismatch with
+		// exactly this resend, so whatever was pending on the window is now
+		// answered by truth rather than by a verdict.
+		containers.Superseded(value.WindowID)
 
 	case *gen.PlayClientboundSetSlot:
 		// 775 has a dedicated cursor packet, and it still honours the legacy

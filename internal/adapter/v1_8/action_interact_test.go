@@ -235,33 +235,58 @@ func TestReleaseUseAndDropShareTheDiggingPacket(t *testing.T) {
 	}
 }
 
-func TestClickSlotNumbersEveryClickDifferently(t *testing.T) {
+func TestClickSlotCarriesTheCallersSequenceAndClaim(t *testing.T) {
 	t.Parallel()
 
-	// 47 confirms a click by echoing its number, so two clicks that share one
-	// number are two clicks the client cannot tell apart. The adapter
-	// allocates them, because it is what waits for the echo.
+	// 47 confirms a click by echoing its number, and the caller is what
+	// records the pending click and waits for the echo — so the number is the
+	// caller's, and the claim is the caller's belief about the slot, straight
+	// from the world store.
 	a := adapter.New(new(event.Collector), new(version.Outbox))
-	click := version.ActionClickSlot{Window: 3, Slot: 7, Mode: version.ClickQuickMove}
+	held := gen.Slot{BlockID: 1}
+	click := version.ActionClickSlot{
+		Window: 3, Slot: 7, Mode: version.ClickQuickMove, Sequence: 42, Claim: held,
+	}
 
-	seen := make(map[int16]bool, 4)
-	for range 4 {
-		packet, err := a.EncodeAction(click)
-		if err != nil {
-			t.Fatalf("EncodeAction: %v", err)
-		}
+	packet, err := a.EncodeAction(click)
+	if err != nil {
+		t.Fatalf("EncodeAction: %v", err)
+	}
 
-		body := packet.Value.(*gen.PlayServerboundWindowClick)
-		if body.Mode != 1 {
-			t.Fatalf("Mode = %d, want the quick-move mode 1", body.Mode)
-		}
-		if body.WindowID != 3 || body.Slot != 7 {
-			t.Fatalf("click addressed window %d slot %d", body.WindowID, body.Slot)
-		}
-		if seen[body.Action] {
-			t.Fatalf("transaction %d was allocated twice", body.Action)
-		}
-		seen[body.Action] = true
+	body := packet.Value.(*gen.PlayServerboundWindowClick)
+	if body.Mode != 1 {
+		t.Fatalf("Mode = %d, want the quick-move mode 1", body.Mode)
+	}
+	if body.WindowID != 3 || body.Slot != 7 || body.Action != 42 {
+		t.Fatalf("click addressed window %d slot %d transaction %d", body.WindowID, body.Slot, body.Action)
+	}
+	if body.Item != held {
+		t.Fatalf("claimed %+v, want the held stack", body.Item)
+	}
+}
+
+func TestClickSlotWithNoClaimClaimsAnEmptySlot(t *testing.T) {
+	t.Parallel()
+
+	a := adapter.New(new(event.Collector), new(version.Outbox))
+	packet, err := a.EncodeAction(version.ActionClickSlot{Window: 3, Slot: 7, Mode: version.ClickPickup})
+	if err != nil {
+		t.Fatalf("EncodeAction: %v", err)
+	}
+	if body := packet.Value.(*gen.PlayServerboundWindowClick); body.Item.BlockID != -1 {
+		t.Fatalf("claimed %+v, want the empty slot", body.Item)
+	}
+}
+
+func TestClickSlotRefusesAForeignClaim(t *testing.T) {
+	t.Parallel()
+
+	// The claim comes from the world store, which holds this adapter's own
+	// decoded values. Anything else is a caller's bug, and claiming it empty
+	// would turn every click into a rejection.
+	a := adapter.New(new(event.Collector), new(version.Outbox))
+	if _, err := a.EncodeAction(version.ActionClickSlot{Claim: "a string"}); err == nil {
+		t.Fatal("EncodeAction accepted a claim no protocol decoded")
 	}
 }
 

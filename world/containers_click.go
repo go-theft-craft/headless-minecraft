@@ -109,7 +109,7 @@ func (s *Containers) Confirm(_ *event.Collector, sequence int32) error {
 		return fmt.Errorf("%w: confirm %d", ErrUnknownSequence, sequence)
 	case at > 0:
 		return fmt.Errorf("%w: confirmed %d while %d clicks before it are unanswered",
-			ErrUnknownSequence, sequence, at)
+			ErrOutOfOrder, sequence, at)
 	}
 	s.pending = s.pending[1:]
 
@@ -140,6 +140,22 @@ func (s *Containers) Reject(c *event.Collector, sequence int32) error {
 
 // PendingClicks reports how many clicks await the server's answer.
 func (s *Containers) PendingClicks() int { return len(s.pending) }
+
+// Superseded drops every pending click for one window without rolling back.
+//
+// It is protocol 775's resolution: that protocol answers a click — landed or
+// not — by resending the whole window, and the resend is the truth the
+// predictions were waiting for. Restoring a snapshot over it would replace
+// the server's answer with the client's guess.
+func (s *Containers) Superseded(window int32) {
+	kept := s.pending[:0]
+	for _, p := range s.pending {
+		if p.Window != window {
+			kept = append(kept, p)
+		}
+	}
+	s.pending = kept
+}
 
 // restore puts one pending click's prior contents back and publishes them.
 func (s *Containers) restore(c *event.Collector, p Pending) {

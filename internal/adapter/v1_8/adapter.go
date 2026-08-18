@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sync/atomic"
 
 	protocol "github.com/go-theft-craft/minecraft-protocol"
 	gen "github.com/go-theft-craft/minecraft-protocol/generated/java/v1_8"
@@ -29,10 +28,17 @@ const ProtocolID = "java/1.8.9"
 type adapter struct {
 	collector *event.Collector
 	outbox    *version.Outbox
-	// transactions numbers window clicks. This protocol confirms a click by
-	// echoing its number back, so whoever allocates one has to be whoever
-	// waits for the echo, and that is this adapter rather than the caller.
-	transactions *atomic.Int32
+}
+
+// StackEmpty implements version.Stacks: this protocol decodes an absent stack
+// as a slot value whose block ID is -1.
+func (adapter) StackEmpty(stack any) bool {
+	if stack == nil {
+		return true
+	}
+	value, ok := stack.(gen.Slot)
+
+	return ok && value.BlockID < 0
 }
 
 // New returns an adapter that appends to the given collector and queues its
@@ -42,7 +48,7 @@ type adapter struct {
 // publish and never write: a batch's events reach subscribers together, and
 // its answers reach the server together.
 func New(collector *event.Collector, outbox *version.Outbox) version.Adapter {
-	return adapter{collector: collector, outbox: outbox, transactions: new(atomic.Int32)}
+	return adapter{collector: collector, outbox: outbox}
 }
 
 func (adapter) ProtocolID() string { return ProtocolID }
@@ -84,6 +90,7 @@ func (a adapter) Handlers() map[string]version.Handler {
 		"keep_alive":      handlerFunc(a.keepAlive),
 		"custom_payload":  handlerFunc(a.customPayload),
 		"kick_disconnect": handlerFunc(a.disconnect),
+		"transaction":     handlerFunc(a.transaction),
 	}
 }
 
@@ -116,6 +123,30 @@ func (a adapter) keepAlive(_ context.Context, p protocol.Packet) error {
 	// Elapsed stays zero: measuring it needs the round trip, which the loop
 	// owns, not the adapter.
 	event.Emit(a.collector, event.KeepAlivePonged{ID: int64(value.KeepAliveID)})
+
+	return nil
+}
+
+// transaction answers a rejected click with the apology the server waits
+// for. A 1.8.9 server that rejects a click disables further clicking until
+// the client echoes the transaction back with accepted=false; a client that
+// never apologises has a window that silently stopped working. The rollback
+// itself is the container reducer's — this is only the wire half.
+func (a adapter) transaction(_ context.Context, p protocol.Packet) error {
+	value, ok := p.Value.(*gen.PlayClientboundTransaction)
+	if !ok || value.Accepted {
+		return nil
+	}
+	answer := &gen.PlayServerboundTransaction{
+		WindowID: value.WindowID, Action: value.Action, Accepted: false,
+	}
+	a.outbox.Add(protocol.Packet{
+		State:     gen.StatePlay,
+		Direction: protocol.DirectionServerbound,
+		ID:        answer.PacketID(),
+		Name:      "transaction",
+		Value:     answer,
+	})
 
 	return nil
 }
@@ -216,21 +247,3 @@ func dimensionName(id int8) string {
 		return "minecraft:overworld"
 	}
 }
-
-// nextTransaction allocates the number that identifies one window click.
-//
-// It never returns zero and never returns a negative: the field is a signed
-// short on the wire, and a server that has seen 32767 clicks in one session is
-// better served by wrapping back to one than by a number it reads as older
-// than everything before it.
-func (a adapter) nextTransaction() int16 {
-	if a.transactions == nil {
-		return 1
-	}
-
-	return int16(a.transactions.Add(1)%maxTransaction47 + 1)
-}
-
-// maxTransaction47 is how many distinct click numbers this protocol's signed
-// short holds above zero.
-const maxTransaction47 = 32767

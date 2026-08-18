@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	protocol "github.com/go-theft-craft/minecraft-protocol"
@@ -49,6 +50,8 @@ type Client struct {
 
 	events fanout
 	world  *world.World
+	// clicks numbers window clicks for the confirmation path. See Click.
+	clicks atomic.Int32
 
 	// writeMu serializes outbound writes. The read loop's replies and every Do
 	// take it, so an action never interleaves with a keepalive answer.

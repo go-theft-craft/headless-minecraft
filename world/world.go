@@ -192,6 +192,33 @@ func (w *World) Apply(batch version.Batch, collector *event.Collector) (uint64, 
 	return w.revision, nil
 }
 
+// Amend runs one client-side container mutation — a predicted click, or the
+// rollback of one that never reached the wire — under the same write lock a
+// batch takes, bumps the revision, and returns the produced events stamped
+// with it.
+//
+// It exists because a click is the one place observed state changes on the
+// caller's goroutine rather than the read loop's: the prediction has to be
+// recorded before the packet is sent, or the server's answer can race past
+// it. A mutation error is returned without poisoning the world — the store's
+// click methods refuse before they mutate.
+func (w *World) Amend(mutate func(*Containers, *event.Collector) error) ([]event.Event, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.poisoned != nil {
+		return nil, w.poisoned
+	}
+
+	collector := &event.Collector{}
+	if err := mutate(w.containers, collector); err != nil {
+		return nil, err
+	}
+	w.revision++
+
+	return collector.Events(w.revision), nil
+}
+
 // Snapshot returns an immutable view of every domain at one revision. A
 // poisoned world returns the zero snapshot; callers that need to tell that
 // apart from a fresh one use SnapshotErr.
