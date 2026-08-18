@@ -57,6 +57,15 @@ func (c *Client) Do(ctx context.Context, action Action) error {
 		return fmt.Errorf("%w: nil action", ErrInvalidClient)
 	}
 
+	// A respawn from a living player is a protocol error on both versions and
+	// a disconnect on some servers, so the guard is version-neutral and sits
+	// before the wire. Only the send is guarded: whether to respawn at all is
+	// the caller's, because respawning is an action and actions are the
+	// caller's.
+	if _, respawning := action.(ActionRespawn); respawning && !c.World().Player.Dead {
+		return fmt.Errorf("respawn: %w", ErrNotDead)
+	}
+
 	writer, adapter, err := c.outbound()
 	if err != nil {
 		return err
