@@ -111,7 +111,8 @@ func (adapter) encodeInteraction(action version.Action) (protocol.Packet, bool, 
 		if value.Slot > maxHotbarSlot {
 			return protocol.Packet{}, true, fmt.Errorf(
 				"%w: protocol %s cannot encode %s: slot %d is outside the hotbar",
-				version.ErrUnsupportedAction, ProtocolID, value.ActionKind(), value.Slot)
+				version.ErrUnsupportedAction, ProtocolID, value.ActionKind(), value.Slot,
+			)
 		}
 
 		return play775("held_item_slot", &gen.PlayServerboundHeldItemSlot{
@@ -275,7 +276,8 @@ func interact775(value version.ActionInteract) (protocol.Packet, bool, error) {
 		if value.At == nil {
 			return protocol.Packet{}, true, fmt.Errorf(
 				"%w: protocol %s cannot encode %s: use-at carries no position",
-				version.ErrUnsupportedAction, ProtocolID, value.ActionKind())
+				version.ErrUnsupportedAction, ProtocolID, value.ActionKind(),
+			)
 		}
 
 		return play775("use_entity", &gen.PlayServerboundUseEntity{

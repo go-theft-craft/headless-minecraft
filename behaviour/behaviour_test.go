@@ -20,7 +20,8 @@ const endpoint = "localhost:25565"
 func fullAuth(t *testing.T) safety.Authorization {
 	t.Helper()
 
-	authorization, err := safety.Authorize(endpoint,
+	authorization, err := safety.Authorize(
+		endpoint,
 		safety.ScopeObserve, safety.ScopeMove, safety.ScopeInventory,
 		safety.ScopeInteract, safety.ScopeAttack, safety.ScopeDig, safety.ScopeBuild,
 	)
