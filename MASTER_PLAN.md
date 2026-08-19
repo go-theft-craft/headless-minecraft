@@ -453,9 +453,16 @@ is not finished without.
   `minecraft-protocol/docs/verification/2026-08-16-vanilla-client-check.md`,
   plus M9.3's 1.8.9 oracle captures; nothing at 775 without a person and an
   account.
-- **The owned Go server** — unblocked at both versions by Task 1's 775
-  acceptor, and unwritten: no lane drives the headless client against
-  `server`'s examples yet. It is the one matrix row that is pure scheduling.
+- **The owned Go server** — written at 47 on 2026-08-19 and not schedulable
+  at 775. `task test:owned` drives this client against `server`'s
+  `examples/vanilla` through the same runner and the same six scenarios as the
+  1.8.9 vanilla lane; all six pass, and the standing scenario draws the same
+  210 ground flags and 10 forced positions from both servers. Two limits are
+  recorded with it: the correction count is vacuous, because that server
+  performs no movement validation and so cannot correct anyone; and 775 is not
+  scheduling but a milestone, because the server has no 775 play path
+  regardless of the acceptor. Record:
+  [owned-server lane](docs/verification/2026-08-19-owned-server-lane.md).
 
 **Removed from the checklist, with the reason:** the community-server case
 conversion. Every scenario in hand was written from behaviour observed
@@ -468,8 +475,12 @@ Still owned by M10:
 - [ ] **Run at least one online-mode lane**, which is what finally picks up
   M6.4. It needs a real Microsoft account and a real online-mode server — a
   manual act by a person with credentials, not a task an agent executes.
-- [ ] **Drive the headless client against the owned Go server** at both
-  versions — the matrix row Task 1 unblocked and nothing has written.
+- [x] **Drive the headless client against the owned Go server** — done at
+  protocol 47 on 2026-08-19; see the matrix row above. The 775 half moves off
+  this list and onto `server`: Task 1's acceptor lets a 775 login complete,
+  but the server has no 775 play path, so there is nothing for a lane to
+  drive. M11.7's brigadier rendering stays unsent to a client for the same
+  reason.
 - [ ] **`minecraft-simulation` takes the API baseline tooling** at its next
   release, copying `minecraft-protocol`'s `apicompat`.
 - [ ] **Publish stable `v1.0.0` releases** only after every release gate
