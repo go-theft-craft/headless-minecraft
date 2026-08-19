@@ -1,6 +1,6 @@
 # Go Theft Craft master plan
 
-Last reviewed: 2026-08-18.
+Last reviewed: 2026-08-19.
 
 This file is the cross-repository source of truth for **what remains**. The
 narrative record of what each finished milestone found has been moved to
@@ -39,10 +39,11 @@ here.
 | M7 | Immutable observed world state, wire-ordered reducers | `headless-minecraft` | Complete |
 | M8 | Deterministic 1.8.9 and 26.1.2 movement kernel, replay, consumer integration | `minecraft-simulation` | Complete (M8.1–M8.8) |
 | M9 | Gameplay mechanics, verified against both versions | `minecraft-simulation`, `relay`, `headless-minecraft`, `server` | **Complete except one human-gated corpus**: M9.1–M9.2 and M9.4–M9.8 closed; M9.3's correction, teleport, and disconnect scenarios — its stated gate — done, with its 26.1.2 player-trace corpus blocked on a person with a paid account. The weaker gates are named under "What M9 found" below |
-| M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **All six reconciled tasks done, 2026-08-18.** What still stands between here and any `v1.0.0` is listed under "What M10 cannot claim": the online-mode lane (a person with credentials), M9.3's human capture, and the release sequence itself |
+| M10 | Conformance, compatibility contracts, migration notes, `v1.0.0` | all runtime repositories | **All six reconciled tasks done, 2026-08-18; play-state limits measured 2026-08-19.** What still stands between here and any `v1.0.0` is listed under "What M10 cannot claim": the online-mode lane (a person with credentials), M9.3's human capture, and the release sequence itself |
 | P4 | Put every consumer on the released `minecraft-protocol` and keep them there | `minecraft-protocol` | Complete |
 | M11 | Turn `server` into a framework | `server` | Complete (M11.1–M11.7) |
-| — | Navigation and behaviour pillar | `minecraft-simulation`, `headless-minecraft` | **Complete in code, pending releases**: all four plans implemented and gated 2026-08-18; three tags and two `go.mod` bumps are what remain |
+| — | Navigation and behaviour pillar | `minecraft-simulation`, `headless-minecraft` | **Complete, released**: all four plans implemented and gated 2026-08-18, and the release chain closed the same day — both modules here pin `minecraft-simulation v0.3.0` and `minecraft-protocol v0.8.0`. Two named items outlive it: `Fish` has no measured bite detector, and the end-to-end lane still mimics `examples/observe` rather than driving it |
+| — | Baritone adoption | `minecraft-simulation`, `headless-minecraft` | **Surveyed and sequenced, none implemented**: six stages, goals first ([design](docs/superpowers/specs/2026-08-18-baritone-adoption-design.md)). It waited on the pillar's releases, which have landed, so stage 1 is unblocked and owes its own design and plan |
 
 ---
 
@@ -475,10 +476,19 @@ Still owned by M10:
   passes — and after the two human-gated items above, because a `v1.0.0`
   that ships Microsoft authentication without ever executing it ships an
   unexercised code path.
-- [ ] **Measure play-state limits on 775.** M4 measured login only and recorded
-  that no milestone may claim the 2 MiB frame and 8 MiB body defaults fit play
-  until play is measured. M9.1b gave the first numbers from a real 26.1.2
-  server; the roadmap still says play is not measured.
+- [x] **Measure play-state limits on 775.** Done 2026-08-19 in
+  `minecraft-protocol`: `livecheck` gained `TestLivePlayMeasuresLimits`, which
+  stays in play for a window, answers the four things a server stops streaming
+  without, and reports the largest raw frame and largest decoded body per state
+  rather than per connection. Three runs against Paper 26.1.2 build 74 and
+  vanilla 26.1.2 — a default world, view distance 10, 473 chunk packets each —
+  put the largest thing play sends at 9,777 bytes on the wire and 60,174 bytes
+  decoded, both chunk packets: 214x and 139x inside the 2 MiB and 8 MiB
+  defaults. No limit moved. `minecraft-protocol/livecheck/README.md` is the
+  record, and it carries the two things the numbers qualify: a chunk expands
+  6.4x, which is more than the factor of 4 between the two defaults, so the
+  ceilings are not independent; and a column full of block entities can exceed
+  anything the sampled seed produced.
 
 **What M10 cannot claim**, in this plan's own findings style:
 
