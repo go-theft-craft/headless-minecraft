@@ -47,7 +47,13 @@ tasks:
     desc: Run static analysis
     deps: [fmt:check]
     cmds:
-      - golangci-lint run
+      # GOWORK=off, like every other target here. Without it lint alone reads
+      # the gitignored go.work and analyses this repository against a sibling's
+      # working tree, so an unreleased change in minecraft-simulation makes
+      # lint fail while test, vet, and build — which all resolve the pinned
+      # release — pass. The gate is only useful if every part of it is looking
+      # at the same modules.
+      - env GOWORK=off golangci-lint run
 
   secrets:
     desc: Scan the repository tree for secrets and private keys

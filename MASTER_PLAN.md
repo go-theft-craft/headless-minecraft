@@ -43,7 +43,7 @@ here.
 | P4 | Put every consumer on the released `minecraft-protocol` and keep them there | `minecraft-protocol` | Complete |
 | M11 | Turn `server` into a framework | `server` | Complete (M11.1–M11.7) |
 | — | Navigation and behaviour pillar | `minecraft-simulation`, `headless-minecraft` | **Complete, released**: all four plans implemented and gated 2026-08-18, and the release chain closed the same day — both modules here pin `minecraft-simulation v0.3.0` and `minecraft-protocol v0.8.0`. Two named items outlive it: `Fish` has no measured bite detector, and the end-to-end lane still mimics `examples/observe` rather than driving it |
-| — | Baritone adoption | `minecraft-simulation`, `headless-minecraft` | **Surveyed and sequenced, none implemented**: six stages, goals first ([design](docs/superpowers/specs/2026-08-18-baritone-adoption-design.md)). It waited on the pillar's releases, which have landed, so stage 1 is unblocked and owes its own design and plan |
+| — | Baritone adoption | `minecraft-simulation`, `headless-minecraft` | **Stages 1 and 2 done, 2026-08-19; four to go** ([design](docs/superpowers/specs/2026-08-18-baritone-adoption-design.md)). Goals, hazard costs, and dig edges are in `minecraft-simulation` with `task verify` green and unreleased. Stage 3 (the `Navigate` behaviour) is next and owes its own plan |
 
 ---
 
@@ -85,6 +85,15 @@ below are what is left of them.
 
 ### `headless-minecraft`
 
+- [ ] **Wrap the `orbit` example's `Find` call in a goal, and build a `Breaker`.**
+  Baritone adoption stage 1 changed `navigation.Find` to take a `Goal`, so
+  `examples/orbit/route.go` needs `navigation.GoalBlock{Pos: cell}` when this
+  repository bumps past the next `minecraft-simulation` release. Stage 2's
+  `navigation.Breaker` is unimplemented on this side and deliberately so: it
+  needs a held item, a set of effects, and a version profile, all of which live
+  here rather than in `minecraft-simulation`, so **nothing yet proves that
+  `mining.BreakTicks` and the routing seam meet.** Until this lands, dig edges
+  are gated code with no consumer.
 - [ ] **M6.4 — Microsoft device-code authentication.** Plan ready and every
   prerequisite met; postponed, not blocked
   ([plan](docs/superpowers/plans/2026-08-15-microsoft-authentication.md)).
