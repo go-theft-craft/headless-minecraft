@@ -100,6 +100,24 @@ tasks:
     cmds:
       - go test ./client/ -run TestVanilla -tags vanilla -timeout 20m -v {{.CLI_ARGS}}
 
+  test:owned:
+    desc: Run the conformance lane against this project's own Go server
+    # M10's owned-server matrix row. It shares the vanilla build tag, because
+    # that tag means "starts a real server" and this one does too, and it is
+    # selected by name so `task test:vanilla` is unchanged.
+    #
+    # It needs a built server binary and skips without one:
+    #
+    #   cd ../server/examples && go build -o /tmp/gtc-server ./vanilla
+    #   GOTHEFTCRAFT_SERVER=/tmp/gtc-server task test:owned
+    #
+    # Built rather than resolved from a path, for the reason M10 Task 4 gave:
+    # a lane that reaches into a sibling checkout is a lane that breaks when
+    # somebody moves one.
+    deps: [deps]
+    cmds:
+      - go test ./client/ -run TestOwnedServer -tags vanilla -timeout 20m -v {{.CLI_ARGS}}
+
   examples:
     desc: Lint and test the examples module
     # examples/ is its own module, so `go test ./...` from the root does not

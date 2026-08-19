@@ -121,7 +121,17 @@ func TestVanillaMovementDrawsNoCorrections(t *testing.T) {
 	}
 }
 
-func runVanillaScenario(t *testing.T, server *vanilla.Server, scenario vanillaScenario) {
+// laneServer is the part of a running server a scenario needs: where to
+// connect, and what it said. Both harnesses satisfy it, which is what lets one
+// scenario runner drive the game and this project's own server without
+// deciding which it is talking to.
+type laneServer interface {
+	Addr() string
+	Log() string
+	Matching(substring string) []string
+}
+
+func runVanillaScenario(t *testing.T, server laneServer, scenario vanillaScenario) {
 	t.Helper()
 
 	set, err := gen.Data()
@@ -310,7 +320,7 @@ func connectForMovement(t *testing.T, addr string) *client.Client {
 }
 
 // waitForTerrain blocks until the chunk under the player has arrived.
-func waitForTerrain(t *testing.T, server *vanilla.Server, bot *client.Client) {
+func waitForTerrain(t *testing.T, server laneServer, bot *client.Client) {
 	t.Helper()
 
 	deadline := time.Now().Add(60 * time.Second)
